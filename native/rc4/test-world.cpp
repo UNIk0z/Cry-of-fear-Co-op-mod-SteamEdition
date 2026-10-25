@@ -280,26 +280,31 @@ int main(int argc,char** argv){
    sceneSeen.clear();sceneFollowers.clear();cameraLeases.clear();}
   // --- v0.4 vote to skip: SPACE (IN_JUMP) votes; N/N fast-forwards the running manager (remaining
   // targets in order) and ends the camera with one toggle; a scene with a time-based target is not offered.
-  {store(ev(cam),0x1d0,intern("ckamera1"));store(ev(cam),0x248,1);make(13,"trigger_cofmobile","sms3hehe",613);make(14,"cof_teleport","2teleport",614);
+  {store(ev(cam),0x1d0,intern("ckamera1"));store(ev(cam),0x248,1);store(pd(cam),0x124,1);store(pd(cam),0x104,5.f);make(13,"trigger_cofmobile","sms3hehe",613);make(14,"cof_teleport","2teleport",614);
    store(globalData.data(),0,700.f);auto mm=manager(15,"multiscene3",{{"ckamera1",0.5f},{"sms3hehe",6.5f},{"2teleport",15.4f}},1,699.5f);
    CameraLease l3;l3.owner=camera_ref(cam);l3.view=camera_ref(cam);for(int i:{1,2}){l3.playerSerial=serial(&entities[i]);cameraLeases[&entities[i]]=l3;}
    lines.clear();wire.clear();fired.clear();cameraToggles=0;skipScene={};skip_frame();
    assert(logged({"SKIP offered for multiscene3 (1 manager(s))"})&&std::count(wire.begin(),wire.end(),std::string("begin 1 23 1"))==1&&std::count(wire.begin(),wire.end(),std::string("begin 1 23 2"))==1);
-   std::array<unsigned char,0x34> cmd{};auto press=[&](int i,bool down){unsigned short b=down?2:0;std::memcpy(cmd.data()+0x1e,&b,2);skip_command(&entities[i],cmd.data());};
+   std::array<unsigned char,0x34> cmd{};auto press=[&](int i,bool down){unsigned short b=down?0x2000:0;std::memcpy(cmd.data()+0x1e,&b,2);skip_command(&entities[i],cmd.data());};
    press(1,true);press(1,true);press(1,false);press(1,true);assert(skipScene.votes.size()==1&&logged({"SKIP vote (usercmd) player=1 on multiscene3: 1/2"}));
    skip_frame();assert(fired.empty()&&load<int>(ev(cam),0x248)==1);                 // 1/2: nothing yet
    // v0.5.5: R in the player's own game arrives as the client command "sc_skip".
    assert(!skip_client_command(&entities[2],"other")&&skip_client_command(&entities[2],"sc_skip")&&logged({"SKIP vote (R) player=2 on multiscene3: 2/2"}));skip_frame();
-   assert((fired==std::vector<std::string>{"sms3hehe","2teleport"})&&cameraToggles==1&&load<int>(ev(cam),0x248)==0&&load<int>(pd(mm),0xdc)==0);
+   assert((fired==std::vector<std::string>{"sms3hehe","2teleport"})&&cameraToggles==0&&load<float>(pd(cam),0x108)<700.f&&load<int>(pd(mm),0xdc)==0);   // v0.5.7: ended by its return time, never toggled
    assert(logged({"SKIP multiscene3 fast-forwarded: 2 remaining target(s) fired in order, 1 camera(s) ended"})&&!skipScene.active);
    // v0.5.5: a scene that still moves a train is offered too; the train is started in order and runs on.
    store(ev(cam),0x248,1);make(16,"func_train","tbtrain",616);mm=manager(15,"multitscene2",{{"ckamera1",0.f},{"tbtrain",3.f}},1,699.f);
    lines.clear();fired.clear();skipScene={};skipAfter={};skip_frame();assert(logged({"SKIP offered for multitscene2 (1 manager(s)); runs on after a skip: tbtrain (func_train)"}));
    press(1,false);press(1,true);press(2,false);press(2,true);skip_frame();assert((fired==std::vector<std::string>{"tbtrain"})&&!skipScene.active);
    store(ev(cam),0x248,1);skipScene={};skipAfter={};
+   // v0.5.7: a camera already switched off (m_state 0) is ending: not offered, never toggled back on.
+   store(pd(cam),0x124,0);lines.clear();cameraToggles=0;skip_frame();assert(!skipScene.active&&cameraToggles==0&&!logged({"SKIP offered"}));store(pd(cam),0x124,1);
+   // v0.5.7: a scene that still shows a yes/no choice is not offered, so the choice always comes up.
+   make(17,"cof_yesno","yesno",617);mm=manager(15,"multits3",{{"ckamera1",0.f},{"yesno",2.f}},1,699.f);lines.clear();skipScene={};skip_frame();
+   assert(skipScene.active&&!skipScene.allowed&&logged({"SKIP not offered for multits3: its yes/no choice (yesno) comes up first"}));skipScene={};
    // Scene over (camera off for everyone): the offer is gone.
    store(ev(cam),0x248,0);skip_frame();assert(!skipScene.active);
-   for(int i:{13,14,15,16}){if(allocations.count(&entities[i]))release(&entities[i]);store(&entities[i],0,1);}cameraLeases.clear();skipScene={};skipJump.clear();}
+   for(int i:{13,14,15,16,17}){if(allocations.count(&entities[i]))release(&entities[i]);store(&entities[i],0,1);}cameraLeases.clear();skipScene={};skipJump.clear();}
   store(ev(cam),0x248,0);release(cam);store(cam,0,1);lastPlaces.clear();store(globals,0x0c,mapBefore);}
  // --- v0.5: a player who dies in a deadly trigger_hurt (fall zone) is moved, dead,
  // beside the nearest living player, once; others are untouched.
@@ -323,7 +328,7 @@ int main(int argc,char** argv){
   std::array<unsigned char,0x34> cmd{};auto press=[&](int i,unsigned short b){std::memcpy(cmd.data()+0x1e,&b,2);prologue_skip_command(&entities[i],cmd.data());};
   prologueSkip={};skipJump.clear();openingTimeline=-1;lines.clear();prologue_skip_frame();press(1,2);assert(!prologueSkip.offered&&prologueSkip.votes.empty());   // intro not running yet
   openingTimeline=5;prologue_skip_frame();assert(logged({"SKIP offered for the prologue"}));
-  fired.clear();press(1,2);press(1,2);prologue_skip_frame();assert(fired.empty()&&logged({"SKIP vote player=1 on the prologue: 1/2"}));
+  fired.clear();press(1,0x2000);press(1,0x2000);prologue_skip_frame();assert(fired.empty()&&logged({"SKIP vote player=1 on the prologue: 1/2"}));
   press(2,0x2000);prologue_skip_frame();assert((fired==std::vector<std::string>{"use kunitei2"})&&prologueSkip.done&&logged({"SKIP prologue: kunitei2 started"}));
   press(2,0);press(2,2);prologue_skip_frame();assert(fired.size()==1);   // once
   prologueSkip={};skipJump.clear();openingTimeline=-1;store(&entities[16],0,1);store(globals,0x0c,mapBefore);}

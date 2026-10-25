@@ -40,10 +40,11 @@ bool carry_departing(Edict* e){
 // the moment the change is requested, before the native level-change manager
 // or the new map can rebuild anyone. A player who is dead keeps their last
 // good record (the once-a-second refresh), never an empty one.
+void load_wait_level_change(int players);void arrival_level_change(const char* map);   // below
 void carry_level_change(const char* map){
  if(!scoped()||!globals)return;int banked=0,kept=0;
  for(int i=1;i<=load<int>(globals,0x90);++i){auto e=eng<Edict*(__cdecl*)(int)>(72)(i);if(!live(e)||std::strcmp(classname(e),"player"))continue;if(carry_departing(e))++banked;else ++kept;}
- char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] CARRY level change to %.40s: %d player record(s) read now, %d kept from before\n",map&&*map?map:"?",banked,kept);carry_log(line);
+ char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] CARRY level change to %.40s: %d player record(s) read now, %d kept from before\n",map&&*map?map:"?",banked,kept);carry_log(line);load_wait_level_change(banked+kept);arrival_level_change(map);
 }
 // ServerDeactivate, after every player was banked.
 void carry_map_changed(){
@@ -65,7 +66,13 @@ void carry_frame(Edict* e){
   carryDone[e]=serial(e);
   auto it=carryBank.find(identity);
   if(!loadingCheckpoint&&!departedPlayers.count(identity)&&it!=carryBank.end()){
-   const SavedPlayer saved=it->second;char line[220]{};
+   SavedPlayer saved=it->second;char line[220]{};
+   // v0.6 (playtest 2 clip 24, log 2026-10-24: both players arrived on
+   // s4_subway2st1 with "fuse.txt" left over from Chapter 4 and placed them in
+   // its sockets at once, before the subway's own fuses): the subway chapter
+   // starts without Chapter 4 fuses, as in single player.
+   if(std::string(map_name()).rfind("s4_subway1st1",0)==0){int stripped=0;for(auto& item:saved.inventory)if(_strnicmp(item.c_str(),"fuse",4)==0||item.find("/fuse")!=std::string::npos){item.clear();++stripped;}
+    if(stripped){char note[120]{};std::snprintf(note,sizeof(note),"[STORYCOOP_RC4] CARRY player=%d: %d Chapter 4 fuse(s) left behind\n",index,stripped);carry_log(note);}}
    if(restore_player(e,saved,false,false,false))std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] CARRY player=%d kept inventory=%u weapons=%u tapes=%d phone=%d health=%.0f\n",index,static_cast<unsigned>(std::count_if(saved.inventory.begin(),saved.inventory.end(),[](const std::string& s){return !s.empty();})),static_cast<unsigned>(saved.weapons.size()),saved.tapes,saved.phoneMessage,saved.health);
    else std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] CARRY player=%d incomplete: %.150s\n",index,checkpointFailure.c_str());
    carry_log(line);
@@ -76,6 +83,11 @@ void carry_frame(Edict* e){
  const float t=load<float>(globals,0);auto& next=carryNext[e];if(t<next)return;next=t+1.f;
  SavedPlayer latest;if(capture_player(e,latest,false))carryBank[identity]=std::move(latest);
 }
+// v0.5.7: the carried inventory (or a loaded save) has been applied to this player on this map.
+bool carry_settled(Edict* e){auto d=carryDone.find(e);return d!=carryDone.end()&&d->second==serial(e);}
+void equip_cancel(Edict* e);
+// After the bag loss clear: no weapon is asked back, and the record is read again now.
+void bag_wiped(Edict* e){equip_cancel(e);const auto identity=player_identity(e);SavedPlayer p;if(!identity.empty()&&capture_player(e,p,false)){carryEntry[identity]=p;carryBank[identity]=std::move(p);}}
 // The last good record of a player who cannot be captured right now (the
 // partner of the one saving is on a ladder, in a scene, reviving...).
 const SavedPlayer* carry_record(Edict* e){const auto identity=player_identity(e);auto it=carryBank.find(identity);return identity.empty()||it==carryBank.end()?nullptr:&it->second;}
@@ -88,11 +100,20 @@ const SavedPlayer* carry_record(Edict* e){const auto identity=player_identity(e)
 // wanted weapon is asked for again every half second (up to 6 s) until it is
 // held; a saved dual wield is rebuilt the way the inventory does it
 // (CBasePlayer::DualWield on the two weapons' inventory slots, dual_command).
-struct EquipWant {int serial=-1;std::string equipped,dualA,dualB;float next=0,until=0;bool logged=false;};
+// v0.5.7 (playtest 2 clip: "most of the time when change to next map he does
+// that tweaking, doesn't matter with what item"; both host logs: "EQUIP ...
+// could not take ... back" after nearly every map change): the switch every
+// half second for 6 s re-deployed the weapon up to twelve times, and the phone
+// (a toggle: each switch raises or lowers it) flapped. Now at most two asks,
+// 1.5 s apart, and the phone is never asked for (it stays in the inventory).
+constexpr int EquipTries=2;
+struct EquipWant {int serial=-1;std::string equipped,dualA,dualB;float next=0,until=0;bool logged=false;int tries=0;};
 std::unordered_map<Edict*,EquipWant> equipWants;
+void equip_cancel(Edict* e){equipWants.erase(e);}
 void equip_want(Edict* e,const SavedPlayer& saved){
- if(!globals||!live(e)||(saved.equipped.empty()&&saved.dualA.empty()))return;const float now=load<float>(globals,0);
- equipWants[e]={serial(e),saved.equipped,saved.dualA,saved.dualB,now+0.5f,now+6.f,false};
+ const bool dual=!saved.dualA.empty()&&!saved.dualB.empty();
+ if(!globals||!live(e)||(saved.equipped.empty()&&!dual)||(!dual&&saved.equipped=="weapon_mobile"))return;const float now=load<float>(globals,0);
+ equipWants[e]={serial(e),saved.equipped,saved.dualA,saved.dualB,now+1.f,now+6.f,false,0};
 }
 int weapon_card_slot(void* p,const std::string& weapon){
  for(int i=0;i<6;++i){const char* s=string_at(load<int>(p,0x2200+i*4));if(!s)continue;std::string c=s;const auto slash=c.find_last_of('/');if(slash!=std::string::npos)c=c.substr(slash+1);if(c.size()>4)c.resize(c.size()-4);if(_stricmp(c.c_str(),weapon.c_str())==0)return i+1;}
@@ -102,15 +123,15 @@ bool dual_rebuild(Edict* e,void* p,const std::string& a,const std::string& b);  
 void equip_frame(Edict* e){
  auto it=equipWants.find(e);if(it==equipWants.end()||!globals)return;auto& w=it->second;
  if(w.serial!=serial(e)){equipWants.erase(it);return;}
- const float now=load<float>(globals,0);if(now<w.next)return;w.next=now+0.5f;
+ const float now=load<float>(globals,0);if(now<w.next)return;w.next=now+1.5f;
  void* p=nullptr;std::size_t n=0;SavedPlayer current;if(!player_memory(e,p,n)||!capture_player(e,current,false)){if(now>w.until)equipWants.erase(it);return;}
  const bool wantDual=!w.dualA.empty()&&!w.dualB.empty();
  Edict* held=nullptr;void* heldMemory=nullptr;const auto bits=load<std::uint32_t>(p,0x252c);const bool dualNow=bits&&item_object(bits,held,heldMemory)&&!std::strcmp(classname(held),"weapon_dualweapon");
  const bool done=wantDual?dualNow:current.equipped==w.equipped;
  char line[200]{};const int index=eng<int(__cdecl*)(Edict*)>(71)(e);
  if(done){std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] EQUIP player=%d holds %s again\n",index,wantDual?(w.dualA+" + "+w.dualB).c_str():w.equipped.c_str());carry_log(line);equipWants.erase(it);return;}
- if(now>w.until){std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] EQUIP player=%d could not take %s back\n",index,wantDual?"the dual wield":w.equipped.c_str());carry_log(line);equipWants.erase(it);return;}
- if(wantDual)dual_rebuild(e,p,w.dualA,w.dualB);else helper_use("cof_weaponswitch","message",w.equipped,e);
+ if(now>w.until||w.tries>=EquipTries){std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] EQUIP player=%d could not take %s back (holds %s)\n",index,wantDual?"the dual wield":w.equipped.c_str(),current.equipped.empty()?"-":current.equipped.c_str());carry_log(line);equipWants.erase(it);return;}
+ ++w.tries;if(wantDual)dual_rebuild(e,p,w.dualA,w.dualB);else helper_use("cof_weaponswitch","message",w.equipped,e);
 }
 
 // --- Nightmare in co-op (v0.5, D8) --------------------------------------------------
@@ -225,6 +246,24 @@ void give_owed_frame(Edict* e){
 // keeps seeing players normally.
 bool camera_view(Edict* host){auto it=clientViews.find(host);if(it==clientViews.end())return false;auto view=camera_resolve(it->second);return view&&view!=host&&scene_camera(view);}
 bool hide_player_from(Edict* e,Edict* host){return (scoped()||opening())&&live(e)&&live(host)&&std::strcmp(classname(e),"player")==0&&camera_view(host);}
+// --- A nearby partner is always sent (v0.6) -------------------------------------------
+// Playtest 2 clips 22 ("in this whole area everyone is invisible") and 28 (past
+// the doctor's door). The game's AddToFullPack (decomp client.cpp) drops an
+// entity that is EF_NODRAW, has no model, or fails ENGINE_CHECK_VISIBILITY
+// against the viewer's PVS; nothing in the logs or the map data showed which.
+// A living player within 2048 units of a living viewer who is not in a scene
+// camera is now asked again with no PVS set (the documented "always passes"
+// case), so a stale or wrong visibility result cannot hide the partner. The
+// first time per pair and map the log says whether that made them visible.
+std::set<std::pair<int,int>> forcedVisible;
+bool player_force_visible(Edict* e,Edict* host){
+ if(!(scoped()||opening())||e==host||!live(e)||!live(host)||std::strcmp(classname(e),"player")||std::strcmp(classname(host),"player")||!view_alive(e)||camera_view(host))return false;
+ auto a=vars(e),b=vars(host);float d=0;for(int k=0;k<3;++k){const float x=load<float>(a,8+k*4)-load<float>(b,8+k*4);d+=x*x;}return d<2048.f*2048.f;
+}
+void player_forced_log(Edict* e,Edict* host,bool shown){
+ const std::pair<int,int> key{eng<int(__cdecl*)(Edict*)>(71)(e),eng<int(__cdecl*)(Edict*)>(71)(host)};if(forcedVisible.size()>=64||!forcedVisible.insert(key).second)return;
+ char line[180]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] VISIBLE player=%d to player=%d: PVS test refused, %s (effects %x)\n",key.first,key.second,shown?"sent anyway":"still not sent",load<unsigned>(vars(e),0x118));log(line);
+}
 
 // --- Staged cutscene actors (v0.2) ---------------------------------------------------
 // v0.1 drew a fixed list of Simon models only inside scene views. The v0.1
@@ -390,7 +429,16 @@ struct IdleField {const char* name;int offset;int floats;};
 constexpr IdleField IdleFields[]={{"origin",0x08,3},{"velocity",0x20,3},{"basevelocity",0x2c,3},{"punchangle",0x68,3},{"view_ofs",0x178,3},{"fixangle",0xa0,-1},{"movetype",0x108,-1},{"friction",0x120,1},{"gravity",0x11c,1},{"flags",0x1a8,-1},{"groundentity",0x1a0,-1},{"waterlevel",0x1c4,-1},{"maxspeed",0x214,1},{"fov",0x218,1},{"weaponanim",0x21c,-1},{"bInDuck",0x224,-1},{"flDuckTime",0x230,1},{"iuser1",0x248,-1},{"iuser2",0x24c,-1},{"iuser3",0x250,-1},{"iuser4",0x254,-1},{"fuser1",0x258,1},{"fuser2",0x25c,1},{"fuser3",0x260,1},{"fuser4",0x264,1},{"vuser1",0x268,3},{"vuser2",0x274,3},{"vuser3",0x280,3},{"vuser4",0x28c,3}};
 constexpr int IdleFieldCount=static_cast<int>(sizeof(IdleFields)/sizeof(IdleFields[0]));
 constexpr const char* IdleStages[]={"between commands","native PreThink","adapter prethink","native PostThink","adapter postthink"};
-struct IdleProbe {int serial=-1;bool idle=false,have=false;std::array<std::array<std::uint32_t,3>,IdleFieldCount> last{};std::array<std::array<int,5>,IdleFieldCount> count{};std::array<std::array<float,5>,IdleFieldCount> most{};float windowStart=-1;int commands=0,idleCommands=0,msecMin=255,msecMax=0;};
+// v0.5.6 NET_CADENCE (tester: "the connecting player has a small constant
+// jittering, like shivering hands"): a remote client sends its commands in
+// packets, cl_cmdrate (default 30, CL_MAIN.C) a second, and the server moves
+// that player only when a packet arrives. The host draws the partner from a
+// snapshot every host frame (fps_max 72 in the logs), so at 30 packets the
+// partner moves in one of every 2-3 frames and holds still in the others.
+// Per 10 s window: how many of the host's frames (netFrame, counted in
+// start_frame) brought this player's commands, and the most in one frame.
+int netFrame=0;
+struct IdleProbe {int serial=-1;bool idle=false,have=false;std::array<std::array<std::uint32_t,3>,IdleFieldCount> last{};std::array<std::array<int,5>,IdleFieldCount> count{};std::array<std::array<float,5>,IdleFieldCount> most{};float windowStart=-1;int commands=0,idleCommands=0,msecMin=255,msecMax=0,frame=-1,frames=0,inFrame=0,mostInFrame=0;};
 std::unordered_map<Edict*,IdleProbe> idleProbes;int idleLines=0;
 void idle_reset(){idleProbes.clear();}
 // stage 0 = CmdStart (compares with the end of the last command), 1..4 as IdleStages; -1 = after pmove (snapshot only).
@@ -417,13 +465,15 @@ void idle_command(Edict* e,const void* command){
  const bool idle=!(buttons&(1u|2u|4u|8u|16u|0x200u|0x400u|0x800u|0x1000u))&&move[0]==0&&move[1]==0&&move[2]==0&&vx*vx+vy*vy+vz*vz<1.f;
  const float now=load<float>(globals,0);if(s.windowStart<0)s.windowStart=now;
  ++s.commands;if(idle)++s.idleCommands;const int msec=c[2];s.msecMin=(std::min)(s.msecMin,msec);s.msecMax=(std::max)(s.msecMax,msec);
+ if(s.frame!=netFrame){s.frame=netFrame;++s.frames;s.inFrame=0;}s.mostInFrame=(std::max)(s.mostInFrame,++s.inFrame);
  if(idle&&!s.idle)s.have=false;s.idle=idle;idle_stage(e,0);
  if(now-s.windowStart<10.f)return;
  const int index=eng<int(__cdecl*)(Edict*)>(71)(e);int printed=0;
+ if(idleLines<400){++idleLines;char line[200]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] NET_CADENCE player=%d %d commands arrived in %d host frames (up to %d at once) in %.0f s\n",index,s.commands,s.frames,s.mostInFrame,now-s.windowStart);log(line);}
  for(int f=0;f<IdleFieldCount;++f)for(int k=0;k<5;++k){if(!s.count[f][k]||idleLines>=400)continue;++printed;++idleLines;char line[220]{};
   std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] IDLE_DIAG player=%d field=%s changed %d time(s) at %s, largest %.4f (10 s, %d of %d commands idle)\n",index,IdleFields[f].name,s.count[f][k],IdleStages[k],s.most[f][k],s.idleCommands,s.commands);log(line);}
  if(!printed&&s.idleCommands>0&&idleLines<400){++idleLines;char line[200]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] IDLE_DIAG player=%d no change outside pmove (10 s, %d of %d commands idle, msec %d..%d)\n",index,s.idleCommands,s.commands,s.msecMin,s.msecMax);log(line);}
- const auto serialKeep=s.serial;const bool idleKeep=s.idle;s={};s.serial=serialKeep;s.idle=idleKeep;s.windowStart=now;
+ const auto serialKeep=s.serial;const bool idleKeep=s.idle;const int frameKeep=s.frame;s={};s.serial=serialKeep;s.idle=idleKeep;s.frame=frameKeep;s.windowStart=now;
 }
 
 // --- "stuck": back to the partner ------------------------------------------------------
@@ -465,6 +515,31 @@ void stuck_command(Edict* e,const char* command){
 // lie in the pit out of reach, so a player who dies inside a deadly trigger_hurt
 // (dmg >= 100: these and the maps' own fall pits) is moved, dead, beside the
 // nearest living player, once per death. Nobody alive: nothing moves (game over).
+// v0.6 (playtest 2 clips 13 and 23: "if you fall then it black screens and
+// bugs", "our favorite black box"; logs: FALL player=2 died in a fall zone on
+// s4_subwaysick1/2): a 1000-damage fall gibs the player, the game then marks
+// him m_bCantBeRevived (decomp combat.cpp GibMonster), and the native co-op
+// respawn waits 60 s for SPACE (m_flCoopRespawnDelayTime) or 384 s
+// (sv_auto_respawn_time), then strips every item (decomp player.cpp PreThink).
+// Now the faller is respawned 2 s after the fall through the game's own
+// auto-respawn (m_flDeadAutoReviveTime +0x1F2C set to now+2; MultiplayerKilled
+// 100E92CB writes it, PreThink 100EF629 reads it), then gets back the inventory
+// he had before the fall (his last carried record) and is moved beside the
+// partner. Nobody alive: nothing happens (game over as before).
+constexpr std::size_t PlayerAutoRevive=0x1f2c;
+bool bossOver=false;bool boss_alive();   // boss section below
+struct FallBack {int serial=-1;SavedPlayer record;bool have=false;Edict* partner=nullptr;int partnerSerial=-1;float due=-1;};
+std::unordered_map<Edict*,FallBack> fallBacks;
+void fall_back_frame(Edict* e){
+ auto it=fallBacks.find(e);if(it==fallBacks.end()||!globals)return;auto& b=it->second;if(b.serial!=serial(e)){fallBacks.erase(it);return;}
+ if(!view_alive(e))return;const float now=load<float>(globals,0);if(b.due<0){b.due=now+0.5f;return;}if(now<b.due)return;
+ const bool restored=b.have&&restore_player(e,b.record,false,false,false);if(b.have)equip_want(e,b.record);
+ Edict* partner=live(b.partner)&&serial(b.partner)==b.partnerSerial&&player_ready_for_move(b.partner)?b.partner:nullptr;
+ for(auto o:connected_players())if(!partner&&o!=e&&player_ready_for_move(o))partner=o;
+ const bool moved=partner&&move_beside(e,partner);
+ char line[180]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] FALL player=%d back: inventory %s, %s\n",eng<int(__cdecl*)(Edict*)>(71)(e),restored?"restored":b.have?"restore FAILED":"no record",moved?"beside the partner":"at the map's spawn");log(line);
+ fallBacks.erase(it);
+}
 struct FallWatch {int serial=-1;bool dead=false;};
 std::unordered_map<Edict*,FallWatch> fallWatch;
 bool in_fatal_zone(const float* o){
@@ -477,7 +552,7 @@ bool in_fatal_zone(const float* o){
 void fall_frame(Edict* e){
  auto v=vars(e);if(!scoped()||!globals||!v||std::strcmp(classname(e),"player"))return;
  auto& w=fallWatch[e];if(w.serial!=serial(e))w={serial(e),false};
- const bool dead=load<int>(v,0x174)!=0||load<float>(v,0x164)<=0;if(!dead){w.dead=false;return;}if(w.dead)return;w.dead=true;
+ const bool dead=load<int>(v,0x174)!=0||load<float>(v,0x164)<=0;if(!dead){w.dead=false;fall_back_frame(e);return;}if(w.dead)return;w.dead=true;
  const float o[3]={load<float>(v,8),load<float>(v,12),load<float>(v,16)};if(!in_fatal_zone(o))return;
  Edict* partner=nullptr;float best=0;
  for(int i=1;i<=load<int>(globals,0x90);++i){auto p=eng<Edict*(__cdecl*)(int)>(72)(i);if(p==e||!player_ready_for_move(p))continue;auto q=vars(p);
@@ -485,9 +560,196 @@ void fall_frame(Edict* e){
  if(!partner)return;auto a=vars(partner);std::array<float,3> at{};
  const bool moved=find_landing({load<float>(a,8),load<float>(a,12),load<float>(a,16)},e,at);
  if(moved){for(int k=0;k<3;++k)store(v,0x20+k*4,0.f);eng<void(__cdecl*)(Edict*,const float*)>(28)(e,at.data());}
- char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] FALL player=%d died in a fall zone; body %s player=%d\n",eng<int(__cdecl*)(Edict*)>(71)(e),moved?"moved beside":"could not reach",eng<int(__cdecl*)(Edict*)>(71)(partner));log(line);
+ // v0.6: back in 2 s with what he had (see FallBack).
+ void* p=nullptr;std::size_t n=0;bool respawn=false;
+ if(!bossOver&&!boss_alive()&&player_memory(e,p,n)&&n>PlayerAutoRevive+4){
+  FallBack b;b.serial=serial(e);b.partner=partner;b.partnerSerial=serial(partner);if(auto r=carry_record(e)){b.record=*r;b.have=true;}
+  fallBacks[e]=std::move(b);store(p,PlayerAutoRevive,load<float>(globals,0)+2.f);respawn=true;}
+ char line[200]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] FALL player=%d died in a fall zone; body %s player=%d%s\n",eng<int(__cdecl*)(Edict*)>(71)(e),moved?"moved beside":"could not reach",eng<int(__cdecl*)(Edict*)>(71)(partner),respawn?"; respawns there in 2 s":"");log(line);
 }
 
+// --- No wall after a floor breaks (v0.5.7) ----------------------------------------------
+// Playtest 2 clips: "theres a wall on that line that appears when the floor
+// breaks" and "wall is still there" (Katz: "remove that invisible wall so that
+// the player would be able to go down"). In single player a func_wall_toggle
+// that starts off is switched on together with the breaking floor, so the one
+// player cannot walk back; in co-op it shuts the partner out above the hole.
+// Entity lumps: s4_down multicome -> breakfloor + spawnm2s; s4_fsewer1
+// multistairs -> breakstairs + blockstairs. Those walls are removed when the
+// map starts (entity_retire: no name, never solid), so the partner can drop
+// down too.
+struct FloorWall {const char* map;const char* wall;};
+const FloorWall FloorWalls[]={{"s4_down","spawnm2s"},{"s4_fsewer1","blockstairs"}};
+bool floorWallsDone=false;
+std::vector<Edict*> skip_named(const std::string& name);   // below
+void floor_walls_frame(){
+ if(floorWallsDone||!scoped()||!globals)return;floorWallsDone=true;
+ const std::string m=map_name();
+ for(const auto& w:FloorWalls){if(m.rfind(w.map,0)!=0)continue;int n=0;
+  for(auto e:skip_named(w.wall))if(!std::strcmp(classname(e),"func_wall_toggle")){entity_retire(e);++n;}
+  char line[140]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] FLOORWALL %s: %d wall(s) %s removed (partners can follow down)\n",m.c_str(),n,w.wall);log(line);}
+}
+// --- Everyone waits for everyone after a level change (v0.6) ------------------------------
+// Playtest note: "you could make the host wait for all the other players to finish
+// loading until the map starts". The players who were in the game when the level
+// changed (carry_level_change counts them) are expected on the new map. Until all
+// of them have a ready HUD (or 60 s pass), the ones
+// already in are held: frozen, no damage, not targeted (FL_FROZEN 1<<12,
+// FL_GODMODE 1<<6, FL_NOTARGET 1<<7; only the bits the adapter set are cleared,
+// and FL_FROZEN stays while a scene camera holds the player), with "Waiting for
+// players k/N" on screen.
+constexpr unsigned FlGodmode=0x40u,FlNotarget=0x80u,FlFrozen=0x1000u;
+struct LoadWait {bool armed=false;int expected=0;unsigned long long since=0;std::map<std::pair<Edict*,int>,unsigned> held;int shown=-1;};
+LoadWait loadWait;
+void load_wait_level_change(int players){loadWait={};if(players>1){loadWait.armed=true;loadWait.expected=players;}}
+void load_wait_release(const char* why){
+ for(const auto& [k,bits]:loadWait.held){auto e=k.first;auto v=live(e)&&serial(e)==k.second?vars(e):nullptr;if(!v)continue;unsigned clear=bits;if(camera_view(e))clear&=~FlFrozen;store(v,0x1a8,load<unsigned>(v,0x1a8)&~clear);if(engine[80])eng<void(__cdecl*)(Edict*,int,const char*)>(80)(e,1,"");}
+ char line[140]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] LOADWAIT released (%s), %u player(s) were held\n",why,static_cast<unsigned>(loadWait.held.size()));log(line);loadWait={};
+}
+void load_wait_frame(){
+ if(!loadWait.armed||!scoped()||!globals)return;const unsigned long long now=GetTickCount64();if(!loadWait.since)loadWait.since=now;
+ const auto players=connected_players();std::vector<Edict*> ready;for(auto e:players)if(client_ready(e))ready.push_back(e);
+ if(static_cast<int>(ready.size())>=loadWait.expected){load_wait_release("everyone is in");return;}
+ // A loading player has no player entity yet, so someone who left during the change is only given up after 60 s.
+ if(now-loadWait.since>60000){load_wait_release("60 s passed");return;}
+ for(auto e:ready){auto v=vars(e);if(!v||!view_alive(e))continue;auto& bits=loadWait.held[{e,serial(e)}];const unsigned f=load<unsigned>(v,0x1a8);
+  for(unsigned b:{FlGodmode,FlNotarget,FlFrozen})if(!(f&b)){bits|=b;store(v,0x1a8,load<unsigned>(v,0x1a8)|b);}}
+ const int sec=static_cast<int>((now-loadWait.since)/1000);if(sec==loadWait.shown||!engine[80])return;loadWait.shown=sec;
+ char text[80]{};std::snprintf(text,sizeof(text),"Waiting for players  %d/%d",static_cast<int>(ready.size()),loadWait.expected);
+ for(auto e:ready)eng<void(__cdecl*)(Edict*,int,const char*)>(80)(e,1,text);
+ if(sec==0){char line[120]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] LOADWAIT %s: waiting for %d player(s)\n",map_name(),loadWait.expected);log(line);}
+}
+// --- Arrival spots of level changes without co-op spawns (v0.6) ---------------------------
+// Playtest 2 clips 16 ("when you exit out of the emergency exit this is where you
+// spawn") and 20 ("you instantly spawn where you have to place the ladder"). A
+// co-op alias without cof_coop_spawn points puts arriving players on the map's
+// info_player_start. For the nine level changes below the original map's
+// trigger_changelevel (same brush model) has a landmark, so single player arrives
+// beside that landmark instead (scratchpad arrivals.mjs over the installed maps:
+// e.g. s4_college1dark *47 -> s4_hamn3_e0, original landmark 2hcl2 at
+// -1351 1705 -632 while info_player_start is at 1714 -714 14; s4_down *19 ->
+// s4_apartment3sick_e0, landmark down_li while the start is at the ladder hole).
+// Each arriving player is moved to a clear spot beside the landmark once their
+// HUD is ready and their inventory has been applied.
+struct Arrival {const char* from;const char* to;float at[3];};
+const Arrival Arrivals[]={
+ {"apartment3sick","s4_down",{315,-402,380}},{"apartmentsick","s4_apartment3_e4",{-1201,2448,68}},{"apartmentsick","s4_basement_e0",{-3245,2496,502}},
+ {"basement","s4_apartmentsick_e1",{-3245,2496,502}},{"buscity","s4_city_e1",{-507,-1184,-54}},{"college1dark","s4_hamn3_e0",{-1351,1705,-632}},
+ {"down","s4_apartment3sick_e0",{315,-402,380}},{"park3","s4_roofs2_e1",{2043,357,745}},{"roofs2","s4_roofs_e0",{2044,-1435,122}}};
+struct PendingArrival {const Arrival* a=nullptr;std::set<std::pair<Edict*,int>> placed;float until=0;bool armed=false;};
+PendingArrival pendingArrival;
+std::string map_base(const std::string& m){std::string b=m.rfind("s4_",0)==0?m.substr(3):m;const auto e=b.rfind("_e");if(e!=std::string::npos&&e+2<b.size()&&std::all_of(b.begin()+e+2,b.end(),[](char c){return c>='0'&&c<='9';}))b.resize(e);return b;}
+void arrival_level_change(const char* map){
+ pendingArrival={};if(!map||!globals)return;const std::string from=map_base(map_name());
+ for(const auto& a:Arrivals)if(from==a.from&&!_stricmp(map,a.to)){pendingArrival.a=&a;return;}
+}
+void arrival_frame(Edict* e){
+ auto& p=pendingArrival;if(!p.a||!globals||!scoped())return;
+ if(_stricmp(map_name(),p.a->to)){p={};return;}
+ const float now=load<float>(globals,0);if(!p.armed){p.armed=true;p.until=now+60.f;}if(now>p.until){p={};return;}
+ if(!view_alive(e)||!client_ready(e)||!carry_settled(e)||p.placed.count({e,serial(e)}))return;p.placed.insert({e,serial(e)});
+ std::array<float,3> at{};const bool moved=find_landing({p.a->at[0],p.a->at[1],p.a->at[2]},e,at)&&teleport_to(e,at,load<float>(vars(e),0x54));
+ char line[180]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] ARRIVAL player=%d from %s: %s\n",eng<int(__cdecl*)(Edict*)>(71)(e),p.a->from,moved?"moved beside the original landmark":"no clear spot there, stays at the map start");log(line);
+}
+// --- A door that locks behind the first player (v0.6) --------------------------------------
+// Playtest 2 clip 14 ("door just gets locked as soon as the other player goes
+// in", s4_hamn_e1 fudoor1). The converted door's gate is a multisource on the
+// global sc4.door.<map>.<N>.enabled; a story env_global switches it off behind
+// the player who went through (s4_hamn_e1: trigger *34 -> multisawyou ->
+// env_global lofu1, triggermode 0, then the chase). Every such env_global with
+// triggermode 0 is recorded at spawn; when one is fired, the players still on
+// the near side are moved beside the player who reached the door's
+// destination (sc4_cd_<N>_dest), so nobody is shut out.
+struct DoorGlobal {int serial=-1;std::string global;int mode=-1;};
+std::unordered_map<Edict*,DoorGlobal> doorGlobals;
+// The player who went through: the one whose trigger touch fired the lock (pp_touch).
+struct DoorLock {int door=0;float due=0;Edict* who=nullptr;int whoSerial=-1;};
+std::vector<DoorLock> doorLocks;
+void door_global_keyvalue(Edict* e,const KeyValue* kv){
+ if(!kv||!kv->classname||!kv->key||!kv->value||std::strcmp(kv->classname,"env_global"))return;
+ auto& d=doorGlobals[e];if(d.serial!=serial(e))d={serial(e),{},-1};
+ if(!std::strcmp(kv->key,"globalstate"))d.global=kv->value;else if(!std::strcmp(kv->key,"triggermode"))d.mode=std::atoi(kv->value);
+}
+void door_lock_lookup(Edict* start,const char* key,const char*,Edict* found){
+ if(start||!scoped()||!globals||!key||std::strcmp(key,"targetname")||!live(found))return;
+ auto it=doorGlobals.find(found);if(it==doorGlobals.end()||it->second.serial!=serial(found)||it->second.mode!=0)return;
+ const auto& g=it->second.global;if(g.rfind("sc4.door.",0)||g.size()<17||g.compare(g.size()-8,8,".enabled"))return;
+ const auto dot=g.rfind('.',g.size()-9);if(dot==std::string::npos)return;const int door=std::atoi(g.c_str()+dot+1);if(door<=0)return;
+ for(const auto& l:doorLocks)if(l.door==door)return;
+ const float now=load<float>(globals,0);const bool touched=live(lastToucher)&&serial(lastToucher)==lastToucherSerial&&now>=lastTouchTime&&now-lastTouchTime<=1.f;
+ doorLocks.push_back({door,now+0.5f,touched?lastToucher:nullptr,touched?lastToucherSerial:-1});
+}
+void door_lock_frame(){
+ if(doorLocks.empty()||!globals)return;const float now=load<float>(globals,0);
+ for(auto it=doorLocks.begin();it!=doorLocks.end();){
+  if(now<it->due){++it;continue;}const DoorLock l=*it;const int door=l.door;it=doorLocks.erase(it);
+  Edict* dest=nullptr;{const std::string n="sc4_cd_"+std::to_string(door)+"_dest";dest=find_next(nullptr,"targetname",n.c_str());}
+  auto dv=live(dest)?vars(dest):nullptr;if(!dv)continue;
+  auto dist=[](Edict* p,void* to){auto v=vars(p);float d=0;for(int k=0;k<3;++k){const float x=load<float>(v,8+k*4)-load<float>(to,8+k*4);d+=x*x;}return d;};
+  // Only a lock fired by a player's own touch beyond the door counts (map-start locks move nobody).
+  Edict* through=live(l.who)&&serial(l.who)==l.whoSerial&&view_alive(l.who)&&dist(l.who,dv)<900.f*900.f?l.who:nullptr;
+  if(!through)continue;int moved=0,failed=0;
+  for(auto p:connected_players())if(p!=through&&view_alive(p)&&dist(p,vars(through))>=300.f*300.f)move_beside(p,through)?++moved:++failed;
+  if(moved||failed){char line[180]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] DOORLOCK door %d locked behind player=%d: %d partner(s) moved through, %d without a free spot\n",door,eng<int(__cdecl*)(Edict*)>(71)(through),moved,failed);log(line);}
+ }
+}
+// --- Out of the hanging train together (v0.5.7) ----------------------------------------
+// Katz 2026-10-25: "once one of the players exit the train before it falls down
+// all of the other players must be teleported to the safety where the escaped
+// player is". s4_bridge_e1 (entity lump): reaching safety is trigger_once *109
+// (target "destroyall", delay 0.5); destroyall starts multikuken2, which drops
+// the train (func_train togetfalla) with whoever is still inside. The player
+// who touches that trigger is remembered, and on the next frame every other
+// living player is moved beside them (move_beside, a clear spot), before the
+// half-second delay ends and the train falls.
+struct TrainEscape {Edict* who=nullptr;int serial=-1;bool done=false;};
+TrainEscape trainEscape;
+void train_escape_touch(Edict* trigger,Edict* other){
+ if(trainEscape.done||!globals||!live(trigger)||!live(other)||std::strcmp(classname(other),"player")||std::strcmp(classname(trigger),"trigger_once")||std::strncmp(map_name(),"s4_bridge",9))return;
+ auto v=vars(trigger);const char* t=v?string_at(load<int>(v,0x1cc)):nullptr;if(!t||std::strcmp(t,"destroyall")||!view_alive(other))return;
+ trainEscape={other,serial(other),true};
+}
+void train_escape_frame(){
+ if(!trainEscape.who)return;const auto t=trainEscape;trainEscape.who=nullptr;if(!live(t.who)||serial(t.who)!=t.serial)return;
+ int moved=0,failed=0;
+ for(auto o:connected_players()){if(o==t.who||!view_alive(o))continue;auto a=vars(t.who),b=vars(o);float d=0;for(int k=0;k<3;++k){const float x=load<float>(a,8+k*4)-load<float>(b,8+k*4);d+=x*x;}if(d<160.f*160.f)continue;move_beside(o,t.who)?++moved:++failed;}
+ char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] TRAIN player=%d reached safety: %d partner(s) moved beside them, %d without a free spot\n",eng<int(__cdecl*)(Edict*)>(71)(t.who),moved,failed);log(line);
+}
+// --- A death in a boss fight is a game over (v0.5.7) -----------------------------------
+// Katz 2026-10-25: "if the sawer first boss kills the player, the player can no
+// longer be revived and it crashes the game, so ... if 1 of the players dies in
+// the boss fights ... say gameover and restart from checkpoint or a save".
+// Evidence: host log 2026-10-23 23:19, CRASH hl.dll+0xC7E8D (read 0) right
+// after the think of a third_person_interaction on s4_apartmentsick_e0. That
+// is CHalfLifeMultiplay::DeathNotice +0x9D (decomp progress.csv): the Sawer's
+// grab (CoF_ChainsawBoss.cpp: the boss removes itself and spawns a
+// third_person_interaction) kills the player with Killed(pev) and no
+// TakeDamage, so DeathNotice reads the NULL inflictor's classname; single
+// player has no DeathNotice. Now, as soon as a grab starts, or a player dies
+// while a boss is alive, every player gets a notice and the map restarts
+// through the game-over path (checkpoint_game_over_check): this session's save
+// of the map is loaded if there is one, otherwise everyone gets back what
+// they had on arrival. The grab never reaches its kill frame.
+const char* const BossClasses[]={"monster_bosschainsaw","monster_sewerboss","monster_roofboss","monster_doctorboss","monster_booksimon"};
+void __cdecl change_level(char* map,char* landmark);   // adapter.cpp
+bool boss_alive(){
+ for(const char* cls:BossClasses){Edict* b=nullptr;for(int n=0;n<64;++n){b=find_next(b,"classname",cls);if(!b)break;auto v=vars(b);
+  if(live(b)&&v&&load<int>(v,0x174)==0&&load<float>(v,0x164)>0&&!(load<unsigned>(v,0x118)&0x80u))return true;}}
+ return false;
+}
+void boss_frame(){
+ if(bossOver||!scoped()||!globals||!engine[6])return;
+ Edict* grab=find_next(nullptr,"classname","third_person_interaction");const bool grabbing=grab&&live(grab);
+ if(!grabbing){
+  bool down=false;for(auto e:connected_players()){auto v=vars(e);if(v&&client_ready(e)&&(load<int>(v,0x174)!=0||load<float>(v,0x164)<=0))down=true;}
+  if(!down||!boss_alive())return;
+ }
+ bossOver=true;forcedGameOver=true;
+ static const unsigned char red[4]={220,40,40,255};
+ for(auto e:connected_players())hud_text(e,4,-1.f,0.4f,red,4.f,"A player died in the boss fight.\nGame over: restarting.",0.1f);
+ char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] BOSS %s on %s: game over for everyone, the map restarts\n",grabbing?"grab started":"player died",map_name());log(line);
+ std::string map=map_name();change_level(map.data(),nullptr);
+}
 // --- Solo prologue (v0.5, Katz: "in prologue after readying up the player stays
 // inside a black box") ----------------------------------------------------------------
 // cof_campaign_story4 (RC3/RC4 build) waits for exactly two players twice: the
@@ -861,6 +1123,14 @@ void skip_collect(const std::string& name,int depth,std::set<std::string>& seen)
   if(c=="trigger_relay"||c=="game_counter"){auto v=vars(e);const char* t=v?string_at(load<int>(v,0x1cc)):nullptr;if(t&&*t)skip_collect(t,depth+1,seen);}
   if(c=="multi_manager")for(const auto& t:manager_targets(e,0))skip_collect(t,depth+1,seen);}
 }
+// v0.5.7: true when the name (relays, counters and managers followed) reaches an entity of this class.
+bool skip_reaches(const std::string& name,const char* cls,int depth,std::set<std::string>& seen){
+ if(depth>6||!seen.insert(name).second)return false;
+ for(auto e:skip_named(name)){const std::string c=classname(e);if(c==cls)return true;
+  if(c=="trigger_relay"||c=="game_counter"){auto v=vars(e);const char* t=v?string_at(load<int>(v,0x1cc)):nullptr;if(t&&*t&&skip_reaches(t,cls,depth+1,seen))return true;}
+  if(c=="multi_manager")for(const auto& t:manager_targets(e,0))if(skip_reaches(t,cls,depth+1,seen))return true;}
+ return false;
+}
 std::vector<SkipManager> scene_managers(Edict* camera){
  std::vector<Edict*> running;Edict* m=nullptr;for(int n=0;n<1024;++n){m=find_next(m,"classname","multi_manager");if(!m)break;if(manager_running(m))running.push_back(m);}
  const std::string cam=targetname(camera);std::set<std::string> names;std::vector<SkipManager> out;std::set<Edict*> in;
@@ -879,10 +1149,39 @@ bool skip_map(){return scoped()||(verified&&globals&&!std::strcmp(map_name(),"s4
 bool skip_ready(Edict* e){return scoped()?client_ready(e):live(e);}
 // Off the tracked maps the camera's own state (pev->iuser1 at 0x248, which CTriggerCamera sets while on) is read directly.
 bool skip_camera_on(Edict* c){if(scoped())return camera_active(c);auto v=vars(c);return v&&!std::strcmp(classname(c),"trigger_camera")&&load<int>(v,0x248)!=0;}
-void skip_show(const char* text){
- static const unsigned char white[4]={230,230,230,255};
- for(auto e:connected_players())if(skip_ready(e))hud_text(e,3,0.02f,0.86f,white,3.f,text,0.1f);
+// v0.5.7 (playtest 2: after a skip the camera stayed on for its whole time,
+// "SKIP ended dockam1 again" then "offered for dockam1" over and over).
+// CTriggerCamera::Use only toggles m_state (decomp triggers.cpp): a camera the
+// fast-forward had already switched off (m_state 0, pev->iuser1 still 1 until
+// its next FollowTarget think) was switched ON again by the adapter's own Use,
+// for its full wait. A camera is now ended the way it ends by itself: its
+// m_flReturnTime is moved into the past and the native FollowTarget runs the
+// normal end path on its next think (every player's view and controls back,
+// its message and targets fired). Never toggled. Save table (pinned hl.dll
+// 1021A410..): m_flWait 0x104, m_flReturnTime 0x108, m_state 0x124.
+constexpr std::size_t CameraWait=0x104,CameraReturnTime=0x108,CameraState=0x124;
+// 1 ended, -1 held until its own Use(666) (left alone), 0 camera memory not
+// known (the opening's passive maps): the old single toggle is used there.
+int camera_end(Edict* c,Edict* activator){
+ void* p=nullptr;
+ if(!globals||!camera_memory(c,p)){native<void(__cdecl*)(Edict*,Edict*)>(3)(c,activator);return 0;}
+ if(load<float>(p,CameraWait)==666.f)return -1;
+ store(p,CameraReturnTime,load<float>(globals,0)-1.f);return 1;
 }
+// Switched off already, its end path runs on the next think.
+bool camera_ending(Edict* c){void* p=nullptr;return camera_memory(c,p)&&load<int>(p,CameraState)==0;}
+// v0.5.7 (tester screenshot: "Press R to skip 0/2" drawn over the health and
+// stamina bars): the prompt sits higher, above the bars.
+constexpr float SkipTextY=0.72f;
+bool skipPromptShown=false;
+void skip_show(const char* text,float hold=3.f){
+ static const unsigned char white[4]={230,230,230,255};skipPromptShown=*text!=0;
+ for(auto e:connected_players())if(skip_ready(e))hud_text(e,3,0.02f,SkipTextY,white,hold,text,0.1f);
+}
+// v0.6 (Katz 2026-10-25: "the skip text still stayed after skipping the cutscene"):
+// the prompt had a 3 s hold and was re-sent every 2.5 s, so it outlived the scene.
+// As soon as no scene camera holds anyone the prompt channel is cleared.
+void skip_prompt_clear(){if(skipPromptShown)skip_show("",0.1f);}
 int skip_needed(){int n=0;for(auto e:connected_players())if(skip_ready(e)&&view_alive(e))++n;return n;}
 // Held by a scene camera: a native lease, or the running camera a late joiner was given (camera_join).
 bool skip_viewing(Edict* e){
@@ -906,21 +1205,23 @@ void skip_now(Edict* activatorFallback){
    store(p,MmStart,now-100000.f);store(vars(e),0x104,now);crumb("skip manager",e);native<void(__cdecl*)(Edict*)>(2)(e);}
   for(auto d:delayed){relays.insert({d,serial(d)});if(live(d)){crumb("skip delayed",d);native<void(__cdecl*)(Edict*)>(2)(d);}}
  }
- // Scene cameras still on: one toggle each (the native end path restores every player).
- Edict* c=nullptr;for(int n=0;n<512;++n){c=find_next(c,"classname","trigger_camera");if(!c)break;if(skip_camera_on(c)&&skipScene.names.count(targetname(c))){native<void(__cdecl*)(Edict*,Edict*)>(3)(c,activatorFallback);++cameras;}}
+ // Scene cameras still on: ended through their own end path (camera_end), never toggled.
+ Edict* c=nullptr;for(int n=0;n<512;++n){c=find_next(c,"classname","trigger_camera");if(!c)break;if(skip_camera_on(c)&&skipScene.names.count(targetname(c))&&camera_end(c,activatorFallback)>=0)++cameras;}
  char line[240]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] SKIP %s fast-forwarded: %d remaining target(s) fired in order, %d camera(s) ended, %d round(s)\n",skipScene.label.c_str(),fired,cameras,rounds);skip_log(line);
- skip_show("Cutscene skipped");skipAfter={skipScene.names,{},load<float>(globals,0)+2.f};skipScene={};
+ skip_show("Cutscene skipped",1.5f);skipPromptShown=false;skipAfter={skipScene.names,{},load<float>(globals,0)+2.f};skipScene={};
 }
 void skip_frame(){
  if(!skip_map()||!globals||!engine[64])return;
  Edict* camera=nullptr;Edict* watcher=nullptr;for(auto e:connected_players())if(auto c=lease_camera(e)){camera=c;watcher=e;break;}
  if(!camera&&!scoped())for(auto e:connected_players()){void* pm=engine[64]?eng<void*(__cdecl*)(Edict*)>(64)(e):nullptr;Edict* c=pm?camera_handle(pm,0x2348):nullptr;if(c&&c!=e&&!std::strcmp(classname(c),"trigger_camera")&&skip_camera_on(c)){camera=c;watcher=e;break;}}
- if(!camera){skipScene={};return;}
+ if(!camera){skipScene={};skip_prompt_clear();return;}
+ // v0.5.7: a camera already switched off is ending (its next think gives the views back): nothing to offer.
+ if(camera_ending(camera))return;
  // v0.5.5 (dev runs: after a fast-forward one camera of the same scene came on
  // again for a moment, "SKIP offered for kam6 (0 manager(s))"): for 2 s a
  // camera of the skipped scene is ended at once instead of being offered again.
  if(load<float>(globals,0)<skipAfter.until&&skipAfter.names.count(targetname(camera))){if(!skipAfter.ended.insert(targetname(camera)).second)return;
-  native<void(__cdecl*)(Edict*,Edict*)>(3)(camera,watcher);char line[140]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] SKIP ended %s again (part of the skipped scene)\n",targetname(camera));skip_log(line);return;}
+  camera_end(camera,watcher);char line[140]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] SKIP ended %s again (part of the skipped scene)\n",targetname(camera));skip_log(line);return;}
  const bool same=skipScene.active&&skipScene.names.count(targetname(camera));
  if(!same){
   skipScene={};skipScene.active=true;skipScene.managers=scene_managers(camera);
@@ -939,6 +1240,14 @@ void skip_frame(){
   // sequences, boss bars...) still fires in order and then runs on by itself;
   // the first such entity is named in the log.
   std::string runsOn;for(const auto& m:skipScene.managers){void* p=manager_memory(m.e);if(!p)continue;for(const auto& t:manager_targets(m.e,load<int>(p,MmIndex)))if(runsOn.empty()&&!skip_check(t,0,seen,runsOn))break;}
+  // v0.5.7 (Katz: the doctor scene must not be skippable, or skip only up to
+  // the choice; log: the skip of multits3 fired the cof_yesno at once and
+  // "DOCTOR weapon=1" followed): a scene that still has a yes/no choice to
+  // show is not offered, so the choice always comes up. The scene before it
+  // (multits1) and the one after it (multits4) stay skippable.
+  if(ok){std::set<std::string> asked;for(const auto& m:skipScene.managers){void* p=manager_memory(m.e);if(!p)continue;
+   for(const auto& t:manager_targets(m.e,load<int>(p,MmIndex)))if(skip_reaches(t,"cof_yesno",0,asked)){ok=false;skipScene.why="its yes/no choice ("+t+") comes up first";break;}
+   if(!ok)break;}}
   skipScene.allowed=ok;
   char line[300]{};if(ok)std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] SKIP offered for %s (%u manager(s))%s%.120s\n",skipScene.label.c_str(),static_cast<unsigned>(skipScene.managers.size()),runsOn.empty()?"":"; runs on after a skip: ",runsOn.c_str());
   else std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] SKIP not offered for %s: %.150s\n",skipScene.label.c_str(),skipScene.why.c_str());
@@ -960,9 +1269,12 @@ void skip_frame(){
 // IN_AttackDown and IN_DuckDown drop the key (input.cpp). IN_ReloadDown has no
 // such check, so R (IN_RELOAD 0x2000) reaches the server in every scene and is
 // the skip key. SPACE (2) and E (32) still count where the client sends them.
+// v0.5.7 (log: "SKIP vote (usercmd)" from both players while the doctor's
+// yes/no choice was on screen, then the scene skipped): E and SPACE are used in
+// scenes (choices, keypads), so only R counts.
 bool skip_pressed(Edict* e,const void* command){
  unsigned short buttons=0;std::memcpy(&buttons,static_cast<const unsigned char*>(command)+0x1e,2);
- auto& held=skipJump[e];if(held.first!=serial(e))held={serial(e),false};const bool down=(buttons&(2u|32u|0x2000u))!=0,pressed=down&&!held.second;held.second=down;return pressed;
+ auto& held=skipJump[e];if(held.first!=serial(e))held={serial(e),false};const bool down=(buttons&0x2000u)!=0,pressed=down&&!held.second;held.second=down;return pressed;
 }
 // --- Skipping the prologue (v0.5) -------------------------------------------------------
 // cof_campaign_story4 is the passive native opening (no camera leases, no player
@@ -973,7 +1285,7 @@ bool skip_pressed(Edict* e,const void* command){
 struct PrologueSkip {bool offered=false,done=false;std::set<std::pair<Edict*,int>> votes;};
 PrologueSkip prologueSkip;
 std::vector<Edict*> prologue_voters(){std::vector<Edict*> out;for(auto e:connected_players())if(view_alive(e))out.push_back(e);return out;}
-void prologue_show(const char* text){static const unsigned char white[4]={230,230,230,255};for(auto e:connected_players())hud_text(e,3,0.02f,0.86f,white,3.f,text,0.1f);}
+void prologue_show(const char* text){static const unsigned char white[4]={230,230,230,255};for(auto e:connected_players())hud_text(e,3,0.02f,SkipTextY,white,3.f,text,0.1f);}
 void prologue_count_show(){char text[64]{};std::snprintf(text,sizeof(text),"Press R to skip  %d/%d",static_cast<int>(prologueSkip.votes.size()),static_cast<int>(prologue_voters().size()));prologue_show(text);}
 void prologue_skip_frame(){
  if(!verified||!globals||prologueSkip.done||openingTimeline<0||std::strcmp(map_name(),"cof_campaign_story4"))return;
@@ -1031,4 +1343,4 @@ bool skip_client_command(Edict* e,const char* command){
   return true;}
  skip_vote(e,"R");return true;
 }
-void coop_map_changed(){collision_restore();quickNotices.clear();fallWatch.clear();equipWants.clear();nightmareLogged=false;morphineWatch.clear();prologueSkip={};partyLimitLogged=-1;joinWait={};skipScene={};skipAfter={};skipJump.clear();skipLines=0;evidence_reset();drowned_reset();give_reset();stuckUsed.clear();nightmareRegroup={};nameStates.clear();lastPlaces.clear();sceneSeen.clear();sceneFollowers.clear();idleProbes.clear();doorMusicLines=0;sceneMoveLines=0;}
+void coop_map_changed(){collision_restore();forcedVisible.clear();bossOver=false;fallBacks.clear();doorGlobals.clear();doorLocks.clear();trainEscape={};floorWallsDone=false;quickNotices.clear();fallWatch.clear();equipWants.clear();nightmareLogged=false;morphineWatch.clear();prologueSkip={};partyLimitLogged=-1;joinWait={};skipScene={};skipAfter={};skipJump.clear();skipLines=0;evidence_reset();drowned_reset();give_reset();stuckUsed.clear();nightmareRegroup={};nameStates.clear();lastPlaces.clear();sceneSeen.clear();sceneFollowers.clear();idleProbes.clear();doorMusicLines=0;sceneMoveLines=0;}

@@ -14,7 +14,7 @@ std::unordered_map<Edict*,std::vector<unsigned char>> mem;
 std::array<unsigned char,0xa0> globalData{};
 std::vector<std::string> lines,argv;std::string gameDir;
 std::vector<std::array<int,3>> messages;
-const char* strings(int n){switch(n){case 1:return "s4_start";case 2:return "player";case 3:return "c_game_menu1";case 4:return "weapon_dualweapon";case 5:return "models/player.mdl";case 6:return "weapon_switchblade";case 7:return "weapon_mobile";case 8:return "cof_giveitems";case 9:return "sc3_native_497";case 10:return "c_game_menu1";case 11:return "cof_campaign_story4";case 12:return "inventory/weapon_switchblade.txt";case 13:return "inventory/weapon_mobile.txt";}return "";}
+const char* strings(int n){switch(n){case 1:return "s4_start";case 2:return "player";case 3:return "c_game_menu1";case 4:return "weapon_dualweapon";case 5:return "models/player.mdl";case 6:return "weapon_switchblade";case 7:return "weapon_mobile";case 8:return "cof_giveitems";case 9:return "sc3_native_497";case 10:return "c_game_menu1";case 11:return "cof_campaign_story4";case 12:return "inventory/weapon_switchblade.txt";case 13:return "inventory/weapon_mobile.txt";case 14:return "inventory/weapon_glock.txt";}return "";}
 int index(Edict* e){for(int i=0;i<10;++i)if(e==&entities[i])return i;return -1;}
 Edict* byindex(int i){return i>=0&&i<10?&entities[i]:nullptr;}
 void* ev(Edict* e){return e->data.data()+0x80;}
@@ -87,13 +87,15 @@ int main(int argc,char** argv_){
  // Without the pinned backend and no stand-in there is nothing to call.
  dualWieldTarget=nullptr;assert(!dual_target());assert(dual_command(e,"inventorydualwield")&&dualCalls==2);dualWieldTarget=reinterpret_cast<DualWieldCall>(&fake_dual);
  // v0.5 D5: two quick-slot keys within 0.25 s dual wield their weapons (newer key first).
- {auto p=pd(e);store(p,0x2200,12);store(p,0x2204,13);std::strcpy(static_cast<char*>(p)+0x204c,"weapon_switchblade");std::strcpy(static_cast<char*>(p)+0x20cc,"weapon_mobile");
+ {auto p=pd(e);store(p,0x2200,12);store(p,0x2204,14);std::strcpy(static_cast<char*>(p)+0x204c,"weapon_switchblade");std::strcpy(static_cast<char*>(p)+0x20cc,"weapon_glock");
   store(globals,0,5.f);quick_dual_command(e,"quicksel","1");assert(dualCalls==2);
-  store(globals,0,5.1f);quick_dual_command(e,"quicksel","2");assert(dualCalls==3&&dualA==2&&dualB==1&&logged("DUAL quick player=1 keys 1+2 weapon_mobile+weapon_switchblade asked"));
+  store(globals,0,5.1f);quick_dual_command(e,"quicksel","2");assert(dualCalls==3&&dualA==2&&dualB==1&&logged("DUAL quick player=1 keys 1+2 weapon_glock+weapon_switchblade asked"));
   store(globals,0,5.15f);quick_dual_command(e,"quicksel","1");assert(dualCalls==3);   // a third key starts over
   store(globals,0,6.f);quick_dual_command(e,"quicksel","1");store(globals,0,6.5f);quick_dual_command(e,"quicksel","2");assert(dualCalls==3);   // too slow
   store(globals,0,7.f);quick_dual_command(e,"quicksel","2");store(globals,0,7.1f);quick_dual_command(e,"quicksel","2");assert(dualCalls==3);   // the same key twice
   store(globals,0,8.f);quick_dual_command(e,"quicksel","3");store(globals,0,8.1f);quick_dual_command(e,"quicksel","1");assert(dualCalls==3);   // an empty quick slot
+  // v0.5.7 (playtest: the phone went into the left hand): the phone is never dual wielded.
+  store(p,0x2204,13);std::strcpy(static_cast<char*>(p)+0x20cc,"weapon_mobile");store(globals,0,9.f);quick_dual_command(e,"quicksel","1");store(globals,0,9.05f);quick_dual_command(e,"quicksel","2");assert(dualCalls==3);
   store(globals,0,5.f);quickPresses.clear();}
  // v0.5 D4: after a load the inventory screen is told each restored quick key, one second later.
  {auto p=pd(e);messages.clear();qslotUpdateMessage=55;store(p,0x3dc,2);store(p,0x3e0,0);store(p,0x3e4,4);std::strcpy(static_cast<char*>(p)+0x214c,"weapon_mobile");
@@ -248,7 +250,7 @@ int main(int argc,char** argv_){
  // coop-fixes-007 smoother movers: each client once per campaign map.
  engine[41]=reinterpret_cast<void*>(&stuff_);engine[115]=reinterpret_cast<void*>(&listen);reset_players();netTuned.clear();
  net_tune(e);net_tune(e);net_tune(other);
- assert(stuffed.size()==2&&stuffed[0]=="1:cl_updaterate 100\nex_interp 0.01\n"&&stuffed[1]=="2:rate 100000\ncl_updaterate 100\nex_interp 0.06\n"&&logged("NET tuned player=1"));
+ assert(stuffed.size()==2&&stuffed[0]=="1:cl_updaterate 100\nex_interp 0.01\n"&&stuffed[1]=="2:rate 100000\ncl_updaterate 100\ncl_cmdrate 100\nex_interp 0.06\n"&&logged("NET tuned player=1"));
  netTuned.clear();store(globals,0x0c,10);net_tune(e);assert(stuffed.size()==2);store(globals,0x0c,1);engine[41]=nullptr;
  std::puts("PASS story runtime: co-op dual wield command (slot guard, dead/other maps refused), weapon-hand pose and attack while dual wielding (no anim lock held, native animations kept), dual-wield save holds the weapon hand, shared ending flags across map changes and saves, per-player story wound/night vision kept once per map, checkpoint schema 4 and schema 3 compatibility; 007: credits spaced per player, rejoin restore and missed fan-out replay, client interpolation tuning");
 }

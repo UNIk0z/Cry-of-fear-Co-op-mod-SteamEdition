@@ -12,7 +12,7 @@ Canonical issue history: [BUG_TRACKER.md](BUG_TRACKER.md), newest section first.
 
 **v0.2 playtest (2026-10-16), fixes in v0.3, gameplay NOT verified:** "Cannot overwrite savefile" (uppercase Videotape card failed validation), rope/tape/pickups/enemies/triggers reset on revisit (maps loaded fresh; now per-map DispatchSave/Restore state), Drowned always attacked player 1 (INDEXENT(1)). Open: movewith groups and transition entities keep served state; v0.2 saves have no map state (rope re-offer rule only). See docs/V03_RELEASE.md.
 
-**v0.1 playtest (2026-10-16), fixes in v0.2, gameplay NOT verified:** staged cutscene actors idle before scenes (map start chains never ran in co-op), elevator scene teleported one player only, converted doors silent (cvar only), P2 ladder hijack/jitter, recorder line on sight. Open: P2 idle camera jitter (IDLE_DIAG added). See docs/V02_RELEASE.md.
+**v0.1 playtest (2026-10-16), fixes in v0.2, gameplay NOT verified:** staged cutscene actors idle before scenes (map start chains never ran in co-op), elevator scene teleported one player only, converted doors silent (cvar only), P2 ladder hijack/jitter, recorder line on sight. Playtest 2 (2026-10-24, v0.5.5): see docs/V057_RELEASE.md for the fixed and still open items. Open: P2 idle camera jitter (IDLE_DIAG added; v0.5.6: partner cl_cmdrate 30 found and raised to 100, see docs/V056_RELEASE.md). See docs/V02_RELEASE.md.
 
 **coop-fixes-013 P2 crash (2026-10-15, fixed in coop-fixes-014, gameplay NOT verified):**
 P2 joined s4_nightmare while scene camera 271 was running and crashed:

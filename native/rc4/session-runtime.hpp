@@ -298,19 +298,32 @@ void three_slots_apply(Edict* e){
  char line[120]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] BAG player=%d %s\n",eng<int(__cdecl*)(Edict*)>(71)(e),ok?"has three slots (bag lost in the train crash)":"three slots FAILED");log(line);
 }
 // bagremove is fired by the map's own managers (FireTargets, not DispatchUse);
-// the lookup that finds it marks it, and the next frame Uses it for every player.
-struct BagEvent {Edict* bag=nullptr;int serial=-1;};
-BagEvent bagEvent;
+// the lookup that finds it marks the map.
+// v0.5.7 (playtest 2: "after losing the bag the player inventory must be wiped,
+// right now it retains all the inventory"; log: "BAG bagremove: every player
+// lost the bag (0 player(s))" right after s4_bridge_e1 started): bagremove fires
+// as the map starts, before any HUD is ready, and the inventory carried from the
+// last map was given back afterwards. Now every player on that map, the
+// activator too, is cleared once their HUD is ready AND their carried inventory
+// has been applied (carry_settled), with the game's own cof_clearitems
+// (spawnflags 5: clear, then three slots). A player who joins later on that
+// map is cleared the same way.
+bool carry_settled(Edict* e);   // coop-runtime.hpp
+void bag_wiped(Edict* e);       // coop-runtime.hpp
+struct BagLoss {bool active=false;std::string map;std::set<std::pair<Edict*,int>> wiped;};
+BagLoss bagLoss;
 void bag_lookup(Edict* start,const char* key,const char* value,Edict* found){
  if(start||!key||!value||std::strcmp(key,"targetname")||!live(found)||!scoped()||std::strcmp(classname(found),"cof_clearitems"))return;
  auto v=vars(found);const unsigned flags=v?load<unsigned>(v,0x1a4):0;if((flags&5u)!=5u||(flags&2u))return;   // clear + three slots, activator only
- bagEvent={found,serial(found)};
+ if(!bagLoss.active||bagLoss.map!=map_name()){bagLoss={true,map_name(),{}};char line[140]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] BAG %s fired: every player loses the bag on this map\n",targetname(found));log(line);}
 }
 void three_slots_frame(){
  if(!globals||!verified)return;
- if(bagEvent.bag){const auto b=bagEvent;bagEvent={};
-  if(live(b.bag)&&serial(b.bag)==b.serial){int n=0;for(auto e:connected_players())if(client_ready(e)){native<void(__cdecl*)(Edict*,Edict*)>(3)(b.bag,e);++n;}
-   char line[140]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] BAG %s: every player lost the bag (%d player(s))\n",targetname(b.bag),n);log(line);}}
+ if(bagLoss.active&&bagLoss.map!=map_name())bagLoss={};
+ if(bagLoss.active)for(auto e:connected_players()){
+  if(!client_ready(e)||!carry_settled(e)||!bagLoss.wiped.insert({e,serial(e)}).second)continue;
+  const bool ok=helper_use_pairs("cof_clearitems",{{"spawnflags","5"}},e);bag_wiped(e);
+  char line[120]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] BAG player=%d %s\n",eng<int(__cdecl*)(Edict*)>(71)(e),ok?"inventory cleared (bag lost)":"clear FAILED");log(line);}
  for(auto e:connected_players())three_slots_apply(e);
 }
 
@@ -421,8 +434,8 @@ void __cdecl stuff_command(Edict* e,const char* format,...){
 // wiped by the HUD reset. It is now sent once the client's own commands arrive
 // (CmdStart) and then every 5 s without a fade-in, so it is always there.
 // v0.1 (user): the build is named v0.1 (v0.2 since 2026-10-16), and Special Thanks lists Mesilll,
-// Michal Eminov and caixa in that order (it misspelled "Michael" before).
-constexpr const char* MenuCredit="Co-op mod v0.5 developed by Anas Sammak (koolkat)\nSpecial thanks: Mesilll, Michal Eminov, caixa";
+// Michal Eminov and caixa in that order (it misspelled "Michael" before). v0.6 (Katz 2026-10-25): joah added.
+constexpr const char* MenuCredit="Co-op mod v0.6 developed by Anas Sammak (koolkat)\nSpecial thanks: Mesilll, Michal Eminov, caixa, joah";
 struct MenuCreditState{int serial=-1;float next=0,active=-1;bool logged=false,shown=false;};
 MenuCreditState menuCredit;
 void menu_credit_reset(){const bool logged=menuCredit.logged;menuCredit={};menuCredit.logged=logged;}

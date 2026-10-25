@@ -547,8 +547,11 @@ void checkpoint_world_activate(){
 // keeps the record they carried into the map; rejoin_departing remembers it.
 // Called at the end of a map (ServerDeactivate): every connected player dead
 // or down means the game's own game-over restart is changing the level.
+// v0.5.7: a death in a boss fight ends the attempt for everyone (boss_frame in coop-runtime.hpp).
+bool forcedGameOver=false;
 void checkpoint_game_over_check(){
- gameOverMap.clear();if(!scoped()||!globals||!checkpoint_map(map_name()))return;int players=0,alive=0;
+ gameOverMap.clear();const bool forced=forcedGameOver;forcedGameOver=false;if(!scoped()||!globals||!checkpoint_map(map_name()))return;int players=0,alive=0;
+ if(forced){gameOverMap=map_name();char line[140]{};std::snprintf(line,sizeof(line),"[STORYCOOP] GAME OVER on %s: a player died in a boss fight\n",gameOverMap.c_str());log(line);return;}
  for(int i=1;i<=load<int>(globals,0x90);++i){auto e=eng<Edict*(__cdecl*)(int)>(72)(i);auto v=live(e)&&!std::strcmp(classname(e),"player")?vars(e):nullptr;if(!v)continue;++players;if(load<int>(v,0x174)==0&&load<float>(v,0x164)>0)++alive;}
  if(players&&!alive){gameOverMap=map_name();char line[120]{};std::snprintf(line,sizeof(line),"[STORYCOOP] GAME OVER on %s: every player is dead\n",gameOverMap.c_str());log(line);}
 }

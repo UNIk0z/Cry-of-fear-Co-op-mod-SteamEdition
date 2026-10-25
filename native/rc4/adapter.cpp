@@ -37,7 +37,7 @@ void story_reset();
 void rejoin_reset();
 void carry_reset();void give_reset();void give_owed_reset();void give_lookup(Edict*,const char*,const char*,Edict*);void regroup_lookup(Edict*,const char*,const char*,Edict*);void give_flush();bool hide_player_from(Edict*,Edict*);void door_music(const char*,int,float);
 bool logo_begin(int,int,Edict*);bool logo_write(int);bool logo_end();bool score_begin(int,int,Edict*);bool score_write(int,int);bool score_end();void score_reset();void score_sync();extern int scoreInfoMessage;
-void fanout_lookup(Edict*,const char*,const char*,Edict*);void bag_lookup(Edict*,const char*,const char*,Edict*);void evidence_sound(Edict*,const char*);void evidence_lookup(Edict*,const char*,const char*);
+void fanout_lookup(Edict*,const char*,const char*,Edict*);void door_lock_lookup(Edict*,const char*,const char*,Edict*);void ladder_use_attempt(Edict*,Edict*);void bag_lookup(Edict*,const char*,const char*,Edict*);void evidence_sound(Edict*,const char*);void evidence_lookup(Edict*,const char*,const char*);
 void checkpoint_world_ready();
 bool recorder_begin(int,int,const float*,Edict*);
 bool recorder_write(int,int,float,const char*);
@@ -125,6 +125,7 @@ void vehicle_evidence(Edict* e,const char* phase,int host,int packed){
  std::snprintf(s,sizeof(s),"[STORYCOOP_RC4] VEHICLE_STATE phase=%s entity=%d host=%d packed=%d name=%s model=%s modelindex=%d origin=%.1f,%.1f,%.1f speed=%.1f effects=%x rendermode=%d renderamt=%.1f flags=%x group=%x time=%.2f\n",phase,eng<int(__cdecl*)(Edict*)>(71)(e),host,packed,targetname(e),string_at(load<int>(p,0xb8)),load<int>(p,0xb4),load<float>(p,8),load<float>(p,12),load<float>(p,16),load<float>(p,0x1fc),load<unsigned>(p,0x118),load<int>(p,0x14c),load<float>(p,0x150),load<unsigned>(p,0x1a8),load<unsigned>(p,0x244),load<float>(globals,0));log(s);
 }
 bool collision_off();   // coop-runtime.hpp (v0.5 host setup)
+bool player_force_visible(Edict* e,Edict* host);void player_forced_log(Edict* e,Edict* host,bool shown);   // coop-runtime.hpp (v0.6)
 int __cdecl full_pack(void* state,int number,Edict* e,Edict* host,int flags,int player,unsigned char* set){
  // coop-fixes-014: no player model inside this client's scene camera, but the
  // player is still sent. 013 returned 0 here, so a client joining into a running
@@ -141,7 +142,9 @@ int __cdecl full_pack(void* state,int number,Edict* e,Edict* host,int flags,int 
  // the parked train although the station is outside its PVS (c_intro vis
  // data: 0 of the station leaves visible). The client then drew it alone in
  // the lower left of the title shot. Every vehicle packet is native again.
- const int result=native<int(__cdecl*)(void*,int,Edict*,Edict*,int,int,unsigned char*)>(39)(state,number,e,host,flags,player,set);
+ int result=native<int(__cdecl*)(void*,int,Edict*,Edict*,int,int,unsigned char*)>(39)(state,number,e,host,flags,player,set);
+ // v0.6: a nearby partner the PVS test refused is sent anyway (pSet NULL passes the test).
+ if(!result&&player&&!hide&&player_force_visible(e,host)){result=native<int(__cdecl*)(void*,int,Edict*,Edict*,int,int,unsigned char*)>(39)(state,number,e,host,flags,player,nullptr);player_forced_log(e,host,result!=0);}
  if(opening()&&title_vehicle(e)&&live(host)){
   const float elapsed=openingTimeline<0?-1:load<float>(globals,0)-openingTimeline;
   const int phase=elapsed<0?0:elapsed<16?1:elapsed<44?2:elapsed<100?3:4;
@@ -318,7 +321,7 @@ void __cdecl write_angle(float n){mirror_op(52,0,n,nullptr);if(!recorder_write(5
 void __cdecl write_coord(float n){mirror_op(53,0,n,nullptr);if(!recorder_write(53,0,n,nullptr)&&!note_buffer(53,0,n))eng<void(__cdecl*)(float)>(53)(n);}
 void __cdecl write_entity(int n){mirror_op(55,n,0,nullptr);if(!recorder_write(55,n,0,nullptr)&&!note_buffer(55,n))eng<void(__cdecl*)(int)>(55)(n);}
 std::int32_t __cdecl random_long(std::int32_t low,std::int32_t high){auto generated=eng<std::int32_t(__cdecl*)(std::int32_t,std::int32_t)>(90)(low,high),result=generated;puzzle_random_long_override(low,high,generated,result);return result;}
-Edict* __cdecl find(Edict* start,const char* key,const char* value){Edict* out=nullptr;if(!start&&key&&value&&std::strcmp(key,"classname")==0&&std::strcmp(value,"player")==0)firstPlayerLookup=true;if(puzzle_find_override(start,key,value,out))return out;if(acting_override(start,key,value,out))return out;out=eng<Edict*(__cdecl*)(Edict*,const char*,const char*)>(14)(start,key,value);fanout_lookup(start,key,value,out);bag_lookup(start,key,value,out);give_lookup(start,key,value,out);regroup_lookup(start,key,value,out);evidence_lookup(start,key,value);return out;}
+Edict* __cdecl find(Edict* start,const char* key,const char* value){Edict* out=nullptr;if(!start&&key&&value&&std::strcmp(key,"classname")==0&&std::strcmp(value,"player")==0)firstPlayerLookup=true;if(puzzle_find_override(start,key,value,out))return out;if(acting_override(start,key,value,out))return out;out=eng<Edict*(__cdecl*)(Edict*,const char*,const char*)>(14)(start,key,value);fanout_lookup(start,key,value,out);bag_lookup(start,key,value,out);give_lookup(start,key,value,out);regroup_lookup(start,key,value,out);evidence_lookup(start,key,value);door_lock_lookup(start,key,value,out);return out;}
 void __cdecl emit_sound(Edict* e,int channel,const char* sample,float volume,float attenuation,int flags,int pitch){
  if(sample&&(std::strcmp(sample,"items/padl_turn.wav")==0||std::strcmp(sample,"items/padl_unlock.wav")==0)){
   if(auto actor=puzzle_sound_actor(e))e=actor;
@@ -373,7 +376,7 @@ void everyone(bool capture){if(!globals)return;for(int i=1;i<=load<int>(globals,
 #include "state-runtime.hpp"
 #include "client-menu.hpp"
 void frame_evidence();
-void __cdecl start_frame(){crumb("start_frame");collision_restore();gameui_patch();firstPlayerLookup=false;pause_poll();menu_credit_frame();give_flush();three_slots_frame();chapter_frame();join_wait_frame();regroup_frame();checkpoint_start_frame();keypad_frame();story_frame();logo_frame();score_sync();keydoor_frame();ladder_frame();pp_frame();half_frame();skip_frame();party_counters_frame();prologue_skip_frame();frame_evidence();}
+void __cdecl start_frame(){crumb("start_frame");++netFrame;collision_restore();gameui_patch();firstPlayerLookup=false;pause_poll();menu_credit_frame();give_flush();three_slots_frame();chapter_frame();join_wait_frame();regroup_frame();checkpoint_start_frame();keypad_frame();story_frame();logo_frame();score_sync();keydoor_frame();ladder_frame();pp_frame();half_frame();skip_frame();party_counters_frame();prologue_skip_frame();boss_frame();train_escape_frame();floor_walls_frame();load_wait_frame();door_lock_frame();frame_evidence();}
 void __cdecl game_init(){crash_install();reset();native<void(__cdecl*)()>(0)();if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_checkpoint_load",&checkpoint_load_command);if(engine[56])eng<void(__cdecl*)(cvar_t*)>(56)(&collisionCvar);if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_checkpoint_prepare",&checkpoint_prepare_command);if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_door_music",&door_music_command);log("[STORYCOOP_RC4] GameInit forwarded; checkpoint command registered\n");}
 // v0.3 audit: the main menu map (c_game_menu1) ends every game. Only the mod's
 // New Game/Load entries and cof_campaign_story4 reset the session, so a game
@@ -473,7 +476,7 @@ void __cdecl command_start(const Edict* actor,const void* command,unsigned int s
 }
 // Ladder reservations are refreshed after each player's think as well as at
 // StartFrame, so a second player's Use later in the same frame sees the lock.
-void __cdecl prethink(Edict* e){crumb("prethink",e);objective_share();native<void(__cdecl*)(Edict*)>(23)(e);idle_stage(e,1);fall_frame(e);scene_teleport_frame(e);model_frame(e);name_frame(e);light_frame(e);camera_frame(e);camera_join(e);checkpoint_player_frame(e);restore(e);quick_notice_frame(e);carry_frame(e);equip_frame(e);nightmare_frame(e);morphine_frame(e);limp_frame(e);give_owed_frame(e);rejoin_frame(e);ladder_frame();boat_frame(e);idle_stage(e,2);collision_pre(e);}
+void __cdecl prethink(Edict* e){crumb("prethink",e);objective_share();native<void(__cdecl*)(Edict*)>(23)(e);idle_stage(e,1);fall_frame(e);scene_teleport_frame(e);model_frame(e);name_frame(e);light_frame(e);camera_frame(e);camera_join(e);checkpoint_player_frame(e);restore(e);quick_notice_frame(e);carry_frame(e);arrival_frame(e);equip_frame(e);nightmare_frame(e);morphine_frame(e);limp_frame(e);give_owed_frame(e);rejoin_frame(e);ladder_frame();boat_frame(e);idle_stage(e,2);collision_pre(e);}
 // v0.1: the inventory carry reads every player when a level change is asked
 // for (see carry_level_change), then the engine's own ChangeLevel runs.
 // v0.3: the Drowned's victim lookup (see drowned_index in coop-runtime.hpp).
@@ -484,12 +487,12 @@ void __cdecl server_command_hook(char* text){
  if(text&&scoped()){const char* s=text;while(*s==' '||*s=='\t')++s;if(!_strnicmp(s,"changelevel",11)&&(s[11]==' '||s[11]=='\t')){s+=11;while(*s==' '||*s=='\t')++s;char map[40]{};int n=0;while(*s&&*s!=' '&&*s!=';'&&*s!='\n'&&*s!='\r'&&n<39)map[n++]=*s++;state_level_change(map);}}
  eng<void(__cdecl*)(char*)>(39)(text);
 }
-void __cdecl key_value(Edict* e,KeyValue* kv){native<void(__cdecl*)(Edict*,KeyValue*)>(6)(e,kv);evidence_keyvalue(e,kv);state_keyvalue(e,kv);}
+void __cdecl key_value(Edict* e,KeyValue* kv){native<void(__cdecl*)(Edict*,KeyValue*)>(6)(e,kv);evidence_keyvalue(e,kv);door_global_keyvalue(e,kv);state_keyvalue(e,kv);}
 void __cdecl postthink(Edict* e){crumb("postthink",e);collision_restore();idle_stage(e,-1);native<void(__cdecl*)(Edict*)>(24)(e);idle_stage(e,3);light_frame(e);pose_frame(e);ladder_frame();pp_frame();idle_stage(e,4);}
 void __cdecl disconnect(Edict* e){pauseState.othersOpen=false;carry_departing(e);stuckUsed.erase(e);codeLayouts.erase(note_connection(e));camera_forget(e);boatDrivers.erase(e);checkpoint_disconnect(e);}
 // v0.3 crash report: Use/Touch only leave a breadcrumb, then the game's own.
-void __cdecl dispatch_use(Edict* e,Edict* other){crumb("use",e);native<void(__cdecl*)(Edict*,Edict*)>(3)(e,other);}
-void __cdecl dispatch_touch(Edict* e,Edict* other){crumb("touch",e);if(scoped())pp_touch(e,other);native<void(__cdecl*)(Edict*,Edict*)>(4)(e,other);}
+void __cdecl dispatch_use(Edict* e,Edict* other){crumb("use",e);if(scoped())ladder_use_attempt(e,other);native<void(__cdecl*)(Edict*,Edict*)>(3)(e,other);}
+void __cdecl dispatch_touch(Edict* e,Edict* other){crumb("touch",e);if(scoped()){pp_touch(e,other);train_escape_touch(e,other);}native<void(__cdecl*)(Edict*,Edict*)>(4)(e,other);}
 void wrap(Table& t){
  original=t;
  t[0]=reinterpret_cast<void*>(&game_init);t[1]=reinterpret_cast<void*>(&spawn);t[2]=reinterpret_cast<void*>(&think);

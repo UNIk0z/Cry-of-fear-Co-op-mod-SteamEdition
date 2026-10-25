@@ -278,10 +278,12 @@ int main(int argc,char** argv){
  // v0.2 IDLE_DIAG (read only): a still partner's predicted field changed outside pmove
  // is named with the stage that changed it; changes inside pmove and the host are not traced.
  {idle_reset();const float t0=load<float>(g.data(),0);store(g.data(),0,300.f);std::array<unsigned char,0x34> cmd{};auto e=&edicts[2];const float z=load<float>(ev(e),0x180);
-  for(int k=0;k<3;++k){store(ev(e),0x20,0.f);store(ev(e),0x24,0.f);store(ev(e),0x28,0.f);idle_command(e,cmd.data());idle_command(&edicts[1],cmd.data());idle_stage(e,1);idle_stage(e,2);
+  for(int k=0;k<3;++k){++netFrame;store(ev(e),0x20,0.f);store(ev(e),0x24,0.f);store(ev(e),0x28,0.f);idle_command(e,cmd.data());idle_command(&edicts[1],cmd.data());idle_stage(e,1);idle_stage(e,2);
    store(ev(e),0x0c,load<float>(ev(e),0x0c)+0.5f);idle_stage(e,-1);store(ev(e),0x180,28.f+k);idle_stage(e,3);idle_stage(e,4);}
   store(g.data(),0,311.f);idle_command(e,cmd.data());idle_command(&edicts[1],cmd.data());
   assert(logged_line({"IDLE_DIAG player=2 field=view_ofs changed 3 time(s) at native PostThink"})&&!logged_line({"IDLE_DIAG player=2 field=origin"})&&!logged_line({"IDLE_DIAG player=1"}));
+  // v0.5.6 NET_CADENCE: the 4th command came in the same host frame as the 3rd.
+  assert(logged_line({"NET_CADENCE player=2 4 commands arrived in 3 host frames (up to 2 at once) in 11 s"})&&!logged_line({"NET_CADENCE player=1"}));
   store(ev(e),0x180,z);store(ev(e),0x0c,load<float>(ev(e),0x0c)-1.5f);store(g.data(),0,t0);idle_reset();}
  // v0.3 audit: the main menu map ends the game; a Continue prepared for the next map survives.
  {carryBank["auto:host"]=SavedPlayer{};mapStates["s4_apartment1"]=MapState{};checkpointRestoreFailed=true;gameOverMap="s4_start_e0";

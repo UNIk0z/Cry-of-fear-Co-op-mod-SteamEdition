@@ -77,7 +77,9 @@ void quick_dual_command(Edict* e,const char* command,const std::string& arg){
  const bool pair=q.serial==serial(e)&&q.number&&q.number!=number&&now>=q.at&&now-q.at<QuickDualWindow;const int last=q.number;q={serial(e),number,now};
  void* p=nullptr;std::size_t n=0;if(!pair||!player_memory(e,p,n)||n<QuickSel1+3*0x80)return;
  auto sel=[&](int k){const char* s=static_cast<const char*>(p)+QuickSel1+(k-1)*0x80;return std::string(s,strnlen(s,127));};
- const auto a=sel(number),b=sel(last);if(a.rfind("weapon_",0)||b.rfind("weapon_",0))return;
+ // v0.5.7 (playtest clip "idk why it went in my left hand": "DUAL quick keys 1+2
+ // weapon_mobile+weapon_switchblade asked"): the phone is never dual wielded.
+ const auto a=sel(number),b=sel(last);if(a.rfind("weapon_",0)||b.rfind("weapon_",0)||a=="weapon_mobile"||b=="weapon_mobile")return;
  const bool done=dual_rebuild(e,p,a,b);if(done)q.number=0;
  if(dualLines<100){++dualLines;char line[200]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] DUAL quick player=%d keys %d+%d %s+%s %s\n",eng<int(__cdecl*)(Edict*)>(71)(e),last,number,a.c_str(),b.c_str(),done?"asked":"refused");log(line);}
 }
@@ -448,6 +450,12 @@ void net_tune(Edict* e){
  // standing still (user test over a VPN): their rate stayed 30000, too little
  // for 100 updates a second, and a 0.03 s window left no room for a late
  // packet. Partner: rate 100000 and a 0.06 s window.
- eng<void(__cdecl*)(Edict*,const char*,...)>(41)(e,"%s",host?"cl_updaterate 100\nex_interp 0.01\n":"rate 100000\ncl_updaterate 100\nex_interp 0.06\n");
- char line[140]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] NET tuned player=%d cl_updaterate=100 ex_interp=%s\n",index,host?"0.01":"0.06 rate=100000");log(line);
+ // v0.5.6 (testers: the connecting player jitters "like shivering hands"):
+ // the partner still sent its moves at the default cl_cmdrate 30, and the
+ // server moves a remote player only when a packet arrives, so everyone saw
+ // the partner move in one of every 2-3 host frames (NET_CADENCE). Partner:
+ // cl_cmdrate 100 (capped by their frame rate: one packet per frame). The
+ // host's own commands go over loopback every frame (CL_MAIN.C CL_SendCmd).
+ eng<void(__cdecl*)(Edict*,const char*,...)>(41)(e,"%s",host?"cl_updaterate 100\nex_interp 0.01\n":"rate 100000\ncl_updaterate 100\ncl_cmdrate 100\nex_interp 0.06\n");
+ char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] NET tuned player=%d cl_updaterate=100 ex_interp=%s\n",index,host?"0.01":"0.06 rate=100000 cl_cmdrate=100");log(line);
 }

@@ -18,7 +18,7 @@ const read=(...p)=>fs.readFileSync(path.join(...p));
 test('v0.1 adapter source: no forced title-train send, exact credits, host-only saves, names, carry at ChangeLevel',()=>{
  const adapter=src('native/rc4/adapter.cpp'),coop=src('native/rc4/coop-runtime.hpp'),session=src('native/rc4/session-runtime.hpp'),checkpoint=src('native/rc4/checkpoint-runtime.hpp');
  for(const gone of ['check_visibility','cinematicPackVehicle','cinematicViews','VEHICLE_PACK retry'])assert.ok(!adapter.includes(gone),gone);
- assert.ok(['v0.1','v0.2','v0.3','v0.4','v0.5'].some(n=>session.includes('constexpr const char* MenuCredit="Co-op mod '+n+' developed by Anas Sammak (koolkat)\\nSpecial thanks: Mesilll, Michal Eminov, caixa";')));   // v0.2 since 2026-10-16
+ assert.ok(['v0.1','v0.2','v0.3','v0.4','v0.5','v0.6'].some(n=>session.includes('constexpr const char* MenuCredit="Co-op mod '+n+' developed by Anas Sammak (koolkat)\\nSpecial thanks: Mesilll, Michal Eminov, caixa')));   // v0.2 since 2026-10-16
  assert.ok(!session.includes('"Co-op mod developed by Anas Sammak (koolkat)\\nSpecial thanks to Michael Eminov"'));
  assert.ok(coop.includes('constexpr const char* HostOnlySave="Only host can save the game";')||checkpoint.includes('"Only host can save the game"'));   // v0.2: shown on Use only
  assert.ok(checkpoint.includes('if(actor!=host){checkpoint_notice(actor,"[STORYCOOP] Save refused: only the host can save the game.\\n");return;}'));
@@ -54,7 +54,7 @@ test('v0.1 launchers: Join loads the co-op adapter; both pass the Steam name as 
 
 test('v0.1 READ ME: version, credits, host-only saving, base-game menu',()=>{
  const text=readMe('v0.1');
- for(const s of ['(v0.1)','developed by Anas Sammak (koolkat).','Special thanks: Mesilll, Michal Eminov, caixa.','Only the host can save.','"Only host can save the','shows the game\'s own menu'])assert.ok(text.includes(s),s);
+ for(const s of ['(v0.1)','developed by Anas Sammak (koolkat).','Special thanks: Mesilll, Michal Eminov, caixa, joah.','Only the host can save.','"Only host can save the','shows the game\'s own menu'])assert.ok(text.includes(s),s);
  assert.ok(!/Michael|Either player can save/.test(text));
 });
 

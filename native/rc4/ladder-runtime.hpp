@@ -20,8 +20,9 @@
 // the new step while the restarted sequence already played (the host's own
 // client sees the server state at once).
 struct LadderUse {Edict* brush=nullptr;int serial=-1;std::uint32_t original=0;};
-struct Ladder {Edict* manager=nullptr;int serial=-1;std::string name;std::vector<LadderUse> uses;int climber=0;};
+struct Ladder {Edict* manager=nullptr;int serial=-1;std::string name;std::vector<LadderUse> uses;int climber=0;std::vector<std::pair<Edict*,int>> waiting;};
 std::vector<Ladder> ladders;
+bool move_beside(Edict* who,Edict* anchor);bool camera_view(Edict* host);Edict* lease_camera(Edict* e);   // coop-runtime.hpp
 Edict* ladderGate=nullptr;int ladderGateSerial=-1;std::uint32_t ladderGateName=0;
 void ladder_reset(){ladders.clear();ladderGate=nullptr;ladderGateSerial=-1;ladderGateName=0;}
 void* ladder_memory(Edict* e,std::size_t bytes,const char* type){
@@ -37,10 +38,16 @@ int ladder_climber(const Ladder& l,Edict** cameraOut=nullptr){
   auto e=eng<Edict*(__cdecl*)(int)>(72)(i);void* p=nullptr;std::size_t n=0;
   if(!player_memory(e,p,n)||reinterpret_cast<std::uint32_t>(p)!=slot)continue;
   const auto camera=load<std::uint32_t>(p,0x5ac);if(!camera)return 0;
+  // v0.6 (Katz 2026-10-25: ladders "show as busy when the last person who climbed
+  // them is in a cutscene"): the native slot +0x114 is never cleared, and a scene
+  // can hand that player another view. A player held by a scene camera, or
+  // whose view entity is not a camera_model, is not climbing.
+  if(camera_view(e)||lease_camera(e))return 0;
   // A player keeps this ladder only while his camera_model stands at it.
   for(const auto& a:allocations){
    if(reinterpret_cast<std::uint32_t>(a.second.memory)!=camera)continue;
    auto cv=vars(a.first),mv=vars(l.manager);if(!cv||!mv||a.second.serial!=serial(a.first))return i;
+   if(std::strcmp(classname(a.first),"camera_model"))return 0;
    const float dx=load<float>(cv,8)-load<float>(mv,8),dy=load<float>(cv,12)-load<float>(mv,12),dz=load<float>(cv,16)-load<float>(mv,16);
    const int cm=load<int>(cv,0xb8),mm=load<int>(mv,0xb8);const bool ownModel=cm==mm||(cm&&mm&&!_stricmp(string_at(cm),string_at(mm)));
    if(!ownModel||dx*dx+dy*dy+dz*dz>1024.f*1024.f)return 0;
@@ -87,6 +94,23 @@ void ladder_frame(){
   if(climber==l.climber)continue;
   ladder_apply(l,climber!=0);
   char line[160]{};std::snprintf(line,sizeof(line),climber?"[STORYCOOP_RC4] LADDER %s reserved by player=%d\n":"[STORYCOOP_RC4] LADDER %s released (player=%d)\n",l.name.c_str(),climber?climber:l.climber);log(line);
+  // v0.6: the players who pressed E on it during the climb follow the climber.
+  if(!climber&&l.climber){Edict* c=eng<Edict*(__cdecl*)(int)>(72)(l.climber);int moved=0;
+   if(live(c)&&view_alive(c))for(const auto& [w,ws]:l.waiting)if(live(w)&&serial(w)==ws&&w!=c&&view_alive(w)&&move_beside(w,c))++moved;
+   if(!l.waiting.empty()){char follow[160]{};std::snprintf(follow,sizeof(follow),"[STORYCOOP_RC4] LADDER %s: %d waiting player(s) moved beside player=%d at the end of the climb\n",l.name.c_str(),moved,l.climber);log(follow);}
+   l.waiting.clear();}
   l.climber=climber;
  }
+}
+// v0.6 (playtest note: "only 1 person being able to use it at a time is very time
+// consuming"): the game's ladder manager holds one climber (header above), so a
+// second climber still cannot start; a player who presses E on a ladder that is
+// in use is queued and moved beside the climber as soon as that climb ends.
+void ladder_use_attempt(Edict* brush,Edict* player){
+ if(ladders.empty()||!live(player)||std::strcmp(classname(player),"player")||!engine[80])return;
+ for(auto& l:ladders){if(!l.climber)continue;
+  if(std::none_of(l.uses.begin(),l.uses.end(),[&](const LadderUse& u){return u.brush==brush&&serial(brush)==u.serial;}))continue;
+  if(eng<Edict*(__cdecl*)(int)>(72)(l.climber)==player)return;
+  if(std::any_of(l.waiting.begin(),l.waiting.end(),[&](const std::pair<Edict*,int>& w){return w.first==player&&w.second==serial(player);}))return;
+  l.waiting.push_back({player,serial(player)});eng<void(__cdecl*)(Edict*,int,const char*)>(80)(player,1,"Your partner is on this ladder.\nYou follow when they get off.\n");return;}
 }

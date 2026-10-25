@@ -36,7 +36,7 @@ export function readMe(version){
  return [
   `CRY OF FEAR CO-OP - Simon's story for 1 to 4 players (${version})`,
   `Co-op mod ${version} developed by Anas Sammak (koolkat).`,
-  'Special thanks: Mesilll, Michal Eminov, caixa.',
+  'Special thanks: Mesilll, Michal Eminov, caixa, joah.',
   '',
   'BOTH PLAYERS',
   '  1. Close Cry of Fear.',

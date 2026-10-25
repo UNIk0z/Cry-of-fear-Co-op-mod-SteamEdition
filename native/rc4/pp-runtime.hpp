@@ -35,7 +35,16 @@ Edict* pp_activator(const PostProcess& pp){
   float d=0;for(int k=0;k<3;++k){const float x=load<float>(v,8+k*4)-load<float>(a,8+k*4);d+=x*x;}if(!best||d<d0){best=e;d0=d;}}
  return best;
 }
-void pp_reset(){postProcesses.clear();}
+// v0.5.7 (playtest 2 clip on s4_ending4b: "other player can just walk here";
+// log: "POSTPROCESS wmode applied to 1 player uses" while player 2 was still
+// loading the map): the wheelchair was given only to the players already in
+// the game. The mode now stays on for the map (until cof_stopwheelchair), and
+// each player who arrives later gets their own chair once their HUD is ready
+// and their carried inventory has been applied (the chair empties the hands).
+bool carry_settled(Edict* e);   // coop-runtime.hpp
+struct WheelchairOn {Edict* mode=nullptr;int serial=-1;std::set<std::pair<Edict*,int>> riders;};
+WheelchairOn wheelchairOn;
+void pp_reset(){postProcesses.clear();wheelchairOn={};}
 // v0.5 (C3, s4_ending4b): cof_wheelchairmode (decomp effects.cpp) starts the
 // wheelchair for its activator only and puts that wheelchair on its "message"
 // point. With the fan-out every player gets one; the second, third... wheelchair
@@ -105,9 +114,19 @@ void pp_frame(){
    auto e=eng<Edict*(__cdecl*)(int)>(72)(i);if(!live(e)||std::strcmp(classname(e),"player")||(only&&e!=only))continue;
    if(serial(pp.actor)!=pp.actorSerial)break;
    actingPlayer=e;native<void(__cdecl*)(Edict*,Edict*)>(3)(pp.actor,e);actingPlayer=nullptr;
-   if(players>0&&!std::strcmp(classname(pp.actor),"cof_wheelchairmode"))wheelchair_aside(e,pp.actor,players);
+   if(!std::strcmp(classname(pp.actor),"cof_wheelchairmode")){if(players>0)wheelchair_aside(e,pp.actor,players);wheelchairOn.riders.insert({e,serial(e)});}
    ++players;
   }
+  if(!std::strcmp(classname(pp.actor),"cof_wheelchairmode")){wheelchairOn.mode=pp.actor;wheelchairOn.serial=pp.actorSerial;}
+  if(!std::strcmp(classname(pp.actor),"cof_stopwheelchair"))wheelchairOn={};
   char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] POSTPROCESS %s applied to %d player uses\n",pp.name.c_str(),players);log(line);
+ }
+ // Late arrivals get their chair too (one Use each, beside the others).
+ if(!live(wheelchairOn.mode)||serial(wheelchairOn.mode)!=wheelchairOn.serial)return;
+ for(int i=1;i<=load<int>(globals,0x90);++i){
+  auto e=eng<Edict*(__cdecl*)(int)>(72)(i);if(!live(e)||std::strcmp(classname(e),"player")||!client_ready(e)||!carry_settled(e)||!view_alive(e)||wheelchairOn.riders.count({e,serial(e)}))continue;
+  const int k=static_cast<int>(wheelchairOn.riders.size());wheelchairOn.riders.insert({e,serial(e)});
+  actingPlayer=e;native<void(__cdecl*)(Edict*,Edict*)>(3)(wheelchairOn.mode,e);actingPlayer=nullptr;if(k>0)wheelchair_aside(e,wheelchairOn.mode,k);
+  char line[120]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] WHEELCHAIR player=%d arrived later: wheelchair given\n",eng<int(__cdecl*)(Edict*)>(71)(e));log(line);
  }
 }
