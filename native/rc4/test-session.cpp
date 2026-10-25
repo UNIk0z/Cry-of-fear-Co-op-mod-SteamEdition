@@ -141,7 +141,7 @@ int main(int argc,char** argv_){
  store(globals,0x0c,3);store(globals,0,20.f);menu_credit_frame();assert(messageBegins==0);
  menu_credit_active(&entities[2]);menu_credit_frame();assert(messageBegins==0);   // only the menu's own client
  menu_credit_active(&entities[1]);store(globals,0,20.4f);menu_credit_frame();assert(messageBegins==0);
- store(globals,0,20.6f);menu_credit_frame();assert(messageBegins==1&&messageText=="Co-op mod v0.6 developed by Anas Sammak (koolkat)\nSpecial thanks: Mesilll, Michal Eminov, caixa, joah"&&logged("MENU credit shown bottom-left"));
+ store(globals,0,20.6f);menu_credit_frame();assert(messageBegins==1&&messageText=="Co-op mod v0.6.2 developed by Anas Sammak (koolkat)\nSpecial thanks: Mesilll, Michal Eminov, caixa, joah"&&logged("MENU credit shown bottom-left"));
  assert((message==std::vector<int>{1,23,29,4,163,7454,0,200,200,200,180,200,200,200,180,256,256,7680}));
  store(globals,0,24.f);menu_credit_frame();assert(messageBegins==1);store(globals,0,25.7f);menu_credit_frame();assert(messageBegins==2&&message[15]==0);
  // Back from a game: a new map, no credit until that client is running again.
@@ -153,7 +153,7 @@ int main(int argc,char** argv_){
  lines.clear();serverCommands.clear();clientCommands.clear();store(globals,0x0c,3);
  argv={"campaign","sc4coop_new"};assert(!menu_command("campaign")&&menuMode==1&&logged("MENU host new co-op game"));
  stuff_command(e,"map %s","sc4coop_new");
- assert(clientCommands.empty()&&serverCommands.size()==1&&serverCommands[0]=="disconnect;maxplayers 2;mp_footsteps 1;sv_maxupdaterate 100;map cof_campaign_story4\n"&&menuMode==0&&!checkpointPrepared);
+ assert(clientCommands.empty()&&serverCommands.size()==1&&serverCommands[0]=="disconnect;maxplayers 2;mp_footsteps 1;sv_maxupdaterate 100;sv_lan 0;map cof_campaign_story4\n"&&menuMode==0&&!checkpointPrepared);
  // Unrelated stuffed commands pass through unchanged (formatted once).
  stuff_command(e,"map %s","c_intro");stuff_command(e,"%s","echo 100%");assert(clientCommands.size()==2&&clientCommands[0]=="map c_intro"&&clientCommands[1]=="echo 100%");
  // Without the menu selection the same text is not intercepted.
@@ -166,14 +166,14 @@ int main(int argc,char** argv_){
  assert(commit_checkpoint(saves,1,save_fixture("s4_start2")));{std::ofstream f(maps/"s4_start2.bsp");f<<"bsp";}
  assert(commit_checkpoint(saves,3,save_fixture("s4_missing")));
  serverCommands.clear();menuMode=2;checkpointWorldStarted=true;stuff_command(e,"map sc4coop_continue\n");
- assert(serverCommands.size()==1&&serverCommands[0]=="disconnect;maxplayers 2;mp_footsteps 1;sv_maxupdaterate 100;map s4_start2\n");
+ assert(serverCommands.size()==1&&serverCommands[0]=="disconnect;maxplayers 2;mp_footsteps 1;sv_maxupdaterate 100;sv_lan 0;map s4_start2\n");
  assert(checkpointPrepared&&checkpointSlot==1&&!checkpointWorldStarted&&loadedCheckpoint.map=="s4_start2"&&logged("PREPARE accepted from the main menu: slot1 map=s4_start2"));
  // A newer slot wins.
  assert(commit_checkpoint(saves,2,save_fixture("s4_start2")));std::filesystem::last_write_time(saves/"slot2.cofsave",std::filesystem::last_write_time(saves/"slot1.cofsave")+std::chrono::seconds(30));
  serverCommands.clear();menuMode=2;stuff_command(e,"map sc4coop_continue");assert(checkpointSlot==2&&serverCommands.back().find("map s4_start2\n")!=std::string::npos);
  // coop-fixes-012: "Load Slot N" loads exactly that slot (slot 2 is newer; slot 1 is asked for).
  serverCommands.clear();argv={"campaign","sc4coop_slot1"};menu_command("campaign");assert(menuMode==11&&logged("MENU load co-op slot 1 selected"));stuff_command(e,"map sc4coop_slot1");
- assert(checkpointSlot==1&&checkpointPrepared&&serverCommands.size()==1&&serverCommands[0]=="disconnect;maxplayers 2;mp_footsteps 1;sv_maxupdaterate 100;map s4_start2\n");
+ assert(checkpointSlot==1&&checkpointPrepared&&serverCommands.size()==1&&serverCommands[0]=="disconnect;maxplayers 2;mp_footsteps 1;sv_maxupdaterate 100;sv_lan 0;map s4_start2\n");
  // A slot without a loadable save (here its map is not installed) goes back to the menu and says so.
  serverCommands.clear();checkpointPrepared=false;argv={"campaign","sc4coop_slot3"};menu_command("campaign");stuff_command(e,"map sc4coop_slot3");
  assert(serverCommands.size()==1&&serverCommands[0]=="disconnect;maxplayers 1;deathmatch 0;map c_game_menu1\n"&&logged("CLIENT:Save slot 3 is empty.")&&!checkpointPrepared);
@@ -189,7 +189,7 @@ int main(int argc,char** argv_){
  store(globals,0x0c,8);store(globals,0x90,1);coop_version_redirect();assert(serverCommands.size()==3);store(globals,0x90,2);store(globals,0x0c,1);
  // v0.5.1 Host: an entry of the Create Server window restarts the server on its chapter with the window's options.
  {reset_players();serverCommands.clear();lines.clear();collisionCvarValue=0.f;difficultyValue=3.f;store(globals,0x90,3);store(globals,0x0c,12);story_entry_redirect();
-  assert(serverCommands.back()=="disconnect;maxplayers 3;mp_footsteps 1;sv_maxupdaterate 100;difficulty 3;map s4_basement_e0\n"&&sessionOptions.have&&sessionOptions.maxPlayers==3&&sessionOptions.collision==0);
+  assert(serverCommands.back()=="disconnect;maxplayers 3;mp_footsteps 1;sv_maxupdaterate 100;sv_lan 0;difficulty 3;map s4_basement_e0\n"&&sessionOptions.have&&sessionOptions.maxPlayers==3&&sessionOptions.collision==0);
   assert(logged("HOST Chapter-2-Who-is-that-Doctor: players=3 collision=off difficulty=3"));
   store(globals,0x90,1);story_entry_redirect();assert(sessionOptions.maxPlayers==2);   // a 1-slot window still makes a co-op server
   // A save entry loads that slot with its own saved settings.
@@ -205,8 +205,13 @@ int main(int argc,char** argv_){
   assert(std::string(reinterpret_cast<const char*>(img.data()+0x1473CC))=="gfx/vgui/sc_joinbox.tga"&&std::string(reinterpret_cast<const char*>(img.data()+0x1474F4))=="Port (empty: 27015)");
   argv={"computercheck","Type","the"};assert(join_box_command(j,"computercheck")&&messageBegins==2&&message[3]==1&&logged("JOIN refused"));   // the prompt itself is no address
   argv={"computercheck","26.0.0.5","70000"};assert(join_box_command(j,"computercheck")&&messageBegins==3);
-  argv={"computercheck","26.0.0.5",""};assert(join_box_command(j,"computercheck")&&clientCommands.back()=="connect 26.0.0.5:27015\n"&&img==shipped&&!joinBox.who);
-  argv={"sc_joinbox"};join_box_command(j,"sc_joinbox");argv={"computercheck","host.example:27020","Port"};join_box_command(j,"computercheck");assert(clientCommands.back()=="connect host.example:27020\n");
+  argv={"computercheck","26.0.0.5",""};assert(join_box_command(j,"computercheck")&&serverCommands.back()=="connect 26.0.0.5:27015\n"&&img==shipped&&!joinBox.who);
+  argv={"sc_joinbox"};join_box_command(j,"sc_joinbox");argv={"computercheck","host.example:27020","Port"};join_box_command(j,"computercheck");assert(serverCommands.back()=="connect host.example:27020\n");
+  // v0.6.1: the raw text (pfnCmd_Args) wins over the tokens the engine cut at ':' and '('.
+  {static std::string joinRaw;engine[82]=reinterpret_cast<void*>(+[]()->const char*{return joinRaw.c_str();});
+   argv={"sc_joinbox"};join_box_command(j,"sc_joinbox");joinRaw="26.0.0.5:27016 Port (empty: 27015)";argv={"computercheck","26.0.0.5",":"};join_box_command(j,"computercheck");assert(serverCommands.back()=="connect 26.0.0.5:27016\n");
+   argv={"sc_joinbox"};join_box_command(j,"sc_joinbox");joinRaw="10.0.0.2 Port (empty: 27015)";argv={"computercheck","10.0.0.2","Port"};join_box_command(j,"computercheck");assert(serverCommands.back()=="connect 10.0.0.2:27015\n");
+   engine[82]=nullptr;}
   argv={"sc_joinbox"};join_box_command(j,"sc_joinbox");assert(img!=shipped);argv={"stopcomputer"};assert(join_box_command(j,"stopcomputer")&&img==shipped&&logged("JOIN box closed"));
   // The computer puzzle in the story is never taken.
   store(globals,0x0c,1);argv={"computercheck","a","b"};assert(!join_box_command(j,"computercheck"));clientImage=nullptr;clientImageSize=0;computerMessage=0;}

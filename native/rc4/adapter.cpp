@@ -376,7 +376,7 @@ void everyone(bool capture){if(!globals)return;for(int i=1;i<=load<int>(globals,
 #include "state-runtime.hpp"
 #include "client-menu.hpp"
 void frame_evidence();
-void __cdecl start_frame(){crumb("start_frame");++netFrame;collision_restore();gameui_patch();firstPlayerLookup=false;pause_poll();menu_credit_frame();give_flush();three_slots_frame();chapter_frame();join_wait_frame();regroup_frame();checkpoint_start_frame();keypad_frame();story_frame();logo_frame();score_sync();keydoor_frame();ladder_frame();pp_frame();half_frame();skip_frame();party_counters_frame();prologue_skip_frame();boss_frame();train_escape_frame();floor_walls_frame();load_wait_frame();door_lock_frame();frame_evidence();}
+void __cdecl start_frame(){crumb("start_frame");++netFrame;collision_restore();gameui_patch();firstPlayerLookup=false;pause_poll();menu_credit_frame();give_flush();three_slots_frame();chapter_frame();join_wait_frame();regroup_frame();checkpoint_start_frame();keypad_frame();story_frame();logo_frame();score_sync();keydoor_frame();ladder_frame();pp_frame();half_frame();skip_frame();party_counters_frame();prologue_skip_frame();boss_frame();train_escape_frame();floor_walls_frame();load_wait_frame();door_lock_frame();item_copies_frame();frame_evidence();}
 void __cdecl game_init(){crash_install();reset();native<void(__cdecl*)()>(0)();if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_checkpoint_load",&checkpoint_load_command);if(engine[56])eng<void(__cdecl*)(cvar_t*)>(56)(&collisionCvar);if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_checkpoint_prepare",&checkpoint_prepare_command);if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_door_music",&door_music_command);log("[STORYCOOP_RC4] GameInit forwarded; checkpoint command registered\n");}
 // v0.3 audit: the main menu map (c_game_menu1) ends every game. Only the mod's
 // New Game/Load entries and cof_campaign_story4 reset the session, so a game
@@ -447,7 +447,7 @@ void __cdecl client_command(Edict* e){
 }
 void __cdecl activate(Edict* list,int count,int clients){
  // v0.3: the map's saved state goes back before ServerActivate, as in a single-player level load.
- deathmatch_close();crash_install();crumb("activate mapstate");puzzle_map_changed();state_activate();native<void(__cdecl*)(Edict*,int,int)>(21)(list,count,clients);crumb("activate adapter");
+ deathmatch_close();crash_install();crumb("activate mapstate");puzzle_map_changed();state_activate();native<void(__cdecl*)(Edict*,int,int)>(21)(list,count,clients);crumb("activate adapter");syringe_limit_patch();
  char s[200]{};std::snprintf(s,sizeof(s),"[STORYCOOP_RC4] MAP %s journal=%u puzzle=%u scope=%u\n",map_name(),static_cast<unsigned>(journal.size()),puzzle_has_solution()?1u:0u,scoped()?1u:0u);log(s);
  if(opening())log("[STORYCOOP_RC4_HOTFIX] OPENING_PASSIVE native callbacks; journal/puzzle player writes disabled\n");
  keydoor_activate();ladder_activate();pp_activate();model_activate();pause_activate();story_door_report();if(scoped())checkpoint_world_activate();

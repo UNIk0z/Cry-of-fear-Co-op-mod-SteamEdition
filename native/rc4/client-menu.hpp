@@ -181,7 +181,7 @@ void join_box_show(Edict* e,bool wrong){
 }
 void join_box_close(const char* line){if(!joinBox.who)return;join_box_text(false);joinBox={};if(line)log(line);}
 bool join_address(const std::string& s){return !s.empty()&&s.size()<=253&&std::all_of(s.begin(),s.end(),[](char c){return (c>='a'&&c<='z')||(c>='A'&&c<='Z')||(c>='0'&&c<='9')||c=='.'||c=='-';});}
-int join_port(const std::string& s){if(s.empty()||s.rfind("Port",0)==0)return 27015;if(s.size()>5||!std::all_of(s.begin(),s.end(),[](char c){return c>='0'&&c<='9';}))return 0;const int p=std::atoi(s.c_str());return p>=1&&p<=65535?p:0;}
+int join_port(const std::string& s){if(s.empty()||s.rfind("Port",0)==0||s.rfind("(",0)==0)return 27015;if(s.size()>5||!std::all_of(s.begin(),s.end(),[](char c){return c>='0'&&c<='9';}))return 0;const int p=std::atoi(s.c_str());return p>=1&&p<=65535?p:0;}
 bool join_box_command(Edict* e,const char* command){
  if(!command||!globals||std::strcmp(map_name(),"c_game_menu1"))return false;
  auto arg=[](int i){const char* a=eng<const char*(__cdecl*)(int)>(83)(i);return std::string(a?a:"");};
@@ -192,13 +192,42 @@ bool join_box_command(Edict* e,const char* command){
  if(!joinBox.who||e!=joinBox.who||serial(e)!=joinBox.serial)return false;
  if(!std::strcmp(command,"stopcomputer")){join_box_close("[STORYCOOP_RC4] JOIN box closed (Cancel)\n");return true;}
  if(std::strcmp(command,"computercheck"))return false;
- std::string ip=arg(1),port=arg(2);const auto colon=ip.find(':');if(colon!=std::string::npos){port=ip.substr(colon+1);ip=ip.substr(0,colon);}
+ // v0.6.1 (playtest: the join box "did not parse the console command correctly"):
+ // the panel sends "computercheck <IP field> <port field>" (decomp
+ // Computer_guess.cpp), and the engine's tokenizer cuts ':' '(' ')' into tokens
+ // of their own, so "1.2.3.4:27015" or the untouched placeholder "Port (empty:
+ // 27015)" became several arguments and the port was read from the wrong one.
+ // The raw text after the command (pfnCmd_Args, slot 82) is parsed instead:
+ // first word = IP (with an optional :port), second word = port, placeholders
+ // and an empty port mean 27015.
+ std::string raw;if(engine[82]){const char* a=eng<const char*(__cdecl*)()>(82)();raw=a?a:"";}else raw=arg(1)+" "+arg(2);
+ auto word=[&](std::size_t& at){while(at<raw.size()&&(raw[at]==' '||raw[at]=='\t'||raw[at]=='"'))++at;const std::size_t from=at;while(at<raw.size()&&raw[at]!=' '&&raw[at]!='\t'&&raw[at]!='"')++at;return raw.substr(from,at-from);};
+ std::size_t at=0;std::string ip=word(at),port=word(at);const auto colon=ip.find(':');if(colon!=std::string::npos){port=ip.substr(colon+1);ip=ip.substr(0,colon);}
  const int p=join_port(port);
- if(ip=="Type"||!join_address(ip)||!p){join_box_show(e,true);log("[STORYCOOP_RC4] JOIN refused: not an address and port\n");return true;}
+ if(ip=="Type"||!join_address(ip)||!p){join_box_show(e,true);char bad[200]{};std::snprintf(bad,sizeof(bad),"[STORYCOOP_RC4] JOIN refused: not an address and port (box sent \"%.120s\")\n",raw.c_str());log(bad);return true;}
  const std::string target=ip+":"+std::to_string(p);char line[300]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] JOIN connecting to %s\n",target.c_str());
  join_box_close(line);
- if(engine[41])eng<void(__cdecl*)(Edict*,const char*,...)>(41)(e,"%s",("connect "+target+"\n").c_str());
+ // v0.6.2 (tester log: Server tried to send invalid command:"connect 11.11.11.11:2701"):
+ // the game refuses a "connect" sent by a server to its client. The join box runs
+ // on the player's own menu server, in the same game, so the command goes into
+ // this game's own console (ServerCommand) instead.
+ if(engine[39])eng<void(__cdecl*)(const char*)>(39)(("connect "+target+"\n").c_str());
  return true;
+}
+// --- Up to ten syringes in co-op (v0.6.1) ---------------------------------------------
+// Katz 2026-10-25: "players should be able to hold more than one morphine/syringe
+// ... in singleplayer simon can hold max 10". CSyringe::GetItemInfo gives 10
+// (decomp CoF_Syringe.cpp), but CBasePlayerItem::iMaxAmmo1 (pinned hl.dll
+// 101202F0, decomp weapons.cpp) returns 1 for weapon_syringe whenever the game
+// rules are multiplayer: "mov eax,1" at 10120359. Its immediate byte becomes 10
+// (one byte of the verified backend, the same checked patch the client and
+// GameUI changes use; nothing else in that function changes).
+bool syringeLimitTried=false;
+void syringe_limit_patch(){
+ if(syringeLimitTried||!backend||!verified)return;syringeLimitTried=true;
+ auto base=reinterpret_cast<unsigned char*>(backend);auto nt=reinterpret_cast<const IMAGE_NT_HEADERS32*>(base+reinterpret_cast<const IMAGE_DOS_HEADER*>(base)->e_lfanew);
+ std::string why;const int r=patch_apply({{0x10120359,{0xB8,0x01,0x00,0x00,0x00},{0xB8,0x0A,0x00,0x00,0x00},false}},base,nt->OptionalHeader.SizeOfImage,reinterpret_cast<std::uint32_t>(backend),why);
+ log(r==1?"[STORYCOOP_RC4] SYRINGE co-op limit raised to 10 (as in single player)\n":r==2?"[STORYCOOP_RC4] SYRINGE limit already 10\n":("[STORYCOOP_RC4] SYRINGE limit not changed: "+why+"\n").c_str());
 }
 void client_menu_patch(){
  if(clientMenuTried)return;clientMenuTried=true;

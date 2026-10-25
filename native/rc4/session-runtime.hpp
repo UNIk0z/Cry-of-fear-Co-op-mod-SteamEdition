@@ -244,7 +244,7 @@ bool menu_slot_usable(const std::filesystem::path& dir,int slot,Checkpoint& valu
  std::error_code mapError;return std::filesystem::is_regular_file(std::filesystem::path(dir).parent_path()/L"maps"/(std::wstring(value.map.begin(),value.map.end())+L".bsp"),mapError);
 }
 std::string host_start_command(const SessionOptions& o,int difficulty,const std::string& map){
- std::string s="disconnect;maxplayers "+std::to_string(o.maxPlayers<2?2:o.maxPlayers>4?4:o.maxPlayers)+";mp_footsteps 1;sv_maxupdaterate 100;";
+ std::string s="disconnect;maxplayers "+std::to_string(o.maxPlayers<2?2:o.maxPlayers>4?4:o.maxPlayers)+";mp_footsteps 1;sv_maxupdaterate 100;sv_lan 0;";   // v0.6.2: joins over the internet/VPN ("LAN servers are restricted to local clients (class C)")
  if(difficulty>=1&&difficulty<=4)s+="difficulty "+std::to_string(difficulty)+";";return s+"map "+map+"\n";
 }
 std::string menu_host_command(int mode,std::string& notice){
@@ -435,7 +435,7 @@ void __cdecl stuff_command(Edict* e,const char* format,...){
 // (CmdStart) and then every 5 s without a fade-in, so it is always there.
 // v0.1 (user): the build is named v0.1 (v0.2 since 2026-10-16), and Special Thanks lists Mesilll,
 // Michal Eminov and caixa in that order (it misspelled "Michael" before). v0.6 (Katz 2026-10-25): joah added.
-constexpr const char* MenuCredit="Co-op mod v0.6 developed by Anas Sammak (koolkat)\nSpecial thanks: Mesilll, Michal Eminov, caixa, joah";
+constexpr const char* MenuCredit="Co-op mod v0.6.2 developed by Anas Sammak (koolkat)\nSpecial thanks: Mesilll, Michal Eminov, caixa, joah";
 struct MenuCreditState{int serial=-1;float next=0,active=-1;bool logged=false,shown=false;};
 MenuCreditState menuCredit;
 void menu_credit_reset(){const bool logged=menuCredit.logged;menuCredit={};menuCredit.logged=logged;}

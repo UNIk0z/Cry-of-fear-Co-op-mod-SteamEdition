@@ -53,7 +53,7 @@ if ($NativeRC4) { $launchArguments+=@('-num_edicts','4096','-heapsize','1536000'
 # User log: the server capped P2 at sv_maxupdaterate 30 although P2 asked for
 # 100. Raise only the server-side cap; each client keeps its own settings.
 if (-not $MenuOnly) {
-$launchArguments+=@('+maxplayers','2','+mp_footsteps','1','+sv_maxupdaterate','100')
+$launchArguments+=@('+maxplayers','2','+mp_footsteps','1','+sv_maxupdaterate','100','+sv_lan','0')
 if ($ContinueSlot) { $launchArguments+=@('+sc_checkpoint_prepare',[string]$ContinueSlot) }
 $launchArguments+=@('+map',$launchMap)
 }

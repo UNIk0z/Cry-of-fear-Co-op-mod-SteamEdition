@@ -589,6 +589,54 @@ void floor_walls_frame(){
   for(auto e:skip_named(w.wall))if(!std::strcmp(classname(e),"func_wall_toggle")){entity_retire(e);++n;}
   char line[140]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] FLOORWALL %s: %d wall(s) %s removed (partners can follow down)\n",m.c_str(),n,w.wall);log(line);}
 }
+// --- Pickups for every player (v0.6.1) ------------------------------------------------
+// Katz 2026-10-25: item spawns follow the number of players the game is hosted
+// for, laid out side by side so they neither clip nor fall off; weapons too,
+// except the scene weapon (the Glock). On the first visit of a map in this
+// timeline (state_first_visit: a revisit or a loaded save keeps what was taken),
+// every map pickup that is still in place and fires no target gets one copy per
+// extra player slot (maxplayers - 1): ammo_*, weapon_syringe and the weapons
+// lying in the map. Never copied: keys and story items (item_*), the phone, the
+// knife and the Glock. Each copy goes on a 24-unit grid around the original
+// (then 48), only where the spot is empty, has floor within 40 units below and
+// a clear straight line from the original (no copy behind a wall or past a
+// ledge); a spot that fails is skipped. Copies are runtime entities (engine
+// CreateNamedEntity, the DLL's own KeyValue and Spawn), so the map files stay
+// the same for any player count.
+bool state_first_visit();   // state-runtime.hpp
+bool copyable_pickup(const std::string& t){
+ if(t.rfind("ammo_",0)==0)return true;
+ if(t.rfind("weapon_",0)!=0)return false;
+ return t!="weapon_glock"&&t!="weapon_mobile"&&t!="weapon_switchblade"&&t!="weapon_dualweapon";
+}
+Trace point_trace(const std::array<float,3>& a,const std::array<float,3>& b,Edict* skip){Trace t{};eng<void(__cdecl*)(const float*,const float*,int,int,Edict*,Trace*)>(34)(a.data(),b.data(),1,0,skip,&t);return t;}
+bool copy_spot_clear(const std::array<float,3>& from,const std::array<float,3>& at,Edict* skip){
+ const std::array<float,3> up{at[0],at[1],at[2]+8.f},src{from[0],from[1],from[2]+8.f};
+ if(eng<int(__cdecl*)(const float*)>(45)(up.data())!=-1)return false;
+ const std::array<float,3> past{src[0]+(up[0]-src[0])*1.5f,src[1]+(up[1]-src[1])*1.5f,up[2]};
+ const auto line=point_trace(src,past,skip);if(line.allSolid||line.startSolid||line.fraction<1.f)return false;
+ const auto floor=point_trace(up,{at[0],at[1],at[2]-40.f},skip);return !floor.allSolid&&floor.fraction<1.f;
+}
+bool itemCopiesDone=false;
+void item_copies_frame(){
+ if(itemCopiesDone||!scoped()||!globals||!engine[23]||!engine[67]||!engine[34]||!engine[45]||!original[1]||!original[6])return;itemCopiesDone=true;
+ const int slots=(std::min)(4,load<int>(globals,0x90)),copies=slots-1;if(copies<1)return;
+ if(loadingCheckpoint||!state_first_visit()){log("[STORYCOOP_RC4] ITEMS no copies: this map was visited before or a save is loading\n");return;}
+ static const float ring[][2]={{24,0},{-24,0},{0,24},{0,-24},{24,24},{-24,24},{24,-24},{-24,-24},{48,0},{-48,0},{0,48},{0,-48},{48,24},{-48,24},{48,-24},{-48,-24}};
+ int made=0,originals=0,skipped=0;
+ for(std::size_t i=1;i<spawnRecords.size()&&made<240;++i){
+  const SpawnRecord r=spawnRecords[i];if(!r.e||!r.pickup||r.dm||world_taken(r)||!copyable_pickup(r.type))continue;auto v=vars(r.e);if(!v)continue;
+  ++originals;const std::array<float,3> o{load<float>(v,8),load<float>(v,12),load<float>(v,16)};int placed=0;
+  for(const auto& d:ring){if(placed>=copies)break;const std::array<float,3> at{o[0]+d[0],o[1]+d[1],o[2]};if(!copy_spot_clear(o,at,r.e))continue;
+   auto c=eng<Edict*(__cdecl*)(int)>(23)(eng<int(__cdecl*)(const char*)>(67)(r.type.c_str()));if(!live(c))break;
+   char origin[96]{},angles[64]{},flags[24]{};std::snprintf(origin,sizeof(origin),"%.1f %.1f %.1f",at[0],at[1],at[2]);std::snprintf(angles,sizeof(angles),"%.1f %.1f %.1f",load<float>(v,0x50),load<float>(v,0x54),load<float>(v,0x58));std::snprintf(flags,sizeof(flags),"%d",load<int>(v,0x1a4)&~2048);
+   for(const auto& [k,value]:std::initializer_list<std::pair<const char*,const char*>>{{"origin",origin},{"angles",angles},{"spawnflags",flags}}){KeyValue data{const_cast<char*>(r.type.c_str()),const_cast<char*>(k),const_cast<char*>(value),0};native<void(__cdecl*)(Edict*,KeyValue*)>(6)(c,&data);}
+   if(native<int(__cdecl*)(Edict*)>(1)(c)!=0){if(live(c)){assist_unlink(c);eng<void(__cdecl*)(Edict*)>(22)(c);}break;}
+   ++placed;++made;}
+  if(placed<copies)++skipped;
+ }
+ char line[200]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] ITEMS %d copies of %d pickups for %d player slots (%d pickup(s) without room for every copy)\n",made,originals,slots,skipped);log(line);
+}
 // --- Everyone waits for everyone after a level change (v0.6) ------------------------------
 // Playtest note: "you could make the host wait for all the other players to finish
 // loading until the map starts". The players who were in the game when the level
@@ -1343,4 +1391,4 @@ bool skip_client_command(Edict* e,const char* command){
   return true;}
  skip_vote(e,"R");return true;
 }
-void coop_map_changed(){collision_restore();forcedVisible.clear();bossOver=false;fallBacks.clear();doorGlobals.clear();doorLocks.clear();trainEscape={};floorWallsDone=false;quickNotices.clear();fallWatch.clear();equipWants.clear();nightmareLogged=false;morphineWatch.clear();prologueSkip={};partyLimitLogged=-1;joinWait={};skipScene={};skipAfter={};skipJump.clear();skipLines=0;evidence_reset();drowned_reset();give_reset();stuckUsed.clear();nightmareRegroup={};nameStates.clear();lastPlaces.clear();sceneSeen.clear();sceneFollowers.clear();idleProbes.clear();doorMusicLines=0;sceneMoveLines=0;}
+void coop_map_changed(){collision_restore();itemCopiesDone=false;forcedVisible.clear();bossOver=false;fallBacks.clear();doorGlobals.clear();doorLocks.clear();trainEscape={};floorWallsDone=false;quickNotices.clear();fallWatch.clear();equipWants.clear();nightmareLogged=false;morphineWatch.clear();prologueSkip={};partyLimitLogged=-1;joinWait={};skipScene={};skipAfter={};skipJump.clear();skipLines=0;evidence_reset();drowned_reset();give_reset();stuckUsed.clear();nightmareRegroup={};nameStates.clear();lastPlaces.clear();sceneSeen.clear();sceneFollowers.clear();idleProbes.clear();doorMusicLines=0;sceneMoveLines=0;}

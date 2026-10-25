@@ -299,3 +299,5 @@ bool state_reoffer(const SpawnRecord& r,const Checkpoint& value){
  }
  return false;
 }
+// v0.6.1: no saved state of this map in this timeline yet (item copies only then).
+bool state_first_visit(){return state_off()||mapStates.find(state_source(map_name()))==mapStates.end();}
