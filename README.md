@@ -41,11 +41,10 @@ play **Simon's single-player story** together instead.
 
 | | |
 |---|---|
-| 🚪 **Story maps for two** | Both players spawn together, and doors and level changes take both of you along. Cutscenes play for both, and story weapons and items are given to both. |
-| 🔢 **Shared progress** | Codes, notes and objectives are shared, so either player can enter a keypad code. |
+| 🚪 **Story maps for everyone** | All players spawn together, and doors and level changes take everyone along. Cutscenes play for everyone, and story weapons and items are given to every player. |
+| 🔢 **Shared progress** | Codes, notes and objectives are shared, so any player can enter a keypad code. |
 | 🎬 **Start at any chapter** | Pick the Prologue, any chapter from 1 to 7 or a save. A chapter starts where its title appears, with the weapons Simon has found by then. |
-| 🧍 **Play alone too** | The mod also works with one player: a short "Waiting for players" countdown, then the story goes on. |
-| 🎒 **Same story rules** | Item puzzles (rope, lighter, saw, fuse, scissors...) work for both players. After the train crash both players lose the bag and have 3 slots, as in the story. |
+| 🎒 **Same story rules** | Item puzzles (rope, lighter, saw, fuse, scissors...) work for every player. After the train crash every player loses the bag and has 3 slots, as in the story. |
 | 🧩 **Two-half items** | When the two halves of an item are picked up by different players, they go to one player so they can be combined. |
 | 🗺️ **Maps keep their state** | A map you go back to stays as you left it: taken items, dead enemies, opened doors and solved puzzles. |
 | 📼 **Saving** | Only the host can save. The host uses a tape recorder and picks slot 1, 2 or 3. Saves are kept on the host's PC. |
