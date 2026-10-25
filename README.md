@@ -45,9 +45,6 @@ play **Simon's single-player story** together instead.
 | 🔢 **Shared progress** | Codes, notes and objectives are shared, so either player can enter a keypad code. |
 | 🎬 **Start at any chapter** | Pick the Prologue, any chapter from 1 to 7 or a save. A chapter starts where its title appears, with the weapons Simon has found by then. |
 | 🧍 **Play alone too** | The mod also works with one player: a short "Waiting for players" countdown, then the story goes on. |
-| ⏳ **Nobody is left behind** | After a map change, whoever loads first waits until everyone is in. If a door locks behind one player, or one escapes the falling train, the others are brought along. |
-| 💀 **Falls and bosses** | A fall brings you back next to your partner after 2 seconds, with your items. Dying in a boss fight is a game over: the map restarts, from your save if you saved on that map. |
-| 🪜 **Ladders** | One player climbs at a time. Press E while your partner climbs and you follow them when they get off. |
 | 🎒 **Same story rules** | Item puzzles (rope, lighter, saw, fuse, scissors...) work for both players. After the train crash both players lose the bag and have 3 slots, as in the story. |
 | 🧩 **Two-half items** | When the two halves of an item are picked up by different players, they go to one player so they can be combined. |
 | 🗺️ **Maps keep their state** | A map you go back to stays as you left it: taken items, dead enemies, opened doors and solved puzzles. |
@@ -99,7 +96,7 @@ Both players run **`Run Co-op Mod.cmd`**.
 
 > [!TIP]
 > **Skip a cutscene:** press **R** (the screen shows "Press R to skip"). When every player has pressed it, the scene
-> jumps to its end. Scenes with a choice (like the Doctor's question) can't be skipped.
+> jumps to its end.
 >
 > **Stuck somewhere?** Press **Y** (chat) and type `stuck`. You are moved next
 > to the other player.
@@ -132,15 +129,15 @@ Every bug report needs the **log file**. That's how we can see what happened.
 
 - Most chapter starts have been tried alone. Most of the campaign has not been
   played through in co-op yet.
-- The endings (the strangle scenes and the final boss) are still designed
-  around player 1.
+- The endings (the strangle scenes and the final wheelchair boss) are still
+  designed around player 1.
 - Some particle effects may only show for the host.
 - Two players only.
 
 ## Credits
 
 Co-op mod developed by **Anas Sammak (koolkat)**.
-Special thanks: **Mesilll**, **Michal Eminov**, **caixa**, **joah**.
+Special thanks: **Mesilll**, **Michal Eminov**, **caixa**.
 
 Cry of Fear is made by Team Psykskallar. This is an unofficial fan mod and
 requires the original game from Steam.
@@ -148,5 +145,4 @@ requires the original game from Steam.
 ## For developers
 
 This ZIP is the mod's source code. [BUILDING.md](BUILDING.md) explains the tools,
-the build and the tests; the release notes are in [docs](docs) (latest:
-[docs/V06_RELEASE.md](docs/V06_RELEASE.md)).
+the build and the tests; the release notes are in [docs](docs).
