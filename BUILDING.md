@@ -33,7 +33,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File native/rc4/test.ps1 -Adapter
 
 It builds the 14 fixture programs from `native/rc4/test-*.cpp` and runs them.
 No game DLL is loaded and the game is not started. Expect
-`PASS all14 native fixture suites`.
+`PASS all 15 native fixture suites`.
 
 ## Node tests
 

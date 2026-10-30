@@ -49,7 +49,7 @@ play **Simon's single-player story** together instead.
 | 🧩 **Two-half items** | When the two halves of an item are picked up by different players, they go to one player so they can be combined. |
 | 🗺️ **Maps keep their state** | A map you go back to stays as you left it: taken items, dead enemies, opened doors and solved puzzles. |
 | 🪜 **Ladders for everyone** | Every player can climb the same ladder at the same time. |
-| 🧍 **Your own player model** | Pick a model in the *Player Model* box or add your own. The others see it when the host has the same model. |
+| 🧍 **Player models** | Pick Simon, one of his 11 outfits or your own model in the *Player Model* box, which shows a preview. The others see your outfit too. Your own model shows for them when the host has the same file. |
 | 🔓 **Unlock extras** | A host option that opens the Chapter 1 secret room with every unlockable. |
 | 📼 **Saving** | Only the host can save. The host uses a tape recorder and picks one of the 5 slots in the game's save window. Saves are kept on the host's PC. |
 | ✅ **Your game stays original** | The mod only runs when you start it with `Run Co-op Mod.cmd`. Starting Cry of Fear normally gives you the original game. |
@@ -99,13 +99,14 @@ Every player runs **`Run Co-op Mod.cmd`**.
   ```
   connect 192.168.1.1:27015
   ```
-- **Player model (optional):** click *Player Model*, type one of the listed
-  models and click **Log on**. Your choice is kept for the next start. To add
-  your own model, put its `.mdl` file (made for the Cry of Fear player
-  skeleton) in the `playermodels` folder next to `Run Co-op Mod.cmd` and start
-  the mod again. The others see your model when the host has it too, so the
-  host needs the same file in their `playermodels` folder. Players who join
-  download it.
+- **Player model (optional):** click *Player Model*. The box shows a preview of
+  each model: Simon, his 11 outfits from the game, then your own. **Next** shows
+  the next model and **Done** closes the box with the one you see. Your choice is
+  kept for the next start. To add your own model, put its `.mdl` file (made for
+  the Cry of Fear player skeleton) in the `playermodels` folder next to
+  `Run Co-op Mod.cmd` and start the mod again; it shows "No preview" in the box.
+  The others see your own model when the host has it too, so the host needs the
+  same file in their `playermodels` folder. Players who join download it.
 
 > [!TIP]
 > **Skip a cutscene:** press **R** (the screen shows "Press R to skip"). When every player has pressed it, the scene
@@ -146,10 +147,11 @@ Every bug report needs the **log file**. That's how we can see what happened.
   designed around player 1.
 - Some particle effects may only show for the host.
 - Three and four players have not been tested yet.
-- Open bugs: the elevator scene after entering the code does not show, a
-  crawler enemy is missing in the subway, some enemies in the university can't
-  be hurt, crouching on a save station jitters, and a door opened from the other
-  side is closed again when you go back.
+- Open bugs: a crawler enemy is missing in the subway, and crouching on a save
+  station jitters.
+- Fixed in v0.7 but not yet tried in a co-op session: the university enemies,
+  the elevator scene after entering the code and the door opened from the other
+  side. The outfits have only been tried alone so far.
 
 ## Credits
 
