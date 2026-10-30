@@ -66,20 +66,35 @@ bool dual_rebuild(Edict* e,void* p,const std::string& a,const std::string& b){
 // v0.5.4 (Katz 2026-10-23: "keybind 3 not working (quick slot 3)"; log: pressing 3
 // right after 2 to switch weapons made "DUAL quick ... keys 2+3" again and again):
 // the keys must now come within 0.12 s, a press together rather than a quick switch.
-constexpr float QuickDualWindow=0.12f;
+// v0.7.1 (Katz 2026-10-30, a joining tester on s4_start: "I pressed 1+2 ... it does
+// nothing", the TAB menu works): a joining player's second key cannot reach the host
+// sooner than one round trip after the first, because their game holds a new string
+// command until its last reliable one is acknowledged. Their window grows by their
+// ping, up to a little over the 0.25 s of single player.
+constexpr float QuickDualWindow=0.12f,QuickDualLongestWindow=0.3f;
 constexpr std::size_t QuickSel1=0x204c;
 struct QuickPress {int serial=-1,number=0;float at=-100;};
 std::unordered_map<Edict*,QuickPress> quickPresses;
+int quickMissLines=0;
+float quick_dual_window(const Edict* e){int ping=0,loss=0;if(engine[139])eng<void(__cdecl*)(const Edict*,int*,int*)>(139)(e,&ping,&loss);const float w=QuickDualWindow+ping/1000.f;return w<QuickDualLongestWindow?w:QuickDualLongestWindow;}
+// When the native "quicksel" does nothing, a pair must not either: frozen, on a ladder,
+// fuser3 10 (QuickSelectItem 100F080A..100F0847), in a phone call or just before one
+// (handler 100199C6..100199EC, m_fPhoneCallTime +0x1EE4, m_bInPhoneCall +0x1EE8).
+bool quick_keys_off(void* v,void* p,float now){return (load<std::uint32_t>(v,0x1a8)&0x1000u)||load<int>(v,0x108)==5||load<float>(v,0x260)==10.f||load<float>(p,0x1ee4)>=now||load<unsigned char>(p,0x1ee8);}
 void quick_dual_command(Edict* e,const char* command,const std::string& arg){
  if(!scoped()||!command||std::strcmp(command,"quicksel")||!globals||!live(e))return;
  const int number=arg.size()==1&&arg[0]>='1'&&arg[0]<='3'?arg[0]-'0':0;if(!number)return;
- auto& q=quickPresses[e];const float now=load<float>(globals,0);
- const bool pair=q.serial==serial(e)&&q.number&&q.number!=number&&now>=q.at&&now-q.at<QuickDualWindow;const int last=q.number;q={serial(e),number,now};
- void* p=nullptr;std::size_t n=0;if(!pair||!player_memory(e,p,n)||n<QuickSel1+3*0x80)return;
+ void* p=nullptr;std::size_t n=0;auto v=vars(e);const float now=load<float>(globals,0);
+ if(!v||!player_memory(e,p,n)||n<QuickSel1+3*0x80||quick_keys_off(v,p,now))return;
+ auto& q=quickPresses[e];const float gap=now-q.at,window=quick_dual_window(e);
+ const bool two=q.serial==serial(e)&&q.number&&q.number!=number&&now>=q.at,pair=two&&gap<window;const int last=q.number;q={serial(e),number,now};
+ if(two&&!pair&&gap<0.5f&&quickMissLines<20){++quickMissLines;char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] DUAL quick player=%d keys %d+%d %.2f s apart, limit %.2f s: a weapon switch\n",eng<int(__cdecl*)(Edict*)>(71)(e),last,number,gap,window);log(line);}
+ if(!pair)return;
  auto sel=[&](int k){const char* s=static_cast<const char*>(p)+QuickSel1+(k-1)*0x80;return std::string(s,strnlen(s,127));};
- // v0.5.7 (playtest clip "idk why it went in my left hand": "DUAL quick keys 1+2
- // weapon_mobile+weapon_switchblade asked"): the phone is never dual wielded.
- const auto a=sel(number),b=sel(last);if(a.rfind("weapon_",0)||b.rfind("weapon_",0)||a=="weapon_mobile"||b=="weapon_mobile")return;
+ // v0.7.1: the phone pairs again, as in single player and the TAB menu, and goes in the
+ // left hand (GiveDualWeapon). v0.5.7 had kept it out after a playtest clip ("idk why it
+ // went in my left hand"); Katz's tester now expects 1+2 to give knife and phone.
+ const auto a=sel(number),b=sel(last);if(a.rfind("weapon_",0)||b.rfind("weapon_",0))return;
  const bool done=dual_rebuild(e,p,a,b);if(done)q.number=0;
  if(dualLines<100){++dualLines;char line[200]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] DUAL quick player=%d keys %d+%d %s+%s %s\n",eng<int(__cdecl*)(Edict*)>(71)(e),last,number,a.c_str(),b.c_str(),done?"asked":"refused");log(line);}
 }

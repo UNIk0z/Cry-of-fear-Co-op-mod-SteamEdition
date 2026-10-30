@@ -1242,10 +1242,10 @@ void evidence_item_end(Edict* e,const char* command,const char* slot,const std::
 // m_flTargetDelay[16] +0x12C, m_iMode +0x178. STATE_TURN_ON 1, STATE_ON 2.
 constexpr int MmState=0xdc,MmCount=0xe0,MmIndex=0xe4,MmStart=0xe8,MmNames=0xec,MmDelays=0x12c,MmMode=0x178;
 struct SkipManager {Edict* e=nullptr;int serial=-1;};
-struct SkipScene {bool active=false,allowed=false;float nextShow=0;std::vector<SkipManager> managers;std::set<std::string> names;std::set<std::pair<Edict*,int>> votes;std::string label,why;};
+struct SkipScene {bool active=false,allowed=false,everyone=false;float nextShow=0,lastCamera=0;std::vector<SkipManager> managers;std::set<std::string> names;std::set<std::pair<Edict*,int>> votes;std::string label,why;};
 SkipScene skipScene;int skipLines=0;struct SkipAfter {std::set<std::string> names,ended;float until=0;} skipAfter;std::unordered_map<Edict*,std::pair<int,bool>> skipJump;
 bool skip_class(const std::string& c){
- static const std::set<std::string> ok{"trigger_camera","env_fade","ambient_generic","env_model","env_customize","ambient_fmodstream","cof_teleport","trigger_relay","multi_manager","subtitle_linechange","env_dynlight","func_wall_toggle","cof_blackandwhite","cof_camerazoom","env_blood","cof_giveitems","cof_blur","env_global","func_door_rotating","func_breakable","env_particle","cof_chapter","trigger_hurt","cof_killmp3","cof_objective","func_door","trigger_cofmobile","cof_addcodenote","subtitle_main","subtitle_multiple","cof_keypad4","env_spark","cof_triggeron","env_sprite","trigger_changevalue","env_shake","cof_interdooronoff","light","game_counter_set","game_counter"};
+ static const std::set<std::string> ok{"trigger_camera","env_fade","ambient_generic","env_model","env_customize","ambient_fmodstream","cof_teleport","trigger_relay","multi_manager","subtitle_linechange","env_dynlight","func_wall_toggle","cof_blackandwhite","cof_camerazoom","env_blood","cof_giveitems","cof_blur","env_global","func_door_rotating","func_breakable","env_particle","cof_chapter","trigger_hurt","cof_killmp3","cof_objective","func_door","trigger_cofmobile","cof_addcodenote","subtitle_main","subtitle_multiple","cof_keypad4","env_spark","cof_triggeron","env_sprite","trigger_changevalue","env_shake","cof_interdooronoff","light","game_counter_set","game_counter","cof_mdlcutscene"};
  return ok.count(c)!=0;
 }
 void* manager_memory(Edict* e){
@@ -1264,7 +1264,7 @@ bool skip_check(const std::string& name,int depth,std::set<std::string>& seen,st
  for(auto e:skip_named(name)){const std::string c=classname(e);
   if(!skip_class(c)){why=name+" ("+c+")";return false;}
   // v0.5: a relay or counter only passes the fire on; what it fires is checked too.
-  if(c=="trigger_relay"||c=="game_counter"){auto v=vars(e);const char* t=v?string_at(load<int>(v,0x1cc)):nullptr;if(t&&*t&&depth<=4&&!skip_check(t,depth+1,seen,why))return false;}
+  if(c=="trigger_relay"||c=="game_counter"||c=="cof_mdlcutscene"){auto v=vars(e);const char* t=v?string_at(load<int>(v,0x1cc)):nullptr;if(t&&*t&&depth<=4&&!skip_check(t,depth+1,seen,why))return false;}
   if(c=="multi_manager"){if(depth>4){why=name+" (nested too deep)";return false;}for(const auto& t:manager_targets(e,0))if(!skip_check(t,depth+1,seen,why))return false;}
  }
  return true;
@@ -1273,14 +1273,14 @@ bool skip_check(const std::string& name,int depth,std::set<std::string>& seen,st
 void skip_collect(const std::string& name,int depth,std::set<std::string>& seen){
  if(depth>6||!seen.insert(name).second)return;
  for(auto e:skip_named(name)){const std::string c=classname(e);
-  if(c=="trigger_relay"||c=="game_counter"){auto v=vars(e);const char* t=v?string_at(load<int>(v,0x1cc)):nullptr;if(t&&*t)skip_collect(t,depth+1,seen);}
+  if(c=="trigger_relay"||c=="game_counter"||c=="cof_mdlcutscene"){auto v=vars(e);const char* t=v?string_at(load<int>(v,0x1cc)):nullptr;if(t&&*t)skip_collect(t,depth+1,seen);}
   if(c=="multi_manager")for(const auto& t:manager_targets(e,0))skip_collect(t,depth+1,seen);}
 }
 // v0.5.7: true when the name (relays, counters and managers followed) reaches an entity of this class.
 bool skip_reaches(const std::string& name,const char* cls,int depth,std::set<std::string>& seen){
  if(depth>6||!seen.insert(name).second)return false;
  for(auto e:skip_named(name)){const std::string c=classname(e);if(c==cls)return true;
-  if(c=="trigger_relay"||c=="game_counter"){auto v=vars(e);const char* t=v?string_at(load<int>(v,0x1cc)):nullptr;if(t&&*t&&skip_reaches(t,cls,depth+1,seen))return true;}
+  if(c=="trigger_relay"||c=="game_counter"||c=="cof_mdlcutscene"){auto v=vars(e);const char* t=v?string_at(load<int>(v,0x1cc)):nullptr;if(t&&*t&&skip_reaches(t,cls,depth+1,seen))return true;}
   if(c=="multi_manager")for(const auto& t:manager_targets(e,0))if(skip_reaches(t,cls,depth+1,seen))return true;}
  return false;
 }
@@ -1335,10 +1335,12 @@ void skip_show(const char* text,float hold=3.f){
 // the prompt had a 3 s hold and was re-sent every 2.5 s, so it outlived the scene.
 // As soon as no scene camera holds anyone the prompt channel is cleared.
 void skip_prompt_clear(){if(skipPromptShown)skip_show("",0.1f);}
-int skip_needed(){int n=0;for(auto e:connected_players())if(skip_ready(e)&&view_alive(e))++n;return n;}
+bool skip_viewing(Edict* e);
+// v0.7.1: those watching decide. A player the camera does not hold can neither vote nor block the others.
+int skip_needed(){int n=0;for(auto e:connected_players())if(skip_ready(e)&&view_alive(e)&&skip_viewing(e))++n;return n;}
 // Held by a scene camera: a native lease, or the running camera a late joiner was given (camera_join).
 bool skip_viewing(Edict* e){
- if(!scoped())return skipScene.active;if(lease_camera(e))return true;auto it=clientViews.find(e);auto v=it==clientViews.end()?nullptr:camera_resolve(it->second);
+ if(!scoped())return skipScene.active;if(skipScene.everyone||lease_camera(e))return true;auto it=clientViews.find(e);auto v=it==clientViews.end()?nullptr:camera_resolve(it->second);
  return v&&v!=e&&!std::strcmp(classname(v),"trigger_camera")&&skipScene.names.count(targetname(v))!=0;
 }
 void skip_count_show(){char text[64]{};std::snprintf(text,sizeof(text),"Press R to skip  %d/%d",static_cast<int>(skipScene.votes.size()),skip_needed());skip_show(text);}
@@ -1362,11 +1364,39 @@ void skip_log(const char* line){if(skipLines<200){++skipLines;log(line);}}
 // game plays them (ambient at its origin, on its play-from entity's channels,
 // on the players), and each zoom of the scene returns the view at once (its
 // own ReturnFOV think). No camera found: everything is fired as before.
+// v0.7.1, second review (Katz: "re-review the code for skip"). A scene can go on with no
+// trigger_camera: cof_mdlcutscene (decomp effects.cpp) puts every player on an animated
+// camera model, so no lease exists and R counted for nothing. 22 of them in the story
+// maps: the Doctor's stomp (s4_attic demdlcam, right after the skippable multidydoc),
+// the train scene from 7 s on (s4_subway2st3 tkam3cmdl), the endings. Pinned hl.dll
+// 1009F4A0: pev->owner +0x19C, m_iNumAnimations +0x3EC, m_iCurrentAnimation +0x3F0, class
+// size 0x3F4, the first player's pDeathScene +0x5AC; a plain entity, so pev->nextthink
+// is its think (CBaseEntity::SetNextThink). It ends the way it ends by itself: past the
+// last animation, its next think runs the native end path (spawnflag 16, on all 22:
+// every player's view, controls and HUD back) and fires its target.
+constexpr std::size_t ModelCameraBytes=0x3f4,ModelCameraCount=0x3ec,ModelCameraIndex=0x3f0,PlayerModelScene=0x5ac;
+bool model_camera_memory(Edict* e,void*& p){
+ auto it=allocations.find(e);
+ if(it==allocations.end()||it->second.serial!=serial(e)||it->second.bytes!=ModelCameraBytes||std::strcmp(classname(e),"cof_mdlcutscene"))return false;
+ p=eng<void*(__cdecl*)(Edict*)>(64)(e);return p&&p==it->second.memory;
+}
+bool model_camera_running(Edict* e){void* p=nullptr;auto v=vars(e);return v&&model_camera_memory(e,p)&&load<void*>(v,0x19c)&&load<float>(v,0x104)>0;}
+Edict* model_camera_find(){
+ if(!scoped())return nullptr;bool any=false;for(auto e:connected_players()){void* p=nullptr;std::size_t n=0;if(player_memory(e,p,n)&&n>PlayerModelScene+4&&load<void*>(p,PlayerModelScene)){any=true;break;}}if(!any)return nullptr;
+ Edict* m=nullptr;for(int n=0;n<64;++n){m=find_next(m,"classname","cof_mdlcutscene");if(!m)break;if(model_camera_running(m))return m;}return nullptr;
+}
+bool model_camera_end(Edict* e){void* p=nullptr;auto v=vars(e);if(!globals||!v||!model_camera_memory(e,p)||!(load<unsigned>(v,0x1a4)&16u))return false;store(p,ModelCameraIndex,load<int>(p,ModelCameraCount)+1);store(v,0x104,load<float>(globals,0));return true;}
 float skip_jump(float now){
+ // Its length is in the model's animations, not in the map: such a scene runs to its end.
+ if(model_camera_find())return 100000.f;
  float end=-1;
  Edict* c=nullptr;for(int n=0;n<512;++n){c=find_next(c,"classname","trigger_camera");if(!c)break;void* p=nullptr;if(skip_camera_on(c)&&skipScene.names.count(targetname(c))&&camera_memory(c,p))end=(std::max)(end,load<float>(p,CameraReturnTime));}
- for(const auto& m:skipScene.managers){void* p=manager_memory(m.e);if(!p||serial(m.e)!=m.serial)continue;const int count=load<int>(p,MmCount),from=load<int>(p,MmIndex);
+ std::set<Edict*> scene;for(const auto& m:skipScene.managers)if(serial(m.e)==m.serial)scene.insert(m.e);
+ {Edict* x=nullptr;for(int n=0;n<1024;++n){x=find_next(x,"classname","multi_manager");if(!x)break;if(manager_running(x)&&skipScene.names.count(targetname(x)))scene.insert(x);}}
+ std::set<std::string> modelSeen;
+ for(auto m:scene){void* p=manager_memory(m);if(!p)continue;const int count=load<int>(p,MmCount),from=load<int>(p,MmIndex);
   for(int i=from>0?from:0;i<count;++i){const char* name=string_at(load<int>(p,MmNames+i*4));if(!name||!*name)continue;
+   if(skip_reaches(name,"cof_mdlcutscene",0,modelSeen))return 100000.f;
    for(auto e:skip_named(name)){void* cp=nullptr;if(!std::strcmp(classname(e),"trigger_camera")&&camera_memory(e,cp))end=(std::max)(end,load<float>(p,MmStart)+load<float>(p,MmDelays+i*4)+load<float>(cp,CameraWait));}}}
  return end<0?100000.f:(std::max)(0.f,end-now)+0.05f;
 }
@@ -1401,25 +1431,65 @@ void skip_now(Edict* activatorFallback){
  }
  // Scene cameras still on: ended through their own end path (camera_end), never toggled.
  Edict* c=nullptr;for(int n=0;n<512;++n){c=find_next(c,"classname","trigger_camera");if(!c)break;if(skip_camera_on(c)&&skipScene.names.count(targetname(c))&&camera_end(c,activatorFallback)>=0)++cameras;}
+ {Edict* m=nullptr;for(int n=0;n<64;++n){m=find_next(m,"classname","cof_mdlcutscene");if(!m)break;if(model_camera_running(m)&&model_camera_end(m))++cameras;}}
  skip_stop_sounds();
  char line[260]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] SKIP %s jumped %.1f s to the scene's end: %d target(s) fired in order, %d camera(s) ended, %d round(s)\n",skipScene.label.c_str(),jump<99999.f?jump:-1.f,fired,cameras,rounds);skip_log(line);
  skip_show("Cutscene skipped",1.5f);skipPromptShown=false;skipAfter={skipScene.names,{},load<float>(globals,0)+2.f};skipScene={};
+}
+// v0.7.1 (Katz 2026-10-30: "skip didnt work mid cutscene it must be always available
+// at any point"). Three ways a press was lost in the middle of a scene: between two
+// cameras nobody is held, so the scene was forgotten, its votes with it, and a press
+// in that moment counted for nothing; a camera the scene's list did not know (a
+// camera's own target, for one) started a new scene with no votes; and a player the
+// camera did not hold was counted as needed but could not vote, so the others could
+// never reach N/N. The scene now stays through a gap while one of its running managers
+// has a camera due within SkipGapLongest (a longer wait is play, where R is reload); a
+// new camera joins the scene with its votes. A gap with no camera due is only held for
+// SkipCameraChange, for a camera that starts the next one a frame later, and never
+// skips: with no camera to come, a skip would fire every timer left (clip 11's doors).
+constexpr float SkipGapLongest=5.f,SkipCameraChange=0.5f;
+bool skip_camera_due(float now){
+ std::set<std::string> seen,models;Edict* m=nullptr;
+ for(int n=0;n<1024;++n){m=find_next(m,"classname","multi_manager");if(!m)break;void* p=manager_running(m)&&skipScene.names.count(targetname(m))?manager_memory(m):nullptr;if(!p)continue;
+  const int count=load<int>(p,MmCount),from=load<int>(p,MmIndex);
+  for(int i=from>0?from:0;i<count;++i){if(load<float>(p,MmStart)+load<float>(p,MmDelays+i*4)-now>SkipGapLongest)break;const char* name=string_at(load<int>(p,MmNames+i*4));if(name&&*name&&(skip_reaches(name,"trigger_camera",0,seen)||skip_reaches(name,"cof_mdlcutscene",0,models)))return true;}}
+ return false;
+}
+// Only players still in the game count; the scene is skipped when all of them voted.
+void skip_settle(Edict* activator){
+ if(!skipScene.allowed||skipScene.votes.empty())return;
+ const auto players=connected_players();for(auto it=skipScene.votes.begin();it!=skipScene.votes.end();)it=std::any_of(players.begin(),players.end(),[&](Edict* e){return e==it->first&&serial(e)==it->second&&skip_ready(e)&&view_alive(e);})?std::next(it):skipScene.votes.erase(it);
+ const int need=skip_needed();if(need>0&&static_cast<int>(skipScene.votes.size())>=need)skip_now(activator);
 }
 void skip_frame(){
  if(!skip_map()||!globals||!engine[64])return;
  Edict* camera=nullptr;Edict* watcher=nullptr;for(auto e:connected_players())if(auto c=lease_camera(e)){camera=c;watcher=e;break;}
  if(!camera&&!scoped())for(auto e:connected_players()){void* pm=engine[64]?eng<void*(__cdecl*)(Edict*)>(64)(e):nullptr;Edict* c=pm?camera_handle(pm,0x2348):nullptr;if(c&&c!=e&&!std::strcmp(classname(c),"trigger_camera")&&skip_camera_on(c)){camera=c;watcher=e;break;}}
- if(!camera){skipScene={};skip_prompt_clear();return;}
+ const float now=load<float>(globals,0);
+ bool model=false;if(!camera)if(auto m=model_camera_find()){camera=m;model=true;const auto players=connected_players();watcher=players.empty()?nullptr:players.front();}
+ if(!camera){
+  if(skipScene.active&&skipScene.allowed){
+   const bool due=skip_camera_due(now);
+   if(due||now-skipScene.lastCamera<SkipCameraChange){
+    skipScene.everyone=true;if(now>=skipScene.nextShow){skipScene.nextShow=now+2.5f;skip_count_show();}
+    if(due){const auto players=connected_players();skip_settle(players.empty()?nullptr:players.front());}
+    return;}}
+  skipScene={};skip_prompt_clear();return;}
+ skipScene.everyone=model;skipScene.lastCamera=now;
  // v0.5.7: a camera already switched off is ending (its next think gives the views back): nothing to offer.
  if(camera_ending(camera))return;
  // v0.5.5 (dev runs: after a fast-forward one camera of the same scene came on
  // again for a moment, "SKIP offered for kam6 (0 manager(s))"): for 2 s a
  // camera of the skipped scene is ended at once instead of being offered again.
  if(load<float>(globals,0)<skipAfter.until&&skipAfter.names.count(targetname(camera))){if(!skipAfter.ended.insert(targetname(camera)).second)return;
-  camera_end(camera,watcher);char line[140]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] SKIP ended %s again (part of the skipped scene)\n",targetname(camera));skip_log(line);return;}
+  if(model)model_camera_end(camera);else camera_end(camera,watcher);char line[140]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] SKIP ended %s again (part of the skipped scene)\n",targetname(camera));skip_log(line);return;}
  const bool same=skipScene.active&&skipScene.names.count(targetname(camera));
  if(!same){
-  skipScene={};skipScene.active=true;skipScene.managers=scene_managers(camera);
+  SkipScene before=std::move(skipScene);const bool carry=before.active&&before.allowed;
+  const auto own=scene_managers(camera);
+  skipScene={};skipScene.active=true;skipScene.everyone=model;skipScene.lastCamera=now;skipScene.managers=own;
+  if(carry){for(const auto& m:before.managers)if(serial(m.e)==m.serial&&manager_running(m.e)&&std::none_of(skipScene.managers.begin(),skipScene.managers.end(),[&](const SkipManager& o){return o.e==m.e;}))skipScene.managers.push_back(m);
+   skipScene.names=before.names;skipScene.votes=before.votes;}
   skipScene.names.insert(targetname(camera));
   // The whole scene: its managers and everything they fire (nested managers too), so the next camera of the same scene keeps the votes.
   {std::set<std::string> all;for(const auto& m:skipScene.managers){skipScene.names.insert(targetname(m.e));for(const auto& t:manager_targets(m.e,0))skip_collect(t,0,all);}skipScene.names.insert(all.begin(),all.end());}
@@ -1427,8 +1497,11 @@ void skip_frame(){
   // v0.5: a camera no running manager owns (logs: clothescamera, conkam) is
   // skipped by ending it once; its own end path gives every player back control.
   // The end-of-game stats camera (statskamera*, held for minutes) is never offered.
-  bool ok=!(skipScene.managers.empty()&&!std::strncmp(targetname(camera),"statskamera",11));std::set<std::string> seen;
+  bool ok=!(own.empty()&&!std::strncmp(targetname(camera),"statskamera",11));std::set<std::string> seen;
   if(!ok)skipScene.why="the stats camera";
+  // v0.7.1: a held camera (wait 666) no scene owns, like the wardrobe's clothescamera,
+  // waits for the player. camera_end leaves it alone, so the prompt would promise nothing.
+  {void* held=nullptr;if(ok&&own.empty()&&!carry&&camera_memory(camera,held)&&load<float>(held,CameraWait)==666.f){ok=false;skipScene.why="a held camera that waits for the player";}}
   // v0.5.5 (Katz 2026-10-23: "FIX THE SKIP BUTTON AND TEXT ON ALL OF THE CUTSCENES";
   // log: "SKIP not offered for multidadoc: docweaponsec (cof_doctorweapontrigger)"):
   // every scene is offered. What is not a plain state change (trains, scripted
@@ -1453,10 +1526,7 @@ void skip_frame(){
  // was sent once, before the arriving player's HUD was ready (log: SKIP offered,
  // then CHAPTER ... ready). The prompt now stays up for the whole skippable scene.
  if(skipScene.allowed&&load<float>(globals,0)>=skipScene.nextShow){skipScene.nextShow=load<float>(globals,0)+2.5f;skip_count_show();}
- if(!skipScene.allowed||skipScene.votes.empty())return;
- // Only players still in the game count; the scene is skipped when all of them voted.
- const auto players=connected_players();for(auto it=skipScene.votes.begin();it!=skipScene.votes.end();)it=std::any_of(players.begin(),players.end(),[&](Edict* e){return e==it->first&&serial(e)==it->second&&skip_ready(e)&&view_alive(e);})?std::next(it):skipScene.votes.erase(it);
- const int need=skip_needed();if(need>0&&static_cast<int>(skipScene.votes.size())>=need)skip_now(watcher);
+ skip_settle(watcher);
 }
 // v0.5.1 (Katz's v0.5 test, 2026-10-23 log: "SKIP offered for the prologue",
 // never a vote): in a cutscene the server sets pev->fuser3 1..4, the client reads
@@ -1477,15 +1547,18 @@ bool skip_pressed(Edict* e,const void* command){
 // mark the opening evidence uses), every player in the game can vote; at N/N the
 // map's own end manager kunitei2 runs early: it gathers the party at the final
 // spot and the final count changes level to s4_nightmare, as at the intro's end.
-struct PrologueSkip {bool offered=false,done=false;std::set<std::pair<Edict*,int>> votes;};
+struct PrologueSkip {bool offered=false,done=false;float nextShow=0;std::set<std::pair<Edict*,int>> votes;};
 PrologueSkip prologueSkip;
 std::vector<Edict*> prologue_voters(){std::vector<Edict*> out;for(auto e:connected_players())if(view_alive(e))out.push_back(e);return out;}
 void prologue_show(const char* text){static const unsigned char white[4]={230,230,230,255};for(auto e:connected_players())hud_text(e,3,0.02f,SkipTextY,white,3.f,text,0.1f);}
 void prologue_count_show(){char text[64]{};std::snprintf(text,sizeof(text),"Press R to skip  %d/%d",static_cast<int>(prologueSkip.votes.size()),static_cast<int>(prologue_voters().size()));prologue_show(text);}
 void prologue_skip_frame(){
  if(!verified||!globals||prologueSkip.done||openingTimeline<0||std::strcmp(map_name(),"cof_campaign_story4"))return;
- if(!prologueSkip.offered){prologueSkip.offered=true;skip_log("[STORYCOOP_RC4] SKIP offered for the prologue\n");prologue_count_show();return;}
+ const float now=load<float>(globals,0);
+ if(!prologueSkip.offered){prologueSkip.offered=true;prologueSkip.nextShow=now+2.5f;skip_log("[STORYCOOP_RC4] SKIP offered for the prologue\n");prologue_count_show();return;}
  const auto voters=prologue_voters();if(voters.empty())return;
+ // v0.7.1: R works for the whole prologue, so the prompt stays for it too (it was shown once, for 3 s).
+ if(now>=prologueSkip.nextShow){prologueSkip.nextShow=now+2.5f;prologue_count_show();}
  for(auto it=prologueSkip.votes.begin();it!=prologueSkip.votes.end();)it=std::any_of(voters.begin(),voters.end(),[&](Edict* v){return v==it->first&&serial(v)==it->second;})?std::next(it):prologueSkip.votes.erase(it);
  if(static_cast<int>(prologueSkip.votes.size())<static_cast<int>(voters.size()))return;
  Edict* end=find_next(nullptr,"targetname","kunitei2");

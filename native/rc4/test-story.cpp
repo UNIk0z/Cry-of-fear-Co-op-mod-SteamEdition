@@ -40,6 +40,8 @@ void __cdecl free_private(Edict*){}
 std::vector<std::string> stuffed;
 void __cdecl stuff_(Edict* e,const char* format,...){va_list a;va_start(a,format);const char* text=va_arg(a,const char*);va_end(a);stuffed.push_back(std::to_string(index(e))+":"+text);}
 int listen(){return 0;}
+int fakePing=0;
+void __cdecl fake_ping(const Edict*,int* ping,int* loss){*ping=fakePing;*loss=0;}
 bool logged(const char* part){for(const auto& l:lines)if(l.find(part)!=std::string::npos)return true;return false;}
 // __fastcall(ecx,edx,stack...) has the __thiscall(ecx,stack...) layout.
 void* dualSelf=nullptr;int dualA=0,dualB=0,dualCalls=0,dualWeightSeen=-1;
@@ -94,8 +96,26 @@ int main(int argc,char** argv_){
   store(globals,0,6.f);quick_dual_command(e,"quicksel","1");store(globals,0,6.5f);quick_dual_command(e,"quicksel","2");assert(dualCalls==3);   // too slow
   store(globals,0,7.f);quick_dual_command(e,"quicksel","2");store(globals,0,7.1f);quick_dual_command(e,"quicksel","2");assert(dualCalls==3);   // the same key twice
   store(globals,0,8.f);quick_dual_command(e,"quicksel","3");store(globals,0,8.1f);quick_dual_command(e,"quicksel","1");assert(dualCalls==3);   // an empty quick slot
-  // v0.5.7 (playtest: the phone went into the left hand): the phone is never dual wielded.
-  store(p,0x2204,13);std::strcpy(static_cast<char*>(p)+0x20cc,"weapon_mobile");store(globals,0,9.f);quick_dual_command(e,"quicksel","1");store(globals,0,9.05f);quick_dual_command(e,"quicksel","2");assert(dualCalls==3);
+  // v0.7.1 (a tester's 1+2 for knife and phone did nothing): the phone pairs, as in single player.
+  store(p,0x2204,13);std::strcpy(static_cast<char*>(p)+0x20cc,"weapon_mobile");store(globals,0,9.f);quick_dual_command(e,"quicksel","1");store(globals,0,9.05f);quick_dual_command(e,"quicksel","2");assert(dualCalls==4&&logged("DUAL quick player=1 keys 1+2 weapon_mobile+weapon_switchblade asked"));
+  // A joining player's second key comes one ping late; the host has no ping. Never past 0.3 s.
+  auto press=[&](float at,const char* key){store(globals,0,at);quick_dual_command(e,"quicksel",key);};
+  press(10.f,"1");press(10.2f,"2");assert(dualCalls==4&&logged("keys 1+2 0.20 s apart, limit 0.12 s: a weapon switch"));
+  engine[139]=reinterpret_cast<void*>(&fake_ping);
+  fakePing=100;press(11.f,"1");press(11.2f,"2");assert(dualCalls==5);
+  press(12.f,"1");press(12.25f,"2");assert(dualCalls==5);
+  fakePing=500;press(13.f,"1");press(13.29f,"2");assert(dualCalls==6);
+  press(14.f,"1");press(14.35f,"2");assert(dualCalls==6);
+  fakePing=0;engine[139]=nullptr;
+  // Not while the native command does nothing: frozen, ladder, fuser3 10, phone call, about to ring.
+  auto idle=[&](float at){press(at,"1");press(at+0.05f,"2");assert(dualCalls==6);};
+  auto v=ev(e);
+  store(v,0x1a8,0x1000u);idle(15.f);store(v,0x1a8,0u);
+  store(v,0x108,5);idle(16.f);store(v,0x108,0);
+  store(v,0x260,10.f);idle(17.f);store(v,0x260,0.f);
+  store(p,0x1ee8,static_cast<unsigned char>(1));idle(18.f);store(p,0x1ee8,static_cast<unsigned char>(0));
+  store(p,0x1ee4,30.f);idle(19.f);store(p,0x1ee4,0.f);
+  press(20.f,"1");press(20.05f,"2");assert(dualCalls==7);
   store(globals,0,5.f);quickPresses.clear();}
  // v0.5 D4: after a load the inventory screen is told each restored quick key, one second later.
  {auto p=pd(e);messages.clear();qslotUpdateMessage=55;store(p,0x3dc,2);store(p,0x3e0,0);store(p,0x3e4,4);std::strcpy(static_cast<char*>(p)+0x214c,"weapon_mobile");

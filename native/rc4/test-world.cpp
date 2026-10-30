@@ -307,6 +307,61 @@ int main(int argc,char** argv){
    // v0.5.7: a scene that still shows a yes/no choice is not offered, so the choice always comes up.
    make(17,"cof_yesno","yesno",617);mm=manager(15,"multits3",{{"ckamera1",0.f},{"yesno",2.f}},1,699.f);lines.clear();skipScene={};skip_frame();
    assert(skipScene.active&&!skipScene.allowed&&logged({"SKIP not offered for multits3: its yes/no choice (yesno) comes up first"}));skipScene={};
+   // v0.7.1 (Katz: "skip didnt work mid cutscene"): between two cameras the scene goes on, votes stay and R counts.
+   auto r=[&](int i){return skip_client_command(&entities[i],"sc_skip");};
+   make(16,"func_door","doorshut",616);store(ev(cam),0x248,1);store(pd(cam),0x108,701.f);
+   mm=manager(15,"multigap",{{"ckamera1",0.f},{"ckamera1",3.f},{"sms3hehe",3.5f},{"doorshut",41.f}},1,699.f);
+   lines.clear();fired.clear();skipScene={};skipAfter={};skip_frame();assert(skipScene.allowed&&!skipScene.everyone);
+   r(1);assert(skipScene.votes.size()==1);
+   store(ev(cam),0x248,0);skip_frame();assert(skipScene.active&&skipScene.everyone&&skipScene.votes.size()==1&&fired.empty());
+   r(2);assert(logged({"SKIP vote (R) player=2 on multigap: 2/2"}));skip_frame();
+   assert(!skipScene.active&&std::count(fired.begin(),fired.end(),std::string("sms3hehe"))==1&&std::count(fired.begin(),fired.end(),std::string("doorshut"))==0);
+   // The last camera is over: the prompt goes after a moment, and R there never fires the timers left.
+   store(ev(cam),0x248,1);store(pd(cam),0x108,701.f);mm=manager(15,"multilast",{{"ckamera1",0.f},{"doorshut",41.f}},1,699.f);
+   lines.clear();fired.clear();skipScene={};skipAfter={};skip_frame();
+   store(ev(cam),0x248,0);skip_frame();assert(skipScene.active&&skipScene.everyone);r(1);r(2);skip_frame();assert(fired.empty());
+   store(globalData.data(),0,700.6f);skip_frame();assert(!skipScene.active&&fired.empty());store(globalData.data(),0,700.f);
+   // A wait longer than a moment is play, where R is reload: no gap.
+   store(ev(cam),0x248,1);mm=manager(15,"multilong",{{"ckamera1",0.f},{"ckamera1",30.f}},1,699.f);
+   lines.clear();fired.clear();skipScene={};skipAfter={};skip_frame();store(ev(cam),0x248,0);store(globalData.data(),0,700.6f);skip_frame();assert(!skipScene.active);store(globalData.data(),0,700.f);
+   // A camera the scene's list does not know joins the scene with its votes.
+   store(ev(cam),0x248,1);store(pd(cam),0x108,701.f);mm=manager(15,"multichain",{{"ckamera1",0.f},{"doorshut",41.f}},1,699.f);
+   auto chained=created(intern("trigger_camera"));store(ev(chained),0x1d0,intern("chainedcam"));allocate(chained,0x154);store(ev(chained),0x248,1);store(pd(chained),0x124,1);store(pd(chained),0x108,703.f);
+   lines.clear();fired.clear();skipScene={};skipAfter={};skip_frame();r(1);assert(skipScene.votes.size()==1);
+   CameraLease l4;l4.owner=camera_ref(chained);l4.view=camera_ref(chained);for(int i:{1,2}){l4.playerSerial=serial(&entities[i]);cameraLeases[&entities[i]]=l4;}
+   skip_frame();assert(skipScene.active&&skipScene.votes.size()==1&&skipScene.names.count("ckamera1")&&skipScene.names.count("chainedcam"));
+   r(2);skip_frame();assert(!skipScene.active&&load<float>(pd(chained),0x108)<700.f&&fired.empty());
+   // A player the camera does not hold does not block the others.
+   store(ev(chained),0x248,1);store(pd(chained),0x108,703.f);mm=manager(15,"multione",{{"chainedcam",0.f},{"doorshut",41.f}},1,699.f);cameraLeases.erase(&entities[2]);clientViews.erase(&entities[2]);
+   lines.clear();fired.clear();skipScene={};skipAfter={};skip_frame();r(2);assert(skipScene.votes.empty());r(1);assert(logged({"SKIP vote (R) player=1 on multione: 1/1"}));skip_frame();assert(!skipScene.active);
+   store(ev(chained),0x248,0);skipScene={};skipAfter={};CameraLease l5;l5.owner=camera_ref(cam);l5.view=camera_ref(cam);for(int i:{1,2}){l5.playerSerial=serial(&entities[i]);cameraLeases[&entities[i]]=l5;}
+   release(chained);store(chained,0,1);
+   // v0.7.1, second review: a held camera no scene owns (the wardrobe) is not offered: R could not end it.
+   store(pd(mm),0xdc,0);store(ev(cam),0x248,1);store(pd(cam),0x104,666.f);lines.clear();skipScene={};skipAfter={};skip_frame();
+   assert(skipScene.active&&!skipScene.allowed&&logged({"SKIP not offered for ckamera1: a held camera"}));store(pd(cam),0x104,5.f);
+   // The stats camera stays unskippable when a skippable scene runs straight into it.
+   mm=manager(15,"multiintostats",{{"ckamera1",0.f},{"doorshut",41.f}},1,699.f);lines.clear();skipScene={};skipAfter={};skip_frame();assert(skipScene.allowed);
+   auto stats=created(intern("trigger_camera"));store(ev(stats),0x1d0,intern("statskamera1"));allocate(stats,0x154);store(ev(stats),0x248,1);store(pd(stats),0x124,1);store(pd(stats),0x104,666.f);
+   CameraLease l6;l6.owner=camera_ref(stats);l6.view=camera_ref(stats);for(int i:{1,2}){l6.playerSerial=serial(&entities[i]);cameraLeases[&entities[i]]=l6;}
+   skip_frame();assert(skipScene.active&&!skipScene.allowed&&logged({"the stats camera"}));
+   release(stats);store(stats,0,1);for(int i:{1,2}){l5.playerSerial=serial(&entities[i]);cameraLeases[&entities[i]]=l5;}
+   // A scene on a model camera (cof_mdlcutscene): no lease, every player counts, it ends by its own end path, and all its timers run out.
+   store(ev(cam),0x248,0);cameraLeases.clear();
+   auto stamp=created(intern("cof_mdlcutscene"));store(ev(stamp),0x1d0,intern("demdlcam"));allocate(stamp,0x3f4);store(ev(stamp),0x19c,&entities[1]);store(ev(stamp),0x104,702.f);store(ev(stamp),0x1a4,55);store(pd(stamp),0x3ec,3);store(pd(stamp),0x3f0,2);store(ev(stamp),0x1cc,intern("nextmdl"));
+   auto nextModel=created(intern("cof_mdlcutscene"));store(ev(nextModel),0x1d0,intern("nextmdl"));allocate(nextModel,0x3f4);store(ev(nextModel),0x1a4,23);store(pd(nextModel),0x3ec,2);store(pd(nextModel),0x3f0,1);
+   mm=manager(15,"multistamp",{{"demdlcam",0.f},{"doorshut",11.5f}},1,699.f);
+   lines.clear();fired.clear();skipScene={};skipAfter={};skip_frame();assert(!skipScene.active);   // no player has a model camera yet
+   store(pd(&entities[1]),0x5ac,1);skip_frame();assert(skipScene.allowed&&skipScene.everyone&&logged({"SKIP offered for multistamp (1 manager(s))"}));
+   r(1);assert(logged({"SKIP vote (R) player=1 on multistamp: 1/2"}));skip_frame();assert(fired.empty()&&load<int>(pd(stamp),0x3f0)==2);
+   r(2);skip_frame();assert(!skipScene.active&&load<int>(pd(stamp),0x3f0)==4&&std::fabs(load<float>(ev(stamp),0x104)-700.f)<0.01f&&std::count(fired.begin(),fired.end(),std::string("doorshut"))==1);
+   // The model camera it fires at its end belongs to the skipped scene: ended at once.
+   store(ev(stamp),0x104,0.f);store(ev(nextModel),0x19c,&entities[1]);store(ev(nextModel),0x104,700.1f);skip_frame();assert(load<int>(pd(nextModel),0x3f0)==3&&logged({"SKIP ended nextmdl again"}));
+   store(ev(nextModel),0x104,0.f);store(pd(&entities[1]),0x5ac,0);skipAfter={};
+   // A trigger_camera scene with a model camera still to come also runs to its end (the train scene at 7 s, return at 23 s).
+   store(ev(cam),0x248,1);store(pd(cam),0x108,707.f);for(int i:{1,2}){l5.playerSerial=serial(&entities[i]);cameraLeases[&entities[i]]=l5;}
+   store(ev(stamp),0x19c,static_cast<void*>(nullptr));mm=manager(15,"multitscene2",{{"ckamera1",0.f},{"demdlcam",7.f},{"doorshut",23.f}},1,699.f);
+   lines.clear();fired.clear();skipScene={};skip_frame();r(1);r(2);skip_frame();assert(!skipScene.active&&std::count(fired.begin(),fired.end(),std::string("doorshut"))==1);
+   for(auto m:{stamp,nextModel}){release(m);store(m,0,1);}skipAfter={};
    // Scene over (camera off for everyone): the offer is gone.
    store(ev(cam),0x248,0);skip_frame();assert(!skipScene.active);
    for(int i:{13,14,15,16,17}){if(allocations.count(&entities[i]))release(&entities[i]);store(&entities[i],0,1);}cameraLeases.clear();skipScene={};skipJump.clear();}

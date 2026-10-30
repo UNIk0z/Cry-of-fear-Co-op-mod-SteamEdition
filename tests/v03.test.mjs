@@ -21,7 +21,7 @@ test('v0.3 adapter: tape card saves, Drowned victim, map state wired at spawn/ac
  assert.ok(state.includes('native<void(__cdecl*)(Edict*,SaveData*)>(7)')&&state.includes('native<int(__cdecl*)(Edict*,SaveData*,int)>(8)')&&state.includes('storycoop_mapstate.off')&&state.includes('"cof_changelevel"'));
  // No per-map special case in the shared handler.
  assert.ok(!/apartment|ropeheh|Videotape/.test(state.replace(/^\/\/.*$/gm,'')));
- assert.ok(src('session-runtime.hpp').match(/MenuCredit="Co-op mod v0\.[4-9] developed by Anas Sammak \(koolkat\)/));
+ assert.ok(src('session-runtime.hpp').match(/MenuCredit="Co-op mod v0\.[4-9](\.\d+)? developed by Anas Sammak \(koolkat\)/));
  // Follow-up (user host log 141912 and the first-player audit).
  const story=src('story-runtime.hpp'),pp=src('pp-runtime.hpp');
  assert.ok(story.includes('capture_player(e,p)||capture_player(e,p,false)')&&story.includes('carry_record(e)')&&story.includes(`"the last save's record"`));

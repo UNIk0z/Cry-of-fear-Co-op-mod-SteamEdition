@@ -141,7 +141,7 @@ int main(int argc,char** argv_){
  store(globals,0x0c,3);store(globals,0,20.f);menu_credit_frame();assert(messageBegins==0);
  menu_credit_active(&entities[2]);menu_credit_frame();assert(messageBegins==0);   // only the menu's own client
  menu_credit_active(&entities[1]);store(globals,0,20.4f);menu_credit_frame();assert(messageBegins==0);
- store(globals,0,20.6f);menu_credit_frame();assert(messageBegins==1&&messageText=="Co-op mod v0.7 developed by Anas Sammak (koolkat)\nSpecial thanks: Mesilll, Michal Eminov, caixa, Joah230"&&logged("MENU credit shown bottom-left"));
+ store(globals,0,20.6f);menu_credit_frame();assert(messageBegins==1&&messageText=="Co-op mod v0.7.1 developed by Anas Sammak (koolkat)\nSpecial thanks: Mesilll, Michal Eminov, caixa, Joah230"&&logged("MENU credit shown bottom-left"));
  assert((message==std::vector<int>{1,23,29,4,163,7454,0,200,200,200,180,200,200,200,180,256,256,7680}));
  store(globals,0,24.f);menu_credit_frame();assert(messageBegins==1);store(globals,0,25.7f);menu_credit_frame();assert(messageBegins==2&&message[15]==0);
  // Back from a game: a new map, no credit until that client is running again.

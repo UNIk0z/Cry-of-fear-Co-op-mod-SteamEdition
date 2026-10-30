@@ -157,9 +157,10 @@ bool menuHeld=false;UINT_PTR menuTimer=0;
 // user32 is already loaded by the game; the adapter links only kernel32/bcrypt.
 FARPROC user32_proc(const char* name){HMODULE u=GetModuleHandleW(L"user32.dll");return u?GetProcAddress(u,name):nullptr;}
 void menu_hold_stop(){auto kill=reinterpret_cast<BOOL(WINAPI*)(HWND,UINT_PTR)>(user32_proc("KillTimer"));if(menuTimer&&kill)kill(nullptr,menuTimer);menuTimer=0;}
+bool menuHoldBroken=false;
 void menu_hold(bool on){
- if(!clientImage||on==menuHeld)return;auto list=menu_hold_patches();if(!on)for(auto& p:list)std::swap(p.from,p.to);
- std::string why;if(!patch_apply(list,clientImage,clientImageSize,reinterpret_cast<std::uint32_t>(clientImage),why)){const std::string line="[STORYCOOP_RC4] MENU buttons hold off: "+why+"\n";session_log(line.c_str());menu_hold_stop();return;}
+ if(!clientImage||menuHoldBroken||on==menuHeld)return;auto list=menu_hold_patches();if(!on)for(auto& p:list)std::swap(p.from,p.to);
+ std::string why;if(!patch_apply(list,clientImage,clientImageSize,reinterpret_cast<std::uint32_t>(clientImage),why)){const std::string line="[STORYCOOP_RC4] MENU buttons hold off: "+why+"\n";session_log(line.c_str());menuHoldBroken=true;return;}   // v0.7.1: the timer stays, R runs on it
  menuHeld=on;session_log(on?"[STORYCOOP_RC4] MENU buttons paused while a game window is open\n":"[STORYCOOP_RC4] MENU buttons active again\n");
 }
 // v0.5.5: R in this game's window sends "sc_skip" to the server this game
@@ -173,14 +174,18 @@ void skip_key_poll(bool gameuiActive){
  auto owner=reinterpret_cast<DWORD(WINAPI*)(HWND,LPDWORD)>(user32_proc("GetWindowThreadProcessId"));
  if(!keyState||!foreground||!owner||!engine[39])return;
  DWORD pid=0;const HWND w=foreground();if(w)owner(w,&pid);
- const bool down=pid==GetCurrentProcessId()&&!gameuiActive&&(keyState('R')&0x8000)!=0;
- if(down&&!skipKeyDown)eng<void(__cdecl*)(const char*)>(39)("cmd sc_skip\n");
- skipKeyDown=down;
+ // v0.7.1: this runs on a 50 ms timer, later in a slow frame, so a quick tap could fall
+ // between two polls. The low bit says the key went down since the last poll. It is read
+ // every time, so a press in another window is not counted here later.
+ const SHORT state=keyState('R');const bool focused=pid==GetCurrentProcessId()&&!gameuiActive;
+ if(focused&&!skipKeyDown&&(state&0x8001)!=0)eng<void(__cdecl*)(const char*)>(39)("cmd sc_skip\n");
+ skipKeyDown=focused&&(state&0x8000)!=0;
 }
 void CALLBACK menu_hold_timer(HWND,UINT,UINT_PTR,DWORD){
- pause_probe();if(!pauseProbe.ready)return;
- skip_key_poll(reinterpret_cast<bool(__thiscall*)(void*)>((*reinterpret_cast<void***>(pauseProbe.ui))[11])(pauseProbe.ui));
- menu_hold(reinterpret_cast<bool(__thiscall*)(void*)>((*reinterpret_cast<void***>(pauseProbe.ui))[11])(pauseProbe.ui));
+ // v0.7.1: R does not depend on the pause guard. A game whose engine or GameUI build is
+ // not the pinned one had no R at all, and its player's missing vote blocked everybody.
+ pause_probe();const bool active=pauseProbe.ready&&reinterpret_cast<bool(__thiscall*)(void*)>((*reinterpret_cast<void***>(pauseProbe.ui))[11])(pauseProbe.ui);
+ skip_key_poll(active);if(pauseProbe.ready)menu_hold(active);
 }
 void menu_hold_start(){auto set=reinterpret_cast<UINT_PTR(WINAPI*)(HWND,UINT_PTR,UINT,TIMERPROC)>(user32_proc("SetTimer"));if(clientImage&&!menuTimer&&set)menuTimer=set(nullptr,0,50,&menu_hold_timer);}
 bool gameuiTried=false;
