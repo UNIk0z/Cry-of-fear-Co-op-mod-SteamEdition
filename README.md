@@ -15,7 +15,7 @@
 
 ## ⬇️ Download
 
-### **[Click here to download Cry of Fear Co-op v0.6.2](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.6.2/Cry.of.Fear.Co-op.v0.6.2.zip)**
+### **[Click here to download Cry of Fear Co-op v0.7](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.7/Cry.of.Fear.Co-op.v0.7.zip)**
 
 > [!IMPORTANT]
 > **Don't use the green "Code" button or "Download ZIP".** That gives you the
@@ -44,11 +44,14 @@ play **Simon's single-player story** together instead.
 | 🚪 **Story maps for everyone** | All players spawn together, and doors and level changes take everyone along. Cutscenes play for everyone, and story weapons and items are given to every player. |
 | 🔢 **Shared progress** | Codes, notes and objectives are shared, so any player can enter a keypad code. |
 | 🎬 **Start at any chapter** | Pick the Prologue, any chapter from 1 to 7 or a save. A chapter starts where its title appears, with the weapons Simon has found by then. |
-| 🎒 **Same story rules** | Item puzzles (rope, lighter, saw, fuse, scissors...) work for every player. After the train crash every player loses the bag and has 3 slots, as in the story. |
-| 📦 **Items for every player** | The first time you enter a map, ammo, syringes and weapons get one copy for each extra player, placed side by side. Keys and story items are not copied. You can carry up to 10 syringes. |
+| 🎒 **Same story rules** | Item puzzles (rope, lighter, saw, fuse, scissors...) work for every player. After the train crash every player loses the bag and has 3 slots, as in the story. The Doctor's shot lowers max health for every player. |
+| 📦 **Items for every player** | The first time you enter a map, ammo, syringes and weapons get one copy for each extra player, placed side by side. Keys and story items are not copied, but the others are told who picked one up. You can carry up to 10 syringes. |
 | 🧩 **Two-half items** | When the two halves of an item are picked up by different players, they go to one player so they can be combined. |
 | 🗺️ **Maps keep their state** | A map you go back to stays as you left it: taken items, dead enemies, opened doors and solved puzzles. |
-| 📼 **Saving** | Only the host can save. The host uses a tape recorder and picks slot 1, 2 or 3. Saves are kept on the host's PC. |
+| 🪜 **Ladders for everyone** | Every player can climb the same ladder at the same time. |
+| 🧍 **Your own player model** | Pick a model in the *Player Model* box or add your own. The others see it when the host has the same model. |
+| 🔓 **Unlock extras** | A host option that opens the Chapter 1 secret room with every unlockable. |
+| 📼 **Saving** | Only the host can save. The host uses a tape recorder and picks one of the 5 slots in the game's save window. Saves are kept on the host's PC. |
 | ✅ **Your game stays original** | The mod only runs when you start it with `Run Co-op Mod.cmd`. Starting Cry of Fear normally gives you the original game. |
 
 ## What you need
@@ -68,6 +71,7 @@ The download has these files:
 | `Run Co-op Mod.cmd` | **Every time you play** |
 | `Uninstall.cmd` | To remove the mod |
 | `READ ME.txt` | The same instructions as this page |
+| `playermodels` folder | To add your own player models (see [Play](#2-play)) |
 
 ### 1. Install (every player)
 
@@ -81,9 +85,9 @@ Every player runs **`Run Co-op Mod.cmd`**.
 
 - **Host:** click *Host Simon's Story*. The game's **Create Server** window
   opens: pick where to start (*Chapter-0-Prologue* up to
-  *Chapter-7-Only-Safe-at-Home*) or a save (*Load-Save-Slot-1/2/3*), set the
-  number of players (2 to 4), the difficulty and player collision, and click
-  **Start**. A chapter starts where its title card shows, with the weapons
+  *Chapter-7-Only-Safe-at-Home*) or a save (*Load-Save-Slot-1* to *5*), set the
+  number of players (2 to 4), the difficulty, player collision and *Unlock
+  extras*, and click **Start**. A chapter starts where its title card shows, with the weapons
   Simon has found by then. Give your friends your address (for
   example your Radmin VPN IP).
 - **Friend:** click *Join Simon's Story*. A box opens: type the host's IP
@@ -95,6 +99,13 @@ Every player runs **`Run Co-op Mod.cmd`**.
   ```
   connect 192.168.1.1:27015
   ```
+- **Player model (optional):** click *Player Model*, type one of the listed
+  models and click **Log on**. Your choice is kept for the next start. To add
+  your own model, put its `.mdl` file (made for the Cry of Fear player
+  skeleton) in the `playermodels` folder next to `Run Co-op Mod.cmd` and start
+  the mod again. The others see your model when the host has it too, so the
+  host needs the same file in their `playermodels` folder. Players who join
+  download it.
 
 > [!TIP]
 > **Skip a cutscene:** press **R** (the screen shows "Press R to skip"). When every player has pressed it, the scene
@@ -135,11 +146,15 @@ Every bug report needs the **log file**. That's how we can see what happened.
   designed around player 1.
 - Some particle effects may only show for the host.
 - Three and four players have not been tested yet.
+- Open bugs: the elevator scene after entering the code does not show, a
+  crawler enemy is missing in the subway, some enemies in the university can't
+  be hurt, crouching on a save station jitters, and a door opened from the other
+  side is closed again when you go back.
 
 ## Credits
 
 Co-op mod developed by **Anas Sammak (koolkat)**.
-Special thanks: **Mesilll**, **Michal Eminov**, **caixa**, **joah**.
+Special thanks: **Mesilll**, **Michal Eminov**, **caixa**, **Joah230**.
 
 Cry of Fear is made by Team Psykskallar. This is an unofficial fan mod and
 requires the original game from Steam.
