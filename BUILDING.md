@@ -31,7 +31,7 @@ released v0.5.1 adapter has SHA256 `a1181dbf...`.
 powershell -NoProfile -ExecutionPolicy Bypass -File native/rc4/test.ps1 -Adapter <build folder>\storycoop_rc4.dll -OutputDirectory <new empty folder>
 ```
 
-It builds the 14 fixture programs from `native/rc4/test-*.cpp` and runs them.
+It builds the 15 fixture programs from `native/rc4/test-*.cpp` and runs them.
 No game DLL is loaded and the game is not started. Expect
 `PASS all 15 native fixture suites`.
 

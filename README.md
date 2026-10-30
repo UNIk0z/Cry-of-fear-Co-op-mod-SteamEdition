@@ -149,9 +149,9 @@ Every bug report needs the **log file**. That's how we can see what happened.
 - Three and four players have not been tested yet.
 - Open bugs: a crawler enemy is missing in the subway, and crouching on a save
   station jitters.
-- Fixed in v0.7 but not yet tried in a co-op session: the university enemies,
-  the elevator scene after entering the code and the door opened from the other
-  side. The outfits have only been tried alone so far.
+- The v0.7 fixes have not been tried in a co-op session yet, including the
+  university enemies, the elevator scene after entering the code and the door
+  opened from the other side. The outfits have only been tried alone so far.
 
 ## Credits
 
