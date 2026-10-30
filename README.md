@@ -15,7 +15,7 @@
 
 ## ⬇️ Download
 
-### **[Click here to download Cry of Fear Co-op v0.7](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.7/Cry.of.Fear.Co-op.v0.7.zip)**
+### **[Click here to download Cry of Fear Co-op v0.7.1](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.7.1/Cry.of.Fear.Co-op.v0.7.1.zip)**
 
 > [!IMPORTANT]
 > **Don't use the green "Code" button or "Download ZIP".** That gives you the
@@ -110,7 +110,7 @@ Every player runs **`Run Co-op Mod.cmd`**.
 
 > [!TIP]
 > **Skip a cutscene:** press **R** (the screen shows "Press R to skip"). When every player has pressed it, the scene
-> jumps to its end. Yes/no choices, trains, boss fights and the endings cannot be skipped.
+> jumps to its end. Only scenes with a yes/no choice still to come, and the stats screen at the end, cannot be skipped.
 >
 > **Stuck somewhere?** Press **Y** (chat) and type `stuck`. You are moved next
 > to another player.
@@ -149,7 +149,7 @@ Every bug report needs the **log file**. That's how we can see what happened.
 - Three and four players have not been tested yet.
 - Open bugs: a crawler enemy is missing in the subway, and crouching on a save
   station jitters.
-- The v0.7 fixes have not been tried in a co-op session yet, including the
+- The v0.7 and v0.7.1 fixes have not been tried in a co-op session yet, including the
   university enemies, the elevator scene after entering the code and the door
   opened from the other side. The outfits have only been tried alone so far.
 
