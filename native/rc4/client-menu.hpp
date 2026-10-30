@@ -21,28 +21,31 @@ std::vector<unsigned char> client_dword(std::uint32_t v){return {static_cast<uns
 std::vector<unsigned char> client_text(const char* s,std::size_t length){std::vector<unsigned char> b(length,0);for(std::size_t i=0;i<length&&s[i];++i)b[i]=static_cast<unsigned char>(s[i]);return b;}
 std::vector<ClientPatch> client_patches(){
  std::vector<ClientPatch> p;
- // Main menu click ids 1..10 (jump table 1002DF68): Simon's Story list, Join
- // Server, Options, Quit; ids 5..10 return at once.
+ // Main menu click ids 1..10 (jump table 1002DF68): the rows Host, Join, Player
+ // Model, Options and (id 9, the Host Server slot) Quit; the other ids return at once.
  const std::uint32_t was[10]={0x1002D97C,0x1002D9D2,0x1002DB2E,0x1002DCAD,0x1002DCC2,0x1002DCD7,0x1002DD19,0x1002DD7C,0x1002DDC1,0x1002DDD6};
  // v0.5.1: id 1 (Host Simon's Story) runs the game's own Host Server handler
  // 1002DDC1 ("optionshack 1" -> GameUI's Create Server window, GameUI 10031388).
  // v0.7 (Player Model, Katz 2026-10-27): Host, Join, Player Model, Options, Quit.
  // Id 3 runs 1002DCD7 (id 6's handler, unused since v0.1), rewritten below to
  // send "sc_modelbox" the way id 2 sends "sc_joinbox".
- const std::uint32_t now[10]={0x1002DDC1,0x1002DCAD,0x1002DCD7,0x1002DCC2,0x1002DDD6,0x1002DF61,0x1002DF61,0x1002DF61,0x1002DF61,0x1002DF61};
+ const std::uint32_t now[10]={0x1002DDC1,0x1002DCAD,0x1002DCD7,0x1002DCC2,0x1002DF61,0x1002DF61,0x1002DF61,0x1002DF61,0x1002DDD6,0x1002DF61};
  for(std::uint32_t i=0;i<10;++i)p.push_back({0x1002DF68+i*4,client_dword(was[i]),client_dword(now[i]),true});
  struct Image {std::uint32_t va;const char* was;const char* is;std::size_t length;};
  for(const auto& m:{Image{0x10143648,"gfx/vgui/menu/newgame.tga","gfx/vgui/menu/sc_host.tga",26},Image{0x10143900,"gfx/vgui/menu/newgame_mo.tga","gfx/vgui/menu/sc_host_mo.tga",29},
    Image{0x10143664,"gfx/vgui/menu/loadgame.tga","gfx/vgui/menu/sc_join.tga",27},Image{0x10143920,"gfx/vgui/menu/loadgame_mo.tga","gfx/vgui/menu/sc_join_mo.tga",30},
    Image{0x10143680,"gfx/vgui/menu/customc.tga","gfx/vgui/menu/sc_mdl.tga",26},Image{0x10143940,"gfx/vgui/menu/customc_mo.tga","gfx/vgui/menu/sc_mdl_mo.tga",29},
    Image{0x1014369C,"gfx/vgui/menu/jserver.tga","gfx/vgui/menu/options.tga",26},Image{0x10143960,"gfx/vgui/menu/jserver_mo.tga","gfx/vgui/menu/options_mo.tga",29},
-   Image{0x101436B8,"gfx/vgui/menu/options.tga","gfx/vgui/menu/quit.tga",26},Image{0x10143980,"gfx/vgui/menu/options_mo.tga","gfx/vgui/menu/quit_mo.tga",29},
+   Image{0x1014372C,"gfx/vgui/menu/hserver.tga","gfx/vgui/menu/quit.tga",26},Image{0x10143A00,"gfx/vgui/menu/hserver_mo.tga","gfx/vgui/menu/quit_mo.tga",29},
    Image{0x101437B0,"PARSING CUSTOM CAMPAIGN: %s","sc_modelbox",27},   // its print of the campaign list now says sc_modelbox
    Image{0x1014389C,"gfx/vgui/menu_logo.tga","gfx/vgui/sc_logo.tga",23}})
   p.push_back({m.va,client_text(m.was,m.length),client_text(m.is,m.length),false});
- // Slots 6..10 (v0.7: slot 5 is Quit now): every setVisible(1) of their buttons and images -> setVisible(0).
- for(const std::uint32_t va:{0x1002DE46u,0x1002DE53u,0x1002DE60u,0x1002DE6Du,0x1002DE7Au,0x1002ED74u,0x1002ED81u,0x1002ED8Eu,0x1002ED9Bu,0x1002EDA8u,
-   0x1002CB57u,0x1002CBBDu,0x1002CC23u,0x1002CC8Bu,0x1002CCEDu,0x1002DED5u,0x1002DEE2u,0x1002DEEFu,0x1002DEFCu,0x1002DF0Bu,0x1002EE03u,0x1002EE10u,0x1002EE1Du,0x1002EE2Au,0x1002EE37u})
+ // Every setVisible(1) of the buttons and images of Options, Language, Unlockables,
+ // Extras and Quit -> setVisible(0). Host Server stays: its slot is the fifth row on
+ // screen (decomp GameMenu_guess.cpp: Options is the fifth in the code, but its
+ // row is the second from the bottom), and it is Quit now.
+ for(const std::uint32_t va:{0x1002DE39u,0x1002DE46u,0x1002DE53u,0x1002DE60u,0x1002DE7Au,0x1002ED67u,0x1002ED74u,0x1002ED81u,0x1002ED8Eu,0x1002EDA8u,
+   0x1002CAF1u,0x1002CB57u,0x1002CBBDu,0x1002CC23u,0x1002CCEDu,0x1002DEC8u,0x1002DED5u,0x1002DEE2u,0x1002DEEFu,0x1002DF0Bu,0x1002EDF6u,0x1002EE03u,0x1002EE10u,0x1002EE1Du,0x1002EE37u})
   p.push_back({va,{0x6a,0x01},{0x6a,0x00},false});
  // The Simon's Story page lists maps/storyc*m (the co-op entries only).
  p.push_back({0x10143888,client_text("*.custom",8),client_text("storyc*m",8),false});
@@ -76,7 +79,7 @@ std::vector<ClientPatch> client_patches(){
  // labels as SAVE/coopinfo<slot>.cof in co-op launches, never the single-player
  // SAVE/saveinfo<slot>.cof (ReadSlot 10144xxx "%ssaveinfo%i.cof", COM_LoadFile and
  // WriteSaveInfo names for slots 1-5).
- for(std::uint32_t va:{0x101442B4u,0x10144339u,0x10144378u,0x1014438Du,0x101443BCu,0x101443D1u,0x10144400u,0x10144415u,0x10144444u,0x10144459u,0x10144488u})p.push_back({va,client_text("saveinfo",8),client_text("coopinfo",8),false});
+ for(std::uint32_t va:{0x101442B2u,0x10144339u,0x10144378u,0x1014438Du,0x101443BCu,0x101443D1u,0x10144400u,0x10144415u,0x10144444u,0x10144459u,0x10144488u})p.push_back({va,client_text("saveinfo",8),client_text("coopinfo",8),false});
  return p;
 }
 // While the join box is open on the main menu, the game's computer login panel
@@ -146,8 +149,8 @@ bool join_box_text(bool on){
 // frames stop while GameUI is up, so a server frame never sees it. Inside the
 // timer only the adapter log file is written, never the engine console.
 std::vector<ClientPatch> menu_hold_patches(){
- std::vector<ClientPatch> p;const std::uint32_t now[5]={0x1002DDC1,0x1002DCAD,0x1002DCD7,0x1002DCC2,0x1002DDD6};
- for(std::uint32_t i=0;i<5;++i)p.push_back({0x1002DF68+i*4,client_dword(now[i]),client_dword(0x1002DF61),true});
+ std::vector<ClientPatch> p;const std::uint32_t now[5][2]={{0,0x1002DDC1},{1,0x1002DCAD},{2,0x1002DCD7},{3,0x1002DCC2},{8,0x1002DDD6}};
+ for(const auto& id:now)p.push_back({0x1002DF68+id[0]*4,client_dword(id[1]),client_dword(0x1002DF61),true});
  return p;
 }
 bool menuHeld=false;UINT_PTR menuTimer=0;
@@ -243,70 +246,107 @@ void join_connect_frame(){
  if(pendingJoin.target.empty()||GetTickCount64()<pendingJoin.due)return;const std::string target=pendingJoin.target;pendingJoin={};
  if(engine[39])eng<void(__cdecl*)(const char*)>(39)(("connect "+target+"\n").c_str());
 }
-// --- The player model box (v0.7, docs/V07_TODO.md 3) ----------------------------------------
-// Katz 2026-10-27: a "Player Model" button on the co-op main menu, beside Host
-// and Join, with a box like the Join box. The button (client_patches: slot 3,
-// "sc_modelbox") opens the game's computer login panel (as the Join box) with
-// its own texts; the models this PC has are listed above it (centre print):
-// "simon" and every other folder models/player/<name>/<name>.mdl except the
-// game's police1-4 (Run Co-op Mod.cmd copies the mod's playermodels folder
-// there). The name typed into the first field is kept in
-// cryoffear/storycoop_model.txt (the launcher passes it as "setinfo sc_model"
-// at every start) and set at once with setinfo in this game's own console.
-// The host's server shows each player with the model his sc_model names when
-// the host has that model too (session-runtime.hpp model_frame), else as Simon.
-std::vector<ClientPatch> model_box_patches(){
- return {{0x101474E0,client_text("Enter a username...",20),client_text("Type a model name..",20),false},
-  {0x101474F4,client_text("Enter a password...",20),client_text("(leave this empty) ",20),false},
-  {0x10147414,client_text("Invalid username or password!",30),client_text("That model is not on this PC.",30),false},
-  {0x10147434,client_text("Invalid password or password!",30),client_text("That model is not on this PC.",30),false}};
-}
-bool model_box_text(bool on){
- if(!clientImage)return false;std::vector<ClientPatch> list=model_box_patches();
- if(!on)for(auto& p:list)std::swap(p.from,p.to);
- std::string why;const int result=patch_apply(list,clientImage,clientImageSize,reinterpret_cast<std::uint32_t>(clientImage),why);
- if(!result){const std::string line="[STORYCOOP_RC4] MODEL box texts not changed: "+why+"\n";log(line.c_str());}
- return result!=0;
-}
-bool model_name_ok(const std::string& s){return !s.empty()&&s.size()<=32&&std::all_of(s.begin(),s.end(),[](char c){return (c>='a'&&c<='z')||(c>='0'&&c<='9')||c=='_'||c=='-';});}
-std::filesystem::path game_dir_path(){char dir[MAX_PATH]{};if(!engine[99])return {};eng<void(__cdecl*)(char*)>(99)(dir);if(!dir[0]||!std::memchr(dir,0,MAX_PATH))return {};return std::filesystem::path(dir);}
-std::vector<std::string> local_player_models(){
- std::vector<std::string> out{"simon"};const auto dir=game_dir_path();if(dir.empty())return out;std::error_code error;
- for(const auto& d:std::filesystem::directory_iterator(dir/L"models"/L"player",error)){
-  std::string n=d.path().filename().string();for(auto& c:n)c=static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-  if(!model_name_ok(n)||n=="simon"||(n.size()==7&&n.rfind("police",0)==0))continue;std::error_code e2;
-  if(std::filesystem::is_regular_file(d.path()/(d.path().filename().wstring()+L".mdl"),e2))out.push_back(n);
-  if(out.size()>=40)break;}
- return out;
-}
-struct ModelBox {Edict* who=nullptr;int serial=-1;} modelBox;
-void model_box_close(const char* line){if(!modelBox.who)return;model_box_text(false);modelBox={};if(line)log(line);}
-void model_box_list(Edict* e,const char* head){
- if(!engine[80]||!live(e))return;std::string text=std::string(head)+"Player models on this PC:\n";int n=0;
- for(const auto& m:local_player_models()){text+=m;text+=++n%6?"   ":"\n";}
- eng<void(__cdecl*)(Edict*,int,const char*)>(80)(e,1,text.c_str());
-}
-bool model_box_command(Edict* e,const char* command){
- if(!command||!globals||std::strcmp(map_name(),"c_game_menu1"))return false;
- if(!std::strcmp(command,"sc_modelbox")){
-  if(joinBox.who)join_box_close(nullptr);
-  if(computerMessage<=0||!model_box_text(true)){log("[STORYCOOP_RC4] MODEL box unavailable\n");return true;}
-  modelBox={e,serial(e)};join_box_show(e,false);model_box_list(e,"");log("[STORYCOOP_RC4] MODEL box open\n");return true;
- }
- if(!modelBox.who||e!=modelBox.who||serial(e)!=modelBox.serial)return false;
- if(!std::strcmp(command,"stopcomputer")){if(engine[80])eng<void(__cdecl*)(Edict*,int,const char*)>(80)(e,1,"");model_box_close("[STORYCOOP_RC4] MODEL box closed (Cancel)\n");return true;}
- if(std::strcmp(command,"computercheck"))return false;
- std::string raw;if(engine[82]){const char* a=eng<const char*(__cdecl*)()>(82)();raw=a?a:"";}
- std::size_t at=0;while(at<raw.size()&&(raw[at]==' '||raw[at]=='"'))++at;std::string name;while(at<raw.size()&&raw[at]!=' '&&raw[at]!='"')name+=static_cast<char>(std::tolower(static_cast<unsigned char>(raw[at++])));
- const auto models=local_player_models();
- if(name=="type"||std::find(models.begin(),models.end(),name)==models.end()){join_box_show(e,true);model_box_list(e,"That model is not on this PC.\n");char bad[160]{};std::snprintf(bad,sizeof(bad),"[STORYCOOP_RC4] MODEL refused \"%.60s\"\n",name.c_str());log(bad);return true;}
- const auto dir=game_dir_path();bool saved=false;
- if(!dir.empty()){std::ofstream f(dir/L"storycoop_model.txt",std::ios::binary|std::ios::trunc);if(f){f<<name;saved=static_cast<bool>(f);}}
- if(engine[39])eng<void(__cdecl*)(const char*)>(39)(("setinfo sc_model \""+name+"\"\n").c_str());
- if(engine[80])eng<void(__cdecl*)(Edict*,int,const char*)>(80)(e,1,("Player model: "+name).c_str());
- char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MODEL chosen: %s%s\n",name.c_str(),saved?"":" (could not be saved for the next start)");model_box_close(line);
- return true;
-}
+// --- The player model box (v0.7, docs/V07_TODO.md 3) ----------------------------------------
+// Katz 2026-10-27: a "Player Model" button on the co-op main menu, beside Host
+// and Join, with a box like the Join box; 2026-10-30: nothing can be typed in it,
+// with Simon's outfits and a preview of the model shown. The button
+// (client_patches: slot 3, "sc_modelbox") opens the game's computer panel in its
+// logged-on state, which has no text fields (decomp Computer_guess.cpp): its
+// picture is the one of the model shown (sc_mb<n>.tga with a rendered preview,
+// scripts/menu/make-modelbox.py) and its text panel names the model. OK normally
+// closes a logged-on panel; here it sends computercheck, so it is "Next". Cancel
+// and the power button ("Done") close the panel and send stopcomputer. The panel
+// covers the screen, so nothing behind it can be read.
+// The models: "simon", the outfits (built at install) and every other folder
+// models/player/<name>/<name>.mdl except the game's police1-4 (Run Co-op Mod.cmd
+// copies the mod's playermodels folder there). The choice is kept in
+// cryoffear/storycoop_model.txt (the launcher passes it as "setinfo sc_model" at
+// every start) and set at once with setinfo in this game's own console. The host's
+// server shows each player with the model their sc_model names when the host has
+// that model too (session-runtime.hpp model_frame), else as Simon.
+std::vector<ClientPatch> model_box_patches(){
+ return {{0x1003EF6A,{0x75,0xD2},{0x90,0x90},false},
+  {0x1014736C,client_text("Jill - %s! - David\n",20),client_text("%s\n",20),false},
+  // Katz 2026-10-30: no grey box behind the text. The panel's sound branch (never
+  // reached: the box is silent) becomes "esi = text panel; setVisible(1);
+  // setBgColor(0,0,0,255), which is transparent in VGUI1; jmp 1003F34C", the
+  // function's end. The picture has the card the text sits on.
+  {0x1003F201,{0x8B,0x11,0xFF,0x52,0x24,0x85,0xF6,0x0F,0x84,0x3E,0x01,0x00,0x00,0x83,0xBD,0xF8,0xFD,0xFF,0xFF,0x00,0x0F,0x85,0x31,0x01,0x00,0x00,0x6A,0x64,0x6A,0x00},
+   {0x8B,0xF1,0x8B,0x11,0xFF,0x52,0x24,0x6A,0xFF,0x6A,0x00,0x6A,0x00,0x6A,0x00,0x8B,0x06,0x8B,0xCE,0xFF,0x90,0x2C,0x01,0x00,0x00,0xE9,0x2D,0x01,0x00,0x00},false}};
+}
+bool model_box_text(bool on){
+ if(!clientImage)return false;std::vector<ClientPatch> list=model_box_patches();
+ if(!on)for(auto& p:list)std::swap(p.from,p.to);
+ std::string why;const int result=patch_apply(list,clientImage,clientImageSize,reinterpret_cast<std::uint32_t>(clientImage),why);
+ if(!result){const std::string line="[STORYCOOP_RC4] MODEL box texts not changed: "+why+"\n";log(line.c_str());}
+ return result!=0;
+}
+bool model_name_ok(const std::string& s){return !s.empty()&&s.size()<=32&&std::all_of(s.begin(),s.end(),[](char c){return (c>='a'&&c<='z')||(c>='0'&&c<='9')||c=='_'||c=='-';});}
+std::filesystem::path game_dir_path(){char dir[MAX_PATH]{};if(!engine[99])return {};eng<void(__cdecl*)(char*)>(99)(dir);if(!dir[0]||!std::memchr(dir,0,MAX_PATH))return {};return std::filesystem::path(dir);}
+std::vector<std::string> local_player_models(){
+ std::vector<std::string> out{"simon"};const auto dir=game_dir_path();if(dir.empty())return out;std::error_code error;
+ for(const auto& o:ModelOutfits){const std::string m=o.model;std::error_code e2;if(std::filesystem::is_regular_file(dir/"models"/"player"/m/(m+".mdl"),e2))out.push_back(m);}
+ // Names come from the folder: a name outside a-z0-9_- is skipped before it is ever narrowed.
+ std::filesystem::directory_iterator it(dir/L"models"/L"player",error),end;
+ while(!error&&it!=end&&out.size()<40){
+  const auto folder=it->path();const std::wstring wide=folder.filename().wstring();std::string n;
+  for(const wchar_t c:wide)n+=c<128?static_cast<char>(std::tolower(static_cast<unsigned char>(c))):'?';
+  std::error_code e2;
+  if(model_name_ok(n)&&n!="simon"&&!model_outfit(n)&&!(n.size()==7&&n.rfind("police",0)==0)&&std::filesystem::is_regular_file(folder/(wide+L".mdl"),e2))out.push_back(n);
+  it.increment(error);
+ }
+ return out;
+}
+struct ModelBox {Edict* who=nullptr;int serial=-1;std::string current,picture;} modelBox;
+constexpr std::uint32_t ModelBoxPicture=0x10147380;constexpr std::size_t ModelBoxPictureBytes=47;
+const char* const ModelBoxPictureShipped="gfx/vgui/puzzle/computer/computer_loggedon.tga";
+bool model_box_set_picture(const std::string& path){
+ const std::string& now=modelBox.picture.empty()?std::string(ModelBoxPictureShipped):modelBox.picture;
+ std::string why;const int result=clientImage?patch_apply({{ModelBoxPicture,client_text(now.c_str(),ModelBoxPictureBytes),client_text((path.empty()?ModelBoxPictureShipped:path.c_str()),ModelBoxPictureBytes),false}},clientImage,clientImageSize,reinterpret_cast<std::uint32_t>(clientImage),why):0;
+ if(!result){const std::string line="[STORYCOOP_RC4] MODEL box picture not changed: "+why+"\n";log(line.c_str());return false;}
+ modelBox.picture=path;return true;
+}
+void model_box_close(const char* line){if(!modelBox.who)return;model_box_set_picture("");model_box_text(false);modelBox={};if(line)log(line);}
+std::string model_box_saved(const std::vector<std::string>& models){
+ const auto dir=game_dir_path();std::string name;if(!dir.empty()){std::ifstream f(dir/L"storycoop_model.txt",std::ios::binary);if(f)f>>name;}
+ for(auto& c:name)c=static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+ return std::find(models.begin(),models.end(),name)==models.end()?"simon":name;
+}
+void model_box_show(Edict* e,const std::vector<std::string>& models){
+ if(computerMessage<=0||!live(e))return;
+ const auto at=std::find(models.begin(),models.end(),modelBox.current);const int outfit=model_outfit(modelBox.current);
+ const std::string picture=modelBox.current=="simon"?"gfx/vgui/sc_mb0.tga":outfit?"gfx/vgui/sc_mb"+std::to_string(outfit)+".tga":"gfx/vgui/sc_mbx.tga";
+ if(!model_box_set_picture(picture))return;
+ const std::string text="\n"+model_label(modelBox.current)+"\n\nModel "+std::to_string(at-models.begin()+1)+" of "+std::to_string(models.size())+"\n\nNext: next model\nDone: keep this one";
+ eng<void(__cdecl*)(int,int,const float*,Edict*)>(46)(1,computerMessage,nullptr,e);
+ for(int v:{1,0,0,1})eng<void(__cdecl*)(int)>(48)(v);   // logged on, wrong user, wrong password, silent
+ eng<void(__cdecl*)(const char*)>(54)(text.c_str());eng<void(__cdecl*)()>(47)();
+}
+void model_box_choose(const std::string& name){
+ modelBox.current=name;const auto dir=game_dir_path();bool saved=false;
+ if(!dir.empty()){std::ofstream f(dir/L"storycoop_model.txt",std::ios::binary|std::ios::trunc);if(f){f<<name;saved=static_cast<bool>(f);}}
+ if(engine[39])eng<void(__cdecl*)(const char*)>(39)(("setinfo sc_model \""+name+"\"\n").c_str());
+ // The client's loaded outfit textures (hands, story Simon) come again from the new one: what the game's own wardrobe clears (decomp ClothesMenu_guess.cpp).
+ for(const std::uint32_t va:{0x104D26C5u,0x104D26D1u,0x104D26C6u,0x104D26D2u})if(clientImage&&va-0x10000000u<clientImageSize)clientImage[va-0x10000000u]=0;
+ char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MODEL chosen: %s%s\n",name.c_str(),saved?"":" (could not be saved for the next start)");log(line);
+}
+bool model_box_command(Edict* e,const char* command){
+ if(!command||!globals||std::strcmp(map_name(),"c_game_menu1"))return false;
+ if(!std::strcmp(command,"sc_joinbox")){model_box_close(nullptr);return false;}   // the join box needs the game's own strings back
+ if(!std::strcmp(command,"sc_modelbox")){
+  if(joinBox.who)join_box_close(nullptr);model_box_close(nullptr);
+  if(computerMessage<=0||!model_box_text(true)){log("[STORYCOOP_RC4] MODEL box unavailable\n");return true;}
+  const auto models=local_player_models();modelBox.who=e;modelBox.serial=serial(e);modelBox.current=model_box_saved(models);model_box_show(e,models);
+  char line[120]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MODEL box open: %u model(s), current %s\n",static_cast<unsigned>(models.size()),modelBox.current.c_str());log(line);return true;
+ }
+ if(!modelBox.who||e!=modelBox.who||serial(e)!=modelBox.serial)return false;
+ if(!std::strcmp(command,"stopcomputer")){model_box_close("[STORYCOOP_RC4] MODEL box closed\n");return true;}
+ if(std::strcmp(command,"computercheck"))return false;
+ const auto models=local_player_models();const auto found=std::find(models.begin(),models.end(),modelBox.current);
+ model_box_choose(models[((found==models.end()?models.size()-1:static_cast<std::size_t>(found-models.begin()))+1)%models.size()]);
+ model_box_show(e,models);
+ return true;
+}
 // --- Up to ten syringes in co-op (v0.6.1) ---------------------------------------------
 // Katz 2026-10-25: "players should be able to hold more than one morphine/syringe
 // ... in singleplayer simon can hold max 10". CSyringe::GetItemInfo gives 10

@@ -705,6 +705,7 @@ std::vector<std::string> manager_targets(Edict* e,int from);   // below
 // every trigger leading to another level (searched outward up to 480 units).
 struct Arrival {const char* from;const char* to;const char* landmark;float src[3];float dst[3];};
 const Arrival Arrivals[]={
+ {"apartment3","s4_apartmentsick_e0","landfitta",{-1201,2448,68},{-1201,2448,68}},   // v0.7.1: the elevator scene's trigger_once *10 is at this arrival (multi_hiss_1)
  {"apartment3sick","s4_down","down_li",{315,-402,380},{315,-402,380}},{"apartmentsick","s4_apartment3_e4","landfitta",{-1201,2448,68},{-1201,2448,68}},
  {"apartmentsick","s4_basement_e0","landkuk",{-3245,2496,502},{-3245,2496,502}},{"basement","s4_apartmentsick_e1","landkuk",{-3245,2496,502},{-3245,2496,502}},
  {"buscity","s4_city_e1","landbc",{-507,-1184,-54},{-507,-1184,-54}},{"college1dark","s4_hamn3_e0","2hcl2",{-1351,1705,-1144},{-1351,1705,-632}},
@@ -752,14 +753,27 @@ bool arrival_landing(const std::array<float,3>& anchor,Edict* skip,const std::ve
  }
  return false;
 }
+// v0.7.1: the one-shot triggers the single-player arrival stands in fire even
+// when the landing had to move aside: s4_city *47 unlocks the door back to the
+// bus map (Playtest 3 clip 16), s4_apartmentsick *10 starts the elevator scene.
+void arrival_fire(const std::array<float,3>& spot,Edict* e){
+ Edict* t=nullptr;
+ for(int n=0;n<512;++n){t=find_next(t,"classname","trigger_once");if(!t)break;auto v=vars(t);if(!v)continue;
+  bool in=true;for(int k=0;k<3;++k)if(spot[k]<load<float>(v,0xc4+k*4)||spot[k]>load<float>(v,0xd0+k*4))in=false;if(!in)continue;
+  const char* target=string_at(load<int>(v,0x1cc));std::set<std::string> seen;if(target&&*target&&exit_reaches(target,0,seen))continue;
+  char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] ARRIVAL fires the trigger at the arrival spot (target %.60s)\n",target?target:"");log(line);
+  native<void(__cdecl*)(Edict*,Edict*)>(4)(t,e);}
+}
 void arrival_frame(Edict* e){
  auto& p=pendingArrival;if(!p.a||!globals||!scoped())return;
  if(_stricmp(map_name(),p.a->to)){if(map_base(map_name())!=p.a->from)p={};return;}   // the old map may run on for a frame
+ if(loadWait.armed)return;   // v0.7.1: everyone is in before a scene at the arrival can start
  const float now=load<float>(globals,0);if(!p.armed){p.armed=true;p.until=now+60.f;p.exits=exit_volumes();}if(now>p.until){p={};return;}
  if(!view_alive(e)||!client_ready(e)||!carry_settled(e)||p.placed.count({e,serial(e)}))return;p.placed.insert({e,serial(e)});
  const std::array<float,3> spot{p.a->dst[0]+p.offset[0],p.a->dst[1]+p.offset[1],p.a->dst[2]+p.offset[2]},mark{p.a->dst[0],p.a->dst[1],p.a->dst[2]+37.f};
  std::array<float,3> at{};const bool moved=(arrival_landing(spot,e,p.exits,at)||arrival_landing(mark,e,p.exits,at))&&teleport_to(e,at,load<float>(vars(e),0x54));
  char line[200]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] ARRIVAL player=%d from %s: %s (landmark %s, %d exit trigger(s) avoided)\n",eng<int(__cdecl*)(Edict*)>(71)(e),p.a->from,moved?"placed as in single player":"no clear spot there, stays at the map start",p.a->landmark,static_cast<int>(p.exits.size()));log(line);
+ if(p.placed.size()==1)arrival_fire(spot,e);
 }
 // --- A door that locks behind the first player (v0.6) --------------------------------------
 // Playtest 2 clip 14 ("door just gets locked as soon as the other player goes

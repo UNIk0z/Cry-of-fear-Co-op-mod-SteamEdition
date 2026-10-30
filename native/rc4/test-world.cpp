@@ -23,6 +23,7 @@ void* pd(Edict* e){auto it=mem.find(e);return it==mem.end()?nullptr:it->second.d
 void* alloc(Edict* e,int n){mem[e]=std::vector<unsigned char>(n);return mem[e].data();}
 void free_(Edict* e){mem.erase(e);}
 void print(const char* s){lines.emplace_back(s);}
+std::vector<std::pair<Edict*,Edict*>> touches;void touch_(Edict* e,Edict* other){touches.push_back({e,other});}
 void client_print(Edict*,int,const char* s){lines.emplace_back(std::string("CLIENT:")+s);}
 Edict* find_(Edict* start,const char* key,const char* value){
  const int field=std::strcmp(key,"classname")==0?0:0x1d0;
@@ -351,6 +352,18 @@ int main(int argc,char** argv){
   store(mp1,0x2278,(unsigned char)0);store(mp1,0x1ebc,0);
   store(ev(&entities[1]),0x164,20.f);limp_frame(&entities[1]);assert(phys["low"]=="1");store(ev(&entities[1]),0x164,90.f);limp_frame(&entities[1]);assert(phys["low"]=="0");
   engine[90]=nullptr;engine[119]=nullptr;engine[120]=nullptr;concussMessage=0;screenFadeMessage=0;morphineWatch.clear();}
+ // --- v0.7.1: the elevator scene and the door unlock wait at the single-player arrival (s4_apartmentsick_e0 *10, s4_city *47).
+ {const int mapBefore=load<int>(globals,0x0c);store(globals,0x0c,intern("s4_apartment3_e0"));nextFree=25;lines.clear();touches.clear();pendingArrival={};loadWait={};
+  original[4]=reinterpret_cast<void*>(&touch_);
+  for(int i:{1,2}){place(&entities[i],-1204,2449,-18);allocations[&entities[i]].commands=1;allocations[&entities[i]].hudDue=0;carryDone[&entities[i]]=serial(&entities[i]);}
+  arrival_level_change("s4_apartmentsick_e0");assert(pendingArrival.a&&!std::strcmp(pendingArrival.a->from,"apartment3"));
+  store(globals,0x0c,intern("s4_apartmentsick_e0"));
+  auto once=created(intern("trigger_once"));store(ev(once),0xc4,-1251.f);store(ev(once),0xc8,2403.f);store(ev(once),0xcc,-38.f);store(ev(once),0xd0,-1155.f);store(ev(once),0xd4,2496.f);store(ev(once),0xd8,134.f);store(ev(once),0x1cc,intern("multi_hiss_1"));
+  auto away=created(intern("trigger_once"));store(ev(away),0xc4,5000.f);store(ev(away),0xd0,5100.f);store(ev(away),0x1cc,intern("not_here"));
+  loadWait.armed=true;arrival_frame(&entities[1]);assert(touches.empty()&&pendingArrival.placed.empty());   // the partner is still loading
+  loadWait={};arrival_frame(&entities[1]);assert(touches.size()==1&&touches[0].first==once&&touches[0].second==&entities[1]&&logged({"ARRIVAL fires","multi_hiss_1"})&&logged({"ARRIVAL player=1 from apartment3"}));
+  arrival_frame(&entities[2]);assert(touches.size()==1&&logged({"ARRIVAL player=2 from apartment3"}));
+  pendingArrival={};store(once,0,1);store(away,0,1);store(globals,0x0c,mapBefore);original[4]=nullptr;}
  // --- v0.5: the 10th byte of "Credits" (IsMultiplayer) reads 0 on story maps.
  {creditsMessage=99;wire.clear();message_begin(1,99,nullptr,&entities[1]);for(int i=1;i<=12;++i)write_byte(1);message_end();
   assert(wire[10]=="byte 0"&&wire[9]=="byte 1"&&wire[11]=="byte 1");

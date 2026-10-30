@@ -221,6 +221,47 @@ int main(int argc,char** argv_){
   argv={"sc_joinbox"};join_box_command(j,"sc_joinbox");assert(img!=shipped);argv={"stopcomputer"};assert(join_box_command(j,"stopcomputer")&&img==shipped&&logged("JOIN box closed"));
   // The computer puzzle in the story is never taken.
   store(globals,0x0c,1);argv={"computercheck","a","b"};assert(!join_box_command(j,"computercheck"));clientImage=nullptr;clientImageSize=0;computerMessage=0;}
+ // v0.7 Player Model: Next goes through the models, Done closes the box, the game's strings come back; nothing can be typed.
+ {reset_players();lines.clear();serverCommands.clear();messageBegins=0;store(globals,0x0c,3);computerMessage=91;
+  std::vector<unsigned char> img(0x150000,0);
+  for(const auto& list:{join_box_patches(),model_box_patches()})for(const auto& mp:list)std::copy(mp.from.begin(),mp.from.end(),img.begin()+(mp.va-0x10000000));
+  {const auto path=client_text(ModelBoxPictureShipped,ModelBoxPictureBytes);std::copy(path.begin(),path.end(),img.begin()+(ModelBoxPicture-0x10000000));}
+  clientImage=img.data();clientImageSize=img.size();const auto shipped=img;auto j=&entities[1];
+  const auto player=std::filesystem::path(gameDir)/"models"/"player";
+  for(const char* name:{"Caps","police1","zed","no file","simon_aom","simon_twitcher"}){std::filesystem::create_directories(player/name);if(std::strcmp(name,"no file"))std::ofstream(player/name/(std::string(name)+".mdl"))<<"x";}
+  std::filesystem::create_directories(player/L"café");std::ofstream(player/L"café"/L"café.mdl")<<"x";   // not a-z: skipped, no exception
+  auto picture=[&]{return std::string(reinterpret_cast<const char*>(img.data()+0x147380));};
+  auto saved=[&]{std::ifstream f(std::filesystem::path(gameDir)/"storycoop_model.txt",std::ios::binary);std::string s;f>>s;return s;};
+  assert((local_player_models()==std::vector<std::string>{"simon","simon_aom","simon_twitcher","caps","zed"}));   // Simon, the outfits in their order, then the player's own
+  assert(model_outfit("simon_aom")==4&&model_outfit("simon_twitcher")==11&&!model_outfit("simon")&&!model_outfit("zed")&&model_label("simon_aom")=="Afraid of Monsters"&&model_label("simon")=="Simon"&&model_label("zed")=="zed");
+  assert(model_box_command(j,"sc_modelbox")&&messageBegins==1&&message[1]==91&&(std::vector<int>(message.begin()+2,message.end())==std::vector<int>{1,0,0,1}));   // logged on: no text fields
+  assert(picture()=="gfx/vgui/sc_mb0.tga"&&messageText=="\nSimon\n\nModel 1 of 5\n\nNext: next model\nDone: keep this one"&&logged("MODEL box open: 5 model(s), current simon"));
+  assert(img[0x3EF6A]==0x90&&img[0x3EF6B]==0x90&&std::string(reinterpret_cast<const char*>(img.data()+0x14736C))=="%s\n");   // OK is Next, the text is ours
+  assert(img[0x3F201]==0x8B&&img[0x3F202]==0xF1&&img[0x3F208]==0x6A&&img[0x3F209]==0xFF&&img[0x3F215]==0x90&&img[0x3F216]==0x2C&&img[0x3F21A]==0xE9);   // setBgColor(0,0,0,255): no grey box
+  assert(model_box_command(j,"computercheck")&&picture()=="gfx/vgui/sc_mb4.tga"&&messageText.rfind("\nAfraid of Monsters\n\nModel 2 of 5",0)==0&&saved()=="simon_aom"&&serverCommands.back()=="setinfo sc_model \"simon_aom\"\n"&&messageBegins==2);
+  assert(model_box_command(j,"computercheck")&&picture()=="gfx/vgui/sc_mb11.tga"&&saved()=="simon_twitcher");
+  assert(model_box_command(j,"computercheck")&&picture()=="gfx/vgui/sc_mbx.tga"&&messageText.rfind("\ncaps\n\nModel 4 of 5",0)==0&&saved()=="caps");   // no preview for the player's own
+  assert(model_box_command(j,"computercheck")&&model_box_command(j,"computercheck")&&picture()=="gfx/vgui/sc_mb0.tga"&&saved()=="simon");   // wraps
+  assert(model_box_command(j,"computercheck")&&saved()=="simon_aom");
+  assert(model_box_command(j,"stopcomputer")&&img==shipped&&!modelBox.who&&logged("MODEL box closed"));
+  assert(!model_box_command(j,"stopcomputer")&&!model_box_command(j,"computercheck"));   // the game's own again
+  assert(model_box_command(j,"sc_modelbox")&&picture()=="gfx/vgui/sc_mb4.tga");   // kept for the next time
+  assert(!model_box_command(&entities[2],"computercheck")&&picture()=="gfx/vgui/sc_mb4.tga");   // only the player who opened it
+  // The join box while the model box is open (no stopcomputer came): the game's strings are back first.
+  argv={"sc_joinbox"};assert(!model_box_command(j,"sc_joinbox")&&!modelBox.who&&img==shipped&&join_box_command(j,"sc_joinbox")&&joinBox.who==j&&logged("JOIN box open"));
+  assert(model_box_command(j,"sc_modelbox")&&!joinBox.who&&picture()=="gfx/vgui/sc_mb4.tga");model_box_close(nullptr);assert(img==shipped);
+  // Never on a story map: the computer puzzle stays the game's.
+  store(globals,0x0c,1);assert(!model_box_command(j,"sc_modelbox")&&!model_box_command(j,"computercheck"));
+  clientImage=nullptr;clientImageSize=0;computerMessage=0;store(globals,0x0c,3);
+  // The wearer's own clothes state goes to their client only when it is ready, and again later.
+  {clothesMessage=77;engine[51]=engine[48];ModelState cs;messageBegins=0;
+   allocations.at(j).commands=true;allocations.at(j).hudDue=0;store(globals,0,50.f);
+   model_clothes(j,cs,"simon",50.f);assert(messageBegins==0);   // plain Simon: the game's own state stays
+   model_clothes(j,cs,"simon_aom",50.f);assert(messageBegins==1&&message[1]==77&&(std::vector<int>(message.begin()+2,message.end())==std::vector<int>{0,1,4,0}));
+   model_clothes(j,cs,"simon_aom",51.f);assert(messageBegins==1);model_clothes(j,cs,"simon_aom",55.f);assert(messageBegins==2);
+   model_clothes(j,cs,"simon",60.f);assert(messageBegins==3&&(std::vector<int>(message.begin()+2,message.end())==std::vector<int>{0,0,0,0}));
+   clothesMessage=0;engine[51]=nullptr;}
+  for(const auto& item:{player/"Caps",player/"police1",player/"zed",player/"no file",player/"simon_aom",player/"simon_twitcher",player/L"café"})std::filesystem::remove_all(item);std::filesystem::remove(std::filesystem::path(gameDir)/"storycoop_model.txt");}
  // Campaign maps are recognized for the pause guard; the 3D menu is not.
  store(globals,0x0c,3);assert(!campaign_map());store(globals,0x0c,4);assert(campaign_map());store(globals,0x0c,1);assert(campaign_map());
  // v0.1 Steam names: Steam IDs convert to 64-bit IDs; names are cleaned; with

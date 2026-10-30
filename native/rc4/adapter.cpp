@@ -29,7 +29,7 @@ namespace {struct InitializeExports{InitializeExports(){for(auto& entry:rc4_expo
 namespace rc4 {
 namespace {
 Engine engine{},forwardEngine{};Table original{};void* globals=nullptr;
-HMODULE backend=nullptr;bool verified=false;int addNote=0,noteDoc=0,textMessage=0,resetHud=0,initHud=0,proFontMessage=0,healthCapMessage=0,cofLogoMessage=0,qslotUpdateMessage=0,computerMessage=0,creditsMessage=0,unlocksMessage=0,concussMessage=0;
+HMODULE backend=nullptr;bool verified=false;int clothesMessage=0,addNote=0,noteDoc=0,textMessage=0,resetHud=0,initHud=0,proFontMessage=0,healthCapMessage=0,cofLogoMessage=0,qslotUpdateMessage=0,computerMessage=0,creditsMessage=0,unlocksMessage=0,concussMessage=0;
 Journal journal;
 void checkpoint_reset();
 void keypad_reset();
@@ -224,7 +224,7 @@ void* __cdecl allocate(Edict* e,std::int32_t bytes){
  if(scoped()&&p&&bytes>0){auto& a=allocations[e];a={p,static_cast<std::size_t>(bytes),serial(e)};a.born=globals?load<float>(globals,0):0;a.stamp=++stamps;}return p;
 }
 void __cdecl release(Edict* e){camera_forget(e);allocations.erase(e);eng<void(__cdecl*)(Edict*)>(65)(e);}
-int __cdecl register_message(const char* name,int bytes){int id=eng<int(__cdecl*)(const char*,int)>(75)(name,bytes);if(name&&std::strcmp(name,"ViewEntity")==0)cameraViewMessage=id;if(name&&std::strcmp(name,"ModelAttach")==0)cameraAttachMessage=id;if(name&&std::strcmp(name,"ResetHUD")==0)resetHud=id;if(name&&std::strcmp(name,"ScoreInfo")==0)scoreInfoMessage=id;if(name&&std::strcmp(name,"InitHUD")==0)initHud=id;if(name&&std::strcmp(name,"AddNote")==0&&bytes==-1)addNote=id;if(name&&std::strcmp(name,"NoteDoc")==0&&bytes==-1)noteDoc=id;if(name&&std::strcmp(name,"TextMsg")==0&&bytes==-1)textMessage=id;if(name&&std::strcmp(name,"SaveLoad")==0&&bytes==-1)saveLoadMessage=id;if(name&&std::strcmp(name,"ScreenFade")==0)screenFadeMessage=id;if(name&&std::strcmp(name,"ProFont")==0)proFontMessage=id;if(name&&std::strcmp(name,"HealthCap")==0&&bytes==1)healthCapMessage=id;if(name&&std::strcmp(name,"CoFLogo")==0&&bytes==1)cofLogoMessage=id;if(name&&std::strcmp(name,"Computer")==0)computerMessage=id;if(name&&std::strcmp(name,"QSlotUpdate")==0&&bytes==2)qslotUpdateMessage=id;if(name&&std::strcmp(name,"Credits")==0&&bytes==-1)creditsMessage=id;if(name&&std::strcmp(name,"Unlocks")==0)unlocksMessage=id;if(name&&std::strcmp(name,"Concuss")==0)concussMessage=id;return id;}
+int __cdecl register_message(const char* name,int bytes){int id=eng<int(__cdecl*)(const char*,int)>(75)(name,bytes);if(name&&std::strcmp(name,"Clothes")==0)clothesMessage=id;if(name&&std::strcmp(name,"ViewEntity")==0)cameraViewMessage=id;if(name&&std::strcmp(name,"ModelAttach")==0)cameraAttachMessage=id;if(name&&std::strcmp(name,"ResetHUD")==0)resetHud=id;if(name&&std::strcmp(name,"ScoreInfo")==0)scoreInfoMessage=id;if(name&&std::strcmp(name,"InitHUD")==0)initHud=id;if(name&&std::strcmp(name,"AddNote")==0&&bytes==-1)addNote=id;if(name&&std::strcmp(name,"NoteDoc")==0&&bytes==-1)noteDoc=id;if(name&&std::strcmp(name,"TextMsg")==0&&bytes==-1)textMessage=id;if(name&&std::strcmp(name,"SaveLoad")==0&&bytes==-1)saveLoadMessage=id;if(name&&std::strcmp(name,"ScreenFade")==0)screenFadeMessage=id;if(name&&std::strcmp(name,"ProFont")==0)proFontMessage=id;if(name&&std::strcmp(name,"HealthCap")==0&&bytes==1)healthCapMessage=id;if(name&&std::strcmp(name,"CoFLogo")==0&&bytes==1)cofLogoMessage=id;if(name&&std::strcmp(name,"Computer")==0)computerMessage=id;if(name&&std::strcmp(name,"QSlotUpdate")==0&&bytes==2)qslotUpdateMessage=id;if(name&&std::strcmp(name,"Credits")==0&&bytes==-1)creditsMessage=id;if(name&&std::strcmp(name,"Unlocks")==0)unlocksMessage=id;if(name&&std::strcmp(name,"Concuss")==0)concussMessage=id;return id;}
 #include "note-layout.hpp"
 // --- Story text for every player (coop-fixes-004) ---------------------------
 // Subtitles (subtitle_main think 1005FC20, driven by subtitle_linechange
@@ -448,7 +448,7 @@ void __cdecl client_command(Edict* e){
 }
 void __cdecl activate(Edict* list,int count,int clients){
  // v0.3: the map's saved state goes back before ServerActivate, as in a single-player level load.
- deathmatch_close();crash_install();crumb("activate mapstate");puzzle_map_changed();state_activate();native<void(__cdecl*)(Edict*,int,int)>(21)(list,count,clients);crumb("activate adapter");syringe_limit_patch();
+ deathmatch_close();crash_install();crumb("activate mapstate");puzzle_map_changed();native<void(__cdecl*)(Edict*,int,int)>(21)(list,state_activate_edicts(count),clients);crumb("activate adapter");syringe_limit_patch();
  char s[200]{};std::snprintf(s,sizeof(s),"[STORYCOOP_RC4] MAP %s journal=%u puzzle=%u scope=%u\n",map_name(),static_cast<unsigned>(journal.size()),puzzle_has_solution()?1u:0u,scoped()?1u:0u);log(s);
  if(opening())log("[STORYCOOP_RC4_HOTFIX] OPENING_PASSIVE native callbacks; journal/puzzle player writes disabled\n");
  keydoor_activate();ladder_activate();pp_activate();model_activate();pause_activate();story_door_report();if(scoped())checkpoint_world_activate();

@@ -18,7 +18,7 @@ const read=(...p)=>fs.readFileSync(path.join(...p));
 test('v0.1 adapter source: no forced title-train send, exact credits, host-only saves, names, carry at ChangeLevel',()=>{
  const adapter=src('native/rc4/adapter.cpp'),coop=src('native/rc4/coop-runtime.hpp'),session=src('native/rc4/session-runtime.hpp'),checkpoint=src('native/rc4/checkpoint-runtime.hpp');
  for(const gone of ['check_visibility','cinematicPackVehicle','cinematicViews','VEHICLE_PACK retry'])assert.ok(!adapter.includes(gone),gone);
- assert.ok(['v0.1','v0.2','v0.3','v0.4','v0.5','v0.6','v0.6.1','v0.6.2'].some(n=>session.includes('constexpr const char* MenuCredit="Co-op mod '+n+' developed by Anas Sammak (koolkat)\\nSpecial thanks: Mesilll, Michal Eminov, caixa')));   // v0.2 since 2026-10-16
+ assert.ok(['v0.1','v0.2','v0.3','v0.4','v0.5','v0.6','v0.6.1','v0.6.2','v0.6.3','v0.7'].some(n=>session.includes('constexpr const char* MenuCredit="Co-op mod '+n+' developed by Anas Sammak (koolkat)\\nSpecial thanks: Mesilll, Michal Eminov, caixa')));   // v0.2 since 2026-10-16
  assert.ok(!session.includes('"Co-op mod developed by Anas Sammak (koolkat)\\nSpecial thanks to Michael Eminov"'));
  assert.ok(coop.includes('constexpr const char* HostOnlySave="Only host can save the game";')||checkpoint.includes('"Only host can save the game"'));   // v0.2: shown on Use only
  assert.ok(checkpoint.includes('if(actor!=host){checkpoint_notice(actor,"[STORYCOOP] Save refused: only the host can save the game.\\n");return;}'));
@@ -39,10 +39,13 @@ test('v0.1 in-memory menu: the adapter table is the reviewed client.dll patch pl
  const table=src('native/rc4/client-menu.hpp'),js=clientPatches();
  const vas=[...table.matchAll(/0x(1[0-9A-Fa-f]{7})u?\b/g)].map(m=>parseInt(m[1],16)).filter(v=>v>=0x10001000&&v<0x10200000);
  // The ten click-id jump-table entries are written as 0x1002DF68+i*4 in the adapter.
- for(const p of js)assert.ok(p.why.startsWith('menu click id')?p.va>=0x1002DF68&&p.va<0x1002DF68+40&&vas.includes(0x1002DF68):vas.includes(p.va),p.why);
+ // v0.7: the Host Server slot stays visible (it is Quit, the fifth row), so its five setVisible patches are gone.
+ const hostSlot=[0x1002DE6D,0x1002ED9B,0x1002CC8B,0x1002DEFC,0x1002EE2A];
+ for(const p of js.filter(p=>!hostSlot.includes(p.va)))assert.ok(p.why.startsWith('menu click id')?p.va>=0x1002DF68&&p.va<0x1002DF68+40&&vas.includes(0x1002DF68):vas.includes(p.va),p.why);
+ for(const va of hostSlot)assert.ok(!vas.includes(va));
  assert.ok(table.includes('p.push_back({0x1002DF68+i*4,client_dword(was[i]),client_dword(now[i]),true});'));
  assert.ok(table.includes('Image{0x1014389C,"gfx/vgui/menu_logo.tga","gfx/vgui/sc_logo.tga",23}'));
- for(const p of js.filter(p=>p.from.length===26||p.from.length===29||p.from.length===27||p.from.length===30)){const was=p.from.toString('latin1').replace(/\0+$/,''),is=p.to.toString('latin1').replace(/\0+$/,'');assert.ok(table.includes(`"${was}","${is}",${p.from.length}`),was);}
+ for(const p of js.filter(p=>(p.from.length===26||p.from.length===29||p.from.length===27||p.from.length===30)&&!/customc|jserver/.test(p.from.toString('latin1')))){const was=p.from.toString('latin1').replace(/\0+$/,''),is=p.to.toString('latin1').replace(/\0+$/,'');assert.ok(table.includes(`"${was}","${is}",${p.from.length}`),was);}
  assert.equal(V01_LOGO_TARGET,'gfx/vgui/sc_logo.tga');
 });
 

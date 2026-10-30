@@ -76,11 +76,17 @@ bool default_player_model(int named){
  if(!named)return true;const char* m=string_at(named);
  return m&&std::strlen(m)==7&&_strnicmp(m,"police",6)==0&&m[6]>='1'&&m[6]<='4';
 }
-struct ModelState{float next=0;int attempts=0;unsigned logged=0;std::string want;};
+struct ModelState{float next=0;int attempts=0;unsigned logged=0;std::string want;int clothes=0;float clothesNext=0;};
+// v0.7: Simon's outfits, in the order of the client's clothes state 1..11. Each is a
+// player model built at install (scripts/simon-model.mjs), so every PC has them.
+struct ModelOutfit {const char* model;const char* label;};
+constexpr ModelOutfit ModelOutfits[]={{"simon_leatherhoff","David Leatherhoff"},{"simon_moddb","ModDB"},{"simon_hellokitty","Hello Kitty"},{"simon_aom","Afraid of Monsters"},{"simon_camo","Camouflage"},{"simon_hlc","Half-Life Creations"},{"simon_blackmetal","Black Metal"},{"simon_psykskallar","Team Psykskallar"},{"simon_awesome","Awesome"},{"simon_sick","Sick Simon"},{"simon_twitcher","Twitcher"}};
+int model_outfit(const std::string& m){int i=0;for(const auto& o:ModelOutfits){++i;if(m==o.model)return i;}return 0;}
+std::string model_label(const std::string& m){const int i=model_outfit(m);return i?ModelOutfits[i-1].label:m=="simon"?"Simon":m;}
 // v0.7 (player model menu, client-menu.hpp model box): a player whose userinfo
 // sc_model names a model the host has too (models/player/<name>/<name>.mdl) is
 // shown with it instead of Simon; the host offers its models for download.
-bool model_name_ok(const std::string& s);std::vector<std::string> local_player_models();   // client-menu.hpp
+bool model_name_ok(const std::string& s);std::vector<std::string> local_player_models();std::filesystem::path game_dir_path();   // client-menu.hpp
 std::map<std::string,bool> hostModels;std::map<std::string,int> modelStrings;
 bool host_has_model(const std::string& name){
  auto it=hostModels.find(name);if(it!=hostModels.end())return it->second;char dir[MAX_PATH]{};bool has=false;
@@ -109,12 +115,23 @@ void model_activate(){
  const int set=world_models_simon();
  if(set<0)log("[STORYCOOP_RC4] MODEL world object not recognized; players keep the map's models\n");
  else if(set>0){char line[100]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MODEL world player models -> simon (%d of 4)\n",set);log(line);}
- // v0.7: every player model of the host (but Simon, built on each PC) can be downloaded by joiners (sv_allowdownload).
- if(model_map()&&engine[112]){int n=0;for(const auto& m:local_player_models()){if(m=="simon")continue;eng<int(__cdecl*)(char*)>(112)(const_cast<char*>(("models/player/"+m+"/"+m+".mdl").c_str()));++n;}
+ // v0.7: every player model of the host (but Simon and the outfits, built on each PC) can be downloaded by joiners (sv_allowdownload).
+ if(model_map()&&engine[112]){int n=0;for(const auto& m:local_player_models()){if(m=="simon"||model_outfit(m))continue;for(const std::string& f:{m,m+"T"}){const std::string file="models/player/"+m+"/"+f+".mdl";std::error_code missing;if(std::filesystem::is_regular_file(game_dir_path()/file,missing))eng<int(__cdecl*)(char*)>(112)(const_cast<char*>(file.c_str()));}++n;}
   if(n){char line[100]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MODEL %d player model(s) offered for download\n",n);log(line);}}
 }
 void model_line(ModelState& s,unsigned what,const char* format,int index,const char* text){
  if(s.logged&what)return;s.logged|=what;char line[160]{};std::snprintf(line,sizeof(line),format,index,text);log(line);
+}
+// v0.7: the wearer's own hands and the story's Simon in the outfit: the client's own
+// clothes state, as the game's wardrobe sets it (decomp player.cpp, gmsgClothes). Sent
+// again now and then, because the game sends its own state after a spawn.
+void model_clothes(Edict* e,ModelState& s,const std::string& want,float now){
+ const int state=model_outfit(want);
+ if(clothesMessage<=0||!engine[51]||!client_ready(e)||(!state&&!s.clothes)||now<s.clothesNext)return;
+ s.clothes=state;s.clothesNext=now+5.f;
+ eng<void(__cdecl*)(int,int,const float*,Edict*)>(46)(1,clothesMessage,nullptr,e);
+ eng<void(__cdecl*)(int)>(51)(0);for(int v:{state?1:0,state,0})eng<void(__cdecl*)(int)>(48)(v);
+ eng<void(__cdecl*)()>(47)();
 }
 void model_frame(Edict* e){
  if(!model_map()||!globals||!live(e)||!engine[106]||!engine[107]||!engine[109]||std::strcmp(classname(e),"player"))return;
@@ -127,6 +144,7 @@ void model_frame(Edict* e){
    else if(!(s.logged&16u)){s.logged|=16u;char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MODEL player=%d asked for %.32s: not on the host's PC, shown as Simon\n",index,a.c_str());log(line);
     if(engine[80])eng<void(__cdecl*)(Edict*,int,const char*)>(80)(e,1,("Your player model "+a.substr(0,32)+" is not on the host's PC.").c_str());}}}
  if(want!=s.want){s.want=want;s.attempts=0;s.logged&=16u;}
+ model_clothes(e,s,want,now);
  if(want=="simon"&&(!simonModel||!simonString))return;
  const int wantString=want=="simon"?simonString:model_string(want);if(!wantString)return;
  void* w=world_memory();if(!w){model_line(s,1u,"[STORYCOOP_RC4] MODEL player=%d world object not recognized%s\n",index,"");return;}

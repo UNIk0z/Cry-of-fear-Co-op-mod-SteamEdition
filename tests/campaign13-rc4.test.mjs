@@ -62,7 +62,7 @@ test('013 adapter source: carry, story weapons, camera hiding, stuck, regroup, c
  assert.ok(adapter.includes('#include "coop-runtime.hpp"')&&adapter.includes('hide_player_from(e,host)')&&/carry_frame\(e\);[^\n]*?(give_owed_frame\(e\);)?rejoin_frame\(e\);/.test(adapter));
  // v0.1 renamed the thanks line (tests/v01.test.mjs checks the exact text).
  assert.ok(session.includes('developed by Anas Sammak (koolkat)\\nSpecial thanks'));
- assert.ok(story.includes('rate 100000\\ncl_updaterate 100\\nex_interp 0.06\\n'));
+ assert.ok(story.includes('rate 100000\\ncl_updaterate 100\\ncl_cmdrate 100\\nex_interp 0.06\\n'));
 });
 
 test('013 player folder: READ ME names the new menu, stuck, Steam names and the credits; ships the menu files',{skip:!ready},()=>{

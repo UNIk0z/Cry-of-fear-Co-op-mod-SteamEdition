@@ -126,7 +126,7 @@ int main(int argc,char** argv){
  // Activate: LF_DODESIRED|LF_DESIRED_ACTION at CBaseEntity +0x60) must leave it
  // and must not be Activated (FL_DORMANT); a kept one keeps its flags.
  store(pd(&entities[6]),0x60,0x80u|0x800u|0x1000u);store(pd(&entities[7]),0x60,0x80u|0x800u);
- lines.clear();state_activate();
+ lines.clear();const int activated=state_activate_edicts(10);
  assert(load<unsigned>(pd(&entities[6]),0x60)==0x1000u&&(load<unsigned>(ev(&entities[6]),0x1a8)&0x80000000u)&&load<unsigned>(pd(&entities[7]),0x60)==(0x80u|0x800u)&&!(load<unsigned>(ev(&entities[7]),0x1a8)&0x80000000u));
  auto killed=[](int i){return (load<unsigned>(ev(&entities[i]),0x1a8)&0x40000000u)!=0&&load<int>(ev(&entities[i]),0x10c)==0&&load<int>(ev(&entities[i]),0x1d0)==0&&load<float>(ev(&entities[i]),0x104)==0;};
  assert(killed(3)&&killed(4)&&killed(5)&&killed(6)&&killed(11)&&!killed(7)&&!killed(8)&&!killed(10)&&!killed(15)&&!killed(22));
@@ -134,6 +134,8 @@ int main(int argc,char** argv){
  Edict* again=nullptr;for(int i=30;i<48;++i)if(load<int>(&entities[i],0)==0&&!std::strcmp(classname(&entities[i]),"monster_hound"))again=&entities[i];
  assert(again&&load<float>(ev(again),0x164)==33.f&&load<Edict*>(ev(again),0x194)==&entities[9]&&std::fabs(load<float>(ev(again),0x104)-4.5f)<0.001f);
  assert(logged({"MAPSTATE restored s4_test on s4_test_e0:","removed=5","recreated=1"})&&relinks==restores+5&&restores>0);
+ // v0.7.1: ServerActivate must reach the recreated monster, a new edict past the engine's count.
+ assert(activated==index(again)+1);
  // --- v0.3 crash audit: an alias that creates another set of load-time entities keeps them as served.
  {const auto keep=mapStates;mapStates.clear();spawn_map("s4_test_e1",false);state_activate();store(ev(&entities[20]),0x164,55.f);state_level_change("s4_other_e0");state_deactivate();
   spawn_map("s4_test_e2",false);make(23,"env_laser_sprite","");lines.clear();state_activate();   // one more sprite: "rt:" names mean other entities

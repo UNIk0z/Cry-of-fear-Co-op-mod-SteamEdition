@@ -150,6 +150,15 @@ void state_deactivate(){
 }
 // ServerActivate, before the native one: every entity has spawned and
 // precaching is still open, exactly where a single-player level load restores.
+// v0.7.1 (Playtest 3 clips 7, 8: "enemies do not move and are invincible", host
+// log: recreated=7 on s4_college1dark_e2): monsters recreated below are new
+// edicts past the count the engine handed to ServerActivate, so the game never
+// called their Activate. Activate is what links a restored entity into Spirit's
+// assist list (cbase.cpp, movewith.cpp), and a monster's think only runs from
+// that list: no AI, and a killed monster never reached its death schedule.
+int stateEdictTop=0;
+void state_activate();
+int state_activate_edicts(int count){stateEdictTop=0;state_activate();return count>stateEdictTop?count:stateEdictTop;}
 void state_activate(){
  loadRuntime.clear();keepKeys.clear();stateChangeTo.clear();
  if(!state_scope()||!globals||!engine[72])return;
@@ -184,7 +193,7 @@ void state_activate(){
  std::vector<SaveTable> table(s.entities.size());
  for(std::size_t j=0;j<s.entities.size();++j){
   const auto& x=s.entities[j];auto& t=table[j];t.id=x.id;t.location=x.location;t.size=x.size;t.classname=eng<int(__cdecl*)(const char*)>(67)(x.type.c_str());
-  if(x.key.rfind("new:",0)==0){t.pent=eng<Edict*(__cdecl*)(int)>(23)(t.classname);if(t.pent&&live(t.pent))++created;else {t.pent=nullptr;++failed;}continue;}
+  if(x.key.rfind("new:",0)==0){t.pent=eng<Edict*(__cdecl*)(int)>(23)(t.classname);if(t.pent&&live(t.pent)){++created;{const int top=eng<int(__cdecl*)(Edict*)>(71)(t.pent)+1;if(top>stateEdictTop)stateEdictTop=top;}}else {t.pent=nullptr;++failed;}continue;}
   if(keepKeys.count(x.key)){++kept;continue;}
   auto it=fresh.find(x.key);if(it==fresh.end()||x.type!=classname(it->second)){++unmatched;continue;}
   t.pent=it->second;

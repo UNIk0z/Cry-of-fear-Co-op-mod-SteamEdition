@@ -16,7 +16,7 @@ test('v0.3 adapter: tape card saves, Drowned victim, map state wired at spawn/ac
  assert.ok(format.includes("(c>='A'&&c<='Z')")&&format.includes('if(!n.empty()&&!card(n))return false;')&&format.includes('bool weapon(const std::string& s){return resource(s)'));
  assert.ok(adapter.includes('forwardEngine[72]=reinterpret_cast<void*>(&entity_of_index);')&&adapter.includes('drowned_begin(e);')&&adapter.includes('if(bar)actingPlayer=nullptr;drowned_end();'));
  assert.ok(coop.includes('load<Edict*>(p,0x184)')&&coop.includes('"monster_crazybitch"'));
- assert.ok(adapter.includes('state_activate();native<void(__cdecl*)(Edict*,int,int)>(21)')&&adapter.includes('checkpoint_game_over_check();state_deactivate();')&&adapter.includes('stateKey=state_identity(e);'));
+ assert.ok(adapter.includes('native<void(__cdecl*)(Edict*,int,int)>(21)(list,state_activate_edicts(count),clients)')&&adapter.includes('checkpoint_game_over_check();state_deactivate();')&&adapter.includes('stateKey=state_identity(e);'));
  assert.ok(ckp.includes('state_save_slot(dir,checkpointSlot,value,why)')&&ckp.indexOf('state_save_slot(dir')<ckp.indexOf('!commit_checkpoint(dir,checkpointSlot,value)')&&ckp.includes('state_load_slot(slot,value);'));
  assert.ok(state.includes('native<void(__cdecl*)(Edict*,SaveData*)>(7)')&&state.includes('native<int(__cdecl*)(Edict*,SaveData*,int)>(8)')&&state.includes('storycoop_mapstate.off')&&state.includes('"cof_changelevel"'));
  // No per-map special case in the shared handler.

@@ -26,7 +26,7 @@ test('v0.4 scene teleports: exit after the camera, followers, return home; first
 
 test('v0.4 vote to skip: SPACE votes, N/N fast-forwards the managers, allowlist, README',async()=>{
  const coop=src('coop-runtime.hpp'),adapter=src('adapter.cpp');
- assert.ok(coop.includes('constexpr int MmState=0xdc,MmCount=0xe0,MmIndex=0xe4,MmStart=0xe8,MmNames=0xec,MmDelays=0x12c,MmMode=0x178;')&&coop.includes('store(p,MmStart,now-100000.f)')&&/\(buttons&\(?2u/.test(coop));   // v0.5: E (32) votes too
+ assert.ok(coop.includes('constexpr int MmState=0xdc,MmCount=0xe0,MmIndex=0xe4,MmStart=0xe8,MmNames=0xec,MmDelays=0x12c,MmMode=0x178;')&&coop.includes('store(p,MmStart,load<float>(p,MmStart)-jump)')&&coop.includes('(buttons&0x2000u)!=0'));   // v0.5.5: R votes; v0.7: the managers jump to the scene's end
  const allow=coop.slice(coop.indexOf('bool skip_class('),coop.indexOf('void* manager_memory('));
  for(const c of ['func_train','scripted_sequence','cof_mdlcutscene','cof_strangle','monstermaker','cof_credits'])assert.ok(!allow.includes('"'+c+'"'),c);
  assert.ok(adapter.includes('skip_frame();')&&adapter.includes('skip_command(e,command);'));
