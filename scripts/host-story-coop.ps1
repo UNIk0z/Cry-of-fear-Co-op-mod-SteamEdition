@@ -43,6 +43,27 @@ if ($MenuOnly -and [IO.File]::Exists((Join-Path $PSScriptRoot 'find-cof.ps1'))) 
 # v0.1: the game kept config.cfg's "Unknown" despite +name; the host's adapter
 # now shows Steam names itself and uses this sc_name userinfo key as a fallback.
 if ($MenuOnly) { $launchArguments+='-insecure'; if ($persona) { $launchArguments+=@('+name',('"'+$persona+'"'),'+setinfo','sc_name',('"'+$persona+'"')) } }
+# v0.7 (player model menu): custom models from the mod's "playermodels" folder
+# (next to "Run Co-op Mod.cmd": name.mdl or name\name.mdl) are copied to
+# cryoffear\models\player\<name>\<name>.mdl, the only place the game reads
+# player models; a model already there is never replaced. The model picked in
+# the game's Player Model box (cryoffear\storycoop_model.txt) is sent again.
+if ($MenuOnly) {
+    $modelSource=Join-Path (Split-Path -Parent $PSScriptRoot) 'playermodels'
+    if ([IO.Directory]::Exists($modelSource)) {
+        foreach ($file in @(Get-ChildItem -LiteralPath $modelSource -Recurse -Filter '*.mdl' -File -ErrorAction SilentlyContinue)) {
+            $name=[IO.Path]::GetFileNameWithoutExtension($file.Name).ToLowerInvariant(); $owner=$name
+            # A model's separate texture file (<name>T.mdl) goes beside it.
+            if ($name.Length -gt 1 -and $name.EndsWith('t') -and [IO.File]::Exists((Join-Path $file.DirectoryName ($name.Substring(0,$name.Length-1)+'.mdl')))) { $owner=$name.Substring(0,$name.Length-1) }
+            if ($owner -cnotmatch '^[a-z0-9_-]{1,32}$' -or $owner -cmatch '^(simon|police[1-4])$') { continue }
+            $target=Join-Path $GameDirectory ('models\player\'+$owner+'\'+$name+'.mdl')
+            if ([IO.File]::Exists($target)) { continue }
+            try { [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($target)); [IO.File]::Copy($file.FullName,$target); Write-Output "Player model added: $name" } catch { Write-Output "Player model $name could not be copied: $($_.Exception.Message)" }
+        }
+    }
+    $modelChoice=Join-Path $GameDirectory 'storycoop_model.txt'
+    if ([IO.File]::Exists($modelChoice)) { $chosen=([IO.File]::ReadAllText($modelChoice)).Trim().ToLowerInvariant(); if ($chosen -cmatch '^[a-z0-9_-]{1,32}$') { $launchArguments+=@('+setinfo','sc_model',$chosen) } }
+}
 if ($NativeRC4) { $launchArguments+=@('-dll','cl_dlls/storycoop_rc4.dll') }
 # The game's own liblist.gam asks for these (commandargs). The full RC4
 # campaign overlay reaches 1,202 map entities (s4_sewer3); pass them explicitly

@@ -46,6 +46,13 @@ DESCRIPTION SERVER_OPTIONS
 		{ "1" }
 	}
 
+	"sc_extras"
+	{
+		"Unlock extras (Chapter 1 secret room)"
+		{ BOOL }
+		{ "0" }
+	}
+
 	"pausable"
 	{
 		"Pausable server"

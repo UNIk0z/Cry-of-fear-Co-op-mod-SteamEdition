@@ -173,15 +173,15 @@ Trace hull_trace(const std::array<float,3>& a,const std::array<float,3>& b,bool 
 // A standing player hull fits at `at`, in open air (not water/solid), with a
 // floor below and a straight walkable line from the anchor (never through a
 // wall into the next room).
-bool landing_clear(const std::array<float,3>& anchor,const std::array<float,3>& at,Edict* skip){
+bool landing_clear(const std::array<float,3>& anchor,const std::array<float,3>& at,Edict* skip,bool worldFloor=false){
  if(!engine[34]||!engine[45])return false;
  const auto here=hull_trace(at,at,true,skip);if(here.allSolid||here.startSolid)return false;
  if(eng<int(__cdecl*)(const float*)>(45)(at.data())!=-1)return false;
- const auto floor=hull_trace(at,{at[0],at[1],at[2]-160},false,skip);if(floor.allSolid||floor.fraction>=1.0f)return false;
+ const auto floor=hull_trace(at,{at[0],at[1],at[2]-160},false,skip);if(floor.allSolid||floor.fraction>=1.0f)return false;if(worldFloor&&floor.hit&&eng<int(__cdecl*)(Edict*)>(71)(floor.hit)!=0)return false;
  if(at!=anchor){const auto path=hull_trace({anchor[0],anchor[1],at[2]},at,false,skip);if(path.allSolid||path.startSolid||path.fraction<1.0f)return false;}
  return true;
 }
-bool find_landing(const std::array<float,3>& anchor,Edict* skip,std::array<float,3>& out){
+bool find_landing(const std::array<float,3>& anchor,Edict* skip,std::array<float,3>& out,bool worldFloor=false){
  // v0.5 (logs: "SCENE_TELEPORT ... failed=1" on s4_asylum1_e1 and s4_roofs_e0,
  // "REGROUP multispotea ... could not reach"): two more rings, 16 directions on the wide ones.
  for(float radius:{0.f,48.f,96.f,144.f,192.f,240.f}){
@@ -190,7 +190,7 @@ bool find_landing(const std::array<float,3>& anchor,Edict* skip,std::array<float
    const float angle=static_cast<float>(k)*6.2831853f/static_cast<float>(steps);
    for(float lift:{0.f,18.f,36.f}){
     const std::array<float,3> at{anchor[0]+radius*std::cos(angle),anchor[1]+radius*std::sin(angle),anchor[2]+lift};
-    if(landing_clear(anchor,at,skip)){out=at;return true;}
+    if(landing_clear(anchor,at,skip,worldFloor)){out=at;return true;}
    }
   }
  }
@@ -237,7 +237,7 @@ void boat_frame(Edict* e){
   auto other=eng<Edict*(__cdecl*)(int)>(72)(i);auto q=vars(other);
   if(other==e||!q||std::strcmp(classname(other),"player")||load<int>(q,0x174)!=0||load<float>(q,0x164)<=0)continue;
   const float dx=load<float>(q,8)-anchor[0],dy=load<float>(q,12)-anchor[1],dz=load<float>(q,16)-anchor[2];
-  if(dx*dx+dy*dy+dz*dz<=400*400)continue;
+  if(dx*dx+dy*dy+dz*dz<=128*128)continue;   // v0.7 (Playtest 3 clip 19, "partners moved=0"): the far shore can be under 400 units away
   std::array<float,3> at{};if(find_landing(anchor,other,at)&&teleport_to(other,at,load<float>(v,0x54)))++moved;else ++failed;
  }
  char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] BOAT docked player=%d; partners moved=%d failed=%d\n",eng<int(__cdecl*)(Edict*)>(71)(e),moved,failed);log(line);

@@ -208,10 +208,11 @@ foreach ($extra in @($catalog.extras | Where-Object { $null -ne $_ })) {
     }
     # v0.5.1: the Create Server entries (maps/Chapter-N-*.bsp, maps/Load-Save-Slot-N.bsp), the
     # join box picture and the Create Server options (sc_setup.scr, rewritten by the game: mutable).
-    if ($extra.target -cnotmatch '^(maps/storycoop_[a-z0-9]+\.(custom|coopm)|models/player/simon/simon\.mdl|gfx/vgui/menu/sc_(host|join)(_mo)?\.tga|gfx/vgui/sc_logo\.tga|maps/(Chapter-[0-7](-[A-Za-z]+)+|Load-Save-Slot-[1-3])\.bsp|gfx/vgui/sc_joinbox\.tga|sc_setup\.scr)$' -or $extra.sha256 -cnotmatch '^[a-f0-9]{64}$' -or $extra.fileBytes -lt 1) { throw 'Invalid extra file catalog.' }
+    if ($extra.target -cnotmatch '^(maps/storycoop_[a-z0-9]+\.(custom|coopm)|models/player/simon/simon\.mdl|gfx/vgui/menu/sc_(host|join|mdl)(_mo)?\.tga|gfx/vgui/sc_logo\.tga|maps/(Chapter-[0-7](-[A-Za-z]+)+|Load-Save-Slot-[1-5])\.bsp|gfx/vgui/sc_joinbox\.tga|sc_setup\.scr)$' -or $extra.sha256 -cnotmatch '^[a-f0-9]{64}$' -or $extra.fileBytes -lt 1) { throw 'Invalid extra file catalog.' }
     $extraPath=Join-Path $gameRoot ($extra.target.Replace('/','\'))
     $extraExists=[IO.File]::Exists($extraPath)
-    if ($extra.mutable -and $extra.target -ceq 'sc_setup.scr') { if ($Remove -or $extraExists) { $prepared.Add(@{path=$extraPath; exists=$extraExists; extra=$true}); continue } }
+    # v0.7: a kept sc_setup.scr without the 'Unlock extras' option (sc_extras) is replaced once, so the option shows up.
+    if ($extra.mutable -and $extra.target -ceq 'sc_setup.scr') { $keepSetup=$extraExists -and ([IO.File]::ReadAllText($extraPath) -match 'sc_extras'); $setupReplace=$extraExists -and -not $keepSetup; if ($Remove -or $keepSetup) { $prepared.Add(@{path=$extraPath; exists=$extraExists; extra=$true}); continue } }
     elseif ($extraExists -and (Get-PatchFileSha $extraPath) -cne $extra.sha256) { throw "Unknown/changed file retained: $extraPath. Nothing installed or removed." }
     if ($Remove) { $prepared.Add(@{path=$extraPath; exists=$extraExists; extra=$true}); continue }
     if ($null -ne $extra.deltaFrom) {
@@ -230,7 +231,7 @@ foreach ($extra in @($catalog.extras | Where-Object { $null -ne $_ })) {
         try { $extraBytes=Expand-XorDelta ([IO.File]::ReadAllBytes($titleSource)) ([IO.File]::ReadAllBytes((Join-Path $PSScriptRoot ($extra.file.Replace('/','\'))))) } catch { $extraBytes=$null }
         if ($null -eq $extraBytes -or (Get-PatchSha $extraBytes) -cne $extra.sha256 -or $extraBytes.Length -ne $extra.fileBytes) { throw 'Generated extra mismatch. Nothing installed.' }
     } elseif ($extra.file) {
-        if ($extra.file -cnotmatch '^extras/(storycoop_[a-z0-9]+\.(custom|coopm)|sc_(host|join)(_mo)?\.tga|sc_joinbox\.tga|sc_setup\.scr)$') { throw 'Invalid extra package file.' }
+        if ($extra.file -cnotmatch '^extras/(storycoop_[a-z0-9]+\.(custom|coopm)|sc_(host|join|mdl)(_mo)?\.tga|sc_joinbox\.tga|sc_setup\.scr)$') { throw 'Invalid extra package file.' }
         $extraBytes=[IO.File]::ReadAllBytes((Join-Path $PSScriptRoot ($extra.file.Replace('/','\'))))
     } elseif ($extra.build) {
         if ($extra.build -cne 'simon-player-model' -or $extra.sources.police -cne 'models/player/police1/police1.mdl' -or $extra.sources.simon -cne 'models/cutscene/simon_clothes.mdl' -or $extra.sources.policeSha256 -cnotmatch '^[a-f0-9]{64}$' -or $extra.sources.simonSha256 -cnotmatch '^[a-f0-9]{64}$') { throw 'Invalid extra build.' }
@@ -256,6 +257,7 @@ foreach ($extra in @($catalog.extras | Where-Object { $null -ne $_ })) {
         $extraBytes=[IO.File]::ReadAllBytes($copySource)
     }
     if ((Get-PatchSha $extraBytes) -cne $extra.sha256 -or $extraBytes.Length -ne $extra.fileBytes) { throw 'Changed extra artifact. Nothing installed.' }
+    if ($extra.mutable -and $extra.target -ceq 'sc_setup.scr' -and $setupReplace) { $prepared.Add(@{path=$extraPath; exists=$false; replace=($extraPath+'.storycoop-old'); originalBytes=[IO.File]::ReadAllBytes($extraPath); artifactBytes=$extraBytes; fileBytes=$extraBytes.Length; extra=$true}); continue }
     $prepared.Add(@{path=$extraPath; exists=$extraExists; artifactBytes=$extraBytes; fileBytes=$extraBytes.Length; extra=$true})
 }
 $menuPath=Join-Path $maps '..\resource\GameMenu.res'
@@ -324,7 +326,7 @@ foreach ($item in $prepared) {
 # lists them out of the catalog's order, the entries are written again in order
 # (exFAT puts each new entry in the first free place it fits); the result is checked.
 if (-not $Remove) {
-    $entryNames=@($catalog.extras | Where-Object { $null -ne $_ -and $_.target -cmatch '^maps/(Chapter-[0-7](-[A-Za-z]+)+|Load-Save-Slot-[1-3])\.bsp$' } | ForEach-Object { [IO.Path]::GetFileName($_.target) })
+    $entryNames=@($catalog.extras | Where-Object { $null -ne $_ -and $_.target -cmatch '^maps/(Chapter-[0-7](-[A-Za-z]+)+|Load-Save-Slot-[1-5])\.bsp$' } | ForEach-Object { [IO.Path]::GetFileName($_.target) })
     $entryPaths=@($entryNames | ForEach-Object { Join-Path $maps $_ })
     if ($entryNames.Count -and @($entryPaths | Where-Object { -not [IO.File]::Exists($_) }).Count -eq 0) {
         $listed=@([IO.Directory]::EnumerateFiles($maps,'*-*bsp') | ForEach-Object { [IO.Path]::GetFileName($_) } | Where-Object { $entryNames -contains $_ })

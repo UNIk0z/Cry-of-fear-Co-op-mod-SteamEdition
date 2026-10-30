@@ -208,8 +208,15 @@ int doctorShared=0;
 struct StoryPlayer {int healthCap=0;bool nightVision=false;};
 std::unordered_map<std::string,StoryPlayer> storyBank;
 std::unordered_map<Edict*,int> storyApplied;
-void story_reset(){endingShared=0;doctorShared=0;storyBank.clear();storyApplied.clear();}
-void story_map_changed(){storyApplied.clear();}
+// v0.7 (docs/V07_TODO.md 5, Katz 2026-10-27): the Doctor's shot lowers the
+// health cap of EVERY player. cof_maxhealthchange (decomp effects.cpp 9009) sets
+// m_iHealthCap (+0x60C, 0..2; impulse 0 clears it) and the HealthCap HUD
+// message on its activator only. Any change the game makes to one player's cap
+// becomes the shared cap; every player, players who join later and every
+// level change get it, and checkpoints save it, until the story clears it.
+int capShared=0;std::unordered_map<Edict*,std::pair<int,int>> capSeen;   // serial, last value seen
+void story_reset(){endingShared=0;doctorShared=0;capShared=0;storyBank.clear();storyApplied.clear();capSeen.clear();}
+void story_map_changed(){storyApplied.clear();capSeen.clear();}
 int ending_bits(void* p){return (load<unsigned char>(p,0x4cd)?1:0)|(load<unsigned char>(p,0x4ce)?2:0)|(load<unsigned char>(p,0x4cf)?4:0);}
 int health_cap(void* p){const int cap=load<int>(p,0x60c);return cap>=0&&cap<=2?cap:0;}
 void send_health_cap(Edict* e,int cap){
@@ -238,18 +245,22 @@ void story_frame(){
    const auto saved=storyBank.find(identity);
    if(saved!=storyBank.end()){
     bool changed=false;
-    if(saved->second.healthCap&&!health_cap(p)){store(p,0x60c,saved->second.healthCap);send_health_cap(e,saved->second.healthCap);changed=true;}
     if(saved->second.nightVision&&!load<unsigned char>(p,0x434)){store<unsigned char>(p,0x434,1);changed=true;}
     if(changed){char line[140]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] STORY player=%d kept health-cap=%d night-vision=%d\n",i,health_cap(p),load<unsigned char>(p,0x434)?1:0);log(line);}
    }
   }
   storyBank[identity]={health_cap(p),load<unsigned char>(p,0x434)!=0};
+  auto& seen=capSeen[e];const int cap=health_cap(p);
+  if(seen.first!=serial(e))seen={serial(e),cap};   // first look on this map: the rebuilt value is not a story change
+  else if(cap!=seen.second){seen.second=cap;if(cap!=capShared){capShared=cap;char line[140]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] STORY health cap %d from player=%d, now every player's\n",cap,i);log(line);}}
  }
+ for(auto& [e,seen]:capSeen){void* p=nullptr;std::size_t n=0;if(seen.first!=serial(e)||!player_memory(e,p,n)||health_cap(p)==capShared)continue;
+  store(p,0x60c,capShared);send_health_cap(e,capShared);seen.second=capShared;}
 }
 void story_capture(Checkpoint& value){story_adopt();value.endingFlags=endingShared;value.doctorWeapon=doctorShared;}
 void story_load(const Checkpoint& value){
  endingShared=value.endingFlags;doctorShared=value.doctorWeapon;storyBank.clear();storyApplied.clear();
- for(const auto& p:value.players)storyBank[p.identity]={p.healthCap,p.nightVision};
+ capShared=0;capSeen.clear();for(const auto& p:value.players){storyBank[p.identity]={p.healthCap,p.nightVision};capShared=(std::max)(capShared,p.healthCap);}
 }
 
 // --- Coming back after a kick (coop-fixes-007) -----------------------------------

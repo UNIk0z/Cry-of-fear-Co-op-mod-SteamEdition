@@ -76,7 +76,18 @@ bool default_player_model(int named){
  if(!named)return true;const char* m=string_at(named);
  return m&&std::strlen(m)==7&&_strnicmp(m,"police",6)==0&&m[6]>='1'&&m[6]<='4';
 }
-struct ModelState{float next=0;int attempts=0;unsigned logged=0;};
+struct ModelState{float next=0;int attempts=0;unsigned logged=0;std::string want;};
+// v0.7 (player model menu, client-menu.hpp model box): a player whose userinfo
+// sc_model names a model the host has too (models/player/<name>/<name>.mdl) is
+// shown with it instead of Simon; the host offers its models for download.
+bool model_name_ok(const std::string& s);std::vector<std::string> local_player_models();   // client-menu.hpp
+std::map<std::string,bool> hostModels;std::map<std::string,int> modelStrings;
+bool host_has_model(const std::string& name){
+ auto it=hostModels.find(name);if(it!=hostModels.end())return it->second;char dir[MAX_PATH]{};bool has=false;
+ if(engine[99]){eng<void(__cdecl*)(char*)>(99)(dir);std::error_code error;const std::wstring w(name.begin(),name.end());has=dir[0]&&std::filesystem::is_regular_file(std::filesystem::path(dir)/L"models"/L"player"/w/(w+L".mdl"),error);}
+ hostModels[name]=has;return has;
+}
+int model_string(const std::string& name){auto it=modelStrings.find(name);if(it!=modelStrings.end())return it->second;const int v=engine[67]?eng<int(__cdecl*)(const char*)>(67)(name.c_str()):0;modelStrings[name]=v;return v;}
 bool simonModel=false;int simonString=0;std::map<int,ModelState> modelStates;
 constexpr std::uint32_t WorldPointerRva=0x223190;   // hl.dll 10223190: the CWorld (10120EFC)
 constexpr std::size_t WorldPlayerModels=0xe0;
@@ -93,31 +104,43 @@ int world_models_simon(){
  return set;
 }
 void model_activate(){
- modelStates.clear();simonModel=false;simonString=0;char dir[MAX_PATH]{};if(!engine[99])return;eng<void(__cdecl*)(char*)>(99)(dir);if(!dir[0]||!std::memchr(dir,0,MAX_PATH))return;
+ modelStates.clear();hostModels.clear();modelStrings.clear();simonModel=false;simonString=0;char dir[MAX_PATH]{};if(!engine[99])return;eng<void(__cdecl*)(char*)>(99)(dir);if(!dir[0]||!std::memchr(dir,0,MAX_PATH))return;
  std::error_code error;simonModel=std::filesystem::is_regular_file(std::filesystem::path(dir)/L"models"/L"player"/L"simon"/L"simon.mdl",error);
  const int set=world_models_simon();
  if(set<0)log("[STORYCOOP_RC4] MODEL world object not recognized; players keep the map's models\n");
  else if(set>0){char line[100]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MODEL world player models -> simon (%d of 4)\n",set);log(line);}
+ // v0.7: every player model of the host (but Simon, built on each PC) can be downloaded by joiners (sv_allowdownload).
+ if(model_map()&&engine[112]){int n=0;for(const auto& m:local_player_models()){if(m=="simon")continue;eng<int(__cdecl*)(char*)>(112)(const_cast<char*>(("models/player/"+m+"/"+m+".mdl").c_str()));++n;}
+  if(n){char line[100]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MODEL %d player model(s) offered for download\n",n);log(line);}}
 }
 void model_line(ModelState& s,unsigned what,const char* format,int index,const char* text){
  if(s.logged&what)return;s.logged|=what;char line[160]{};std::snprintf(line,sizeof(line),format,index,text);log(line);
 }
 void model_frame(Edict* e){
- if(!simonModel||!simonString||!model_map()||!globals||!live(e)||!engine[106]||!engine[107]||!engine[109]||std::strcmp(classname(e),"player"))return;
+ if(!model_map()||!globals||!live(e)||!engine[106]||!engine[107]||!engine[109]||std::strcmp(classname(e),"player"))return;
  const int index=eng<int(__cdecl*)(Edict*)>(71)(e);if(index<1||index>4)return;
  auto& s=modelStates[index];const float now=load<float>(globals,0);if(now<s.next)return;s.next=now+1.f;
+ std::string want="simon";
+ {auto info=eng<char*(__cdecl*)(Edict*)>(106)(e);const char* asked=info?eng<char*(__cdecl*)(char*,char*)>(107)(info,const_cast<char*>("sc_model")):nullptr;std::string a=asked?asked:"";
+  for(auto& c:a)c=static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  if(!a.empty()&&a!="simon"){if(model_name_ok(a)&&host_has_model(a))want=a;
+   else if(!(s.logged&16u)){s.logged|=16u;char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MODEL player=%d asked for %.32s: not on the host's PC, shown as Simon\n",index,a.c_str());log(line);
+    if(engine[80])eng<void(__cdecl*)(Edict*,int,const char*)>(80)(e,1,("Your player model "+a.substr(0,32)+" is not on the host's PC.").c_str());}}}
+ if(want!=s.want){s.want=want;s.attempts=0;s.logged&=16u;}
+ if(want=="simon"&&(!simonModel||!simonString))return;
+ const int wantString=want=="simon"?simonString:model_string(want);if(!wantString)return;
  void* w=world_memory();if(!w){model_line(s,1u,"[STORYCOOP_RC4] MODEL player=%d world object not recognized%s\n",index,"");return;}
  const std::size_t field=WorldPlayerModels+static_cast<std::size_t>(index-1)*4;int named=load<int>(w,field);
- if(named&&named!=simonString&&!default_player_model(named)){model_line(s,2u,"[STORYCOOP_RC4] MODEL player=%d keeps the map's model %s\n",index,string_at(named));return;}
- if(named!=simonString)store<int>(w,field,simonString);
+ if(named&&named!=simonString&&named!=wantString&&!default_player_model(named)&&!modelStrings.count(string_at(named))){model_line(s,2u,"[STORYCOOP_RC4] MODEL player=%d keeps the map's model %s\n",index,string_at(named));return;}
+ if(named!=wantString)store<int>(w,field,wantString);
  auto buffer=eng<char*(__cdecl*)(Edict*)>(106)(e);if(!buffer)return;
  const char* value=eng<char*(__cdecl*)(char*,char*)>(107)(buffer,const_cast<char*>("model"));
- if(value&&std::strcmp(value,"simon")==0){model_line(s,4u,"[STORYCOOP_RC4] MODEL player=%d is simon%s\n",index,named==simonString?"":" (world field refilled)");return;}
+ if(value&&want==value){model_line(s,4u,("[STORYCOOP_RC4] MODEL player=%d is "+want+"%s\n").c_str(),index,named==wantString?"":" (world field refilled)");return;}
  // InfoKeyValue returns the engine's shared buffer: keep a copy for the log.
  const std::string previous=value&&*value?std::string(value).substr(0,32):"-";
  if(s.attempts>=3){model_line(s,8u,"[STORYCOOP_RC4] MODEL player=%d still %s after 3 tries; left alone this map\n",index,previous.c_str());return;}
- ++s.attempts;eng<void(__cdecl*)(int,char*,char*,char*)>(109)(index,buffer,const_cast<char*>("model"),const_cast<char*>("simon"));
- char line[140]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MODEL player=%d now simon (was %s, try %d)\n",index,previous.c_str(),s.attempts);log(line);
+ ++s.attempts;eng<void(__cdecl*)(int,char*,char*,char*)>(109)(index,buffer,const_cast<char*>("model"),const_cast<char*>(want.c_str()));
+ char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MODEL player=%d now %.32s (was %s, try %d)\n",index,want.c_str(),previous.c_str(),s.attempts);log(line);
 }
 
 // --- Pause while ANY player has the ESC menu open --------------------------------
@@ -230,7 +253,7 @@ int menuMode=0;
 // 1 new game, 2 newest slot (older entry), 11..13 slot 1..3.
 int menu_mode(const char* id){
  if(!id)return 0;if(!std::strcmp(id,"sc4coop_new"))return 1;if(!std::strcmp(id,"sc4coop_continue"))return 2;
- return !std::strncmp(id,"sc4coop_slot",12)&&id[12]>='1'&&id[12]<='3'&&!id[13]?10+(id[12]-'0'):0;
+ return !std::strncmp(id,"sc4coop_slot",12)&&id[12]>='1'&&id[12]<='5'&&!id[13]?10+(id[12]-'0'):0;
 }
 bool menu_command(const char* command){
  if(!command||std::strcmp(command,"campaign"))return false;menuMode=menu_mode(eng<const char*(__cdecl*)(int)>(83)(1));
@@ -253,7 +276,7 @@ std::string menu_host_command(int mode,std::string& notice){
  constexpr const char* back="disconnect;maxplayers 1;deathmatch 0;map c_game_menu1\n";
  if(mode==1){reset();checkpointWorldStarted=false;checkpointPrepared=false;sessionOptions=SessionOptions{};sessionOptions.have=true;return host_start_command(sessionOptions,0,"cof_campaign_story4");}
  const auto dir=checkpoint_directory();int best=0;std::filesystem::file_time_type newest{};Checkpoint chosen;bool chosenBackup=false;
- for(int slot=1;slot<=3;++slot){if(mode>10&&slot!=mode-10)continue;Checkpoint value;bool backup=false;std::filesystem::file_time_type time{};if(!menu_slot_usable(dir,slot,value,backup,time))continue;
+ for(int slot=1;slot<=5;++slot){if(mode>10&&slot!=mode-10)continue;Checkpoint value;bool backup=false;std::filesystem::file_time_type time{};if(!menu_slot_usable(dir,slot,value,backup,time))continue;
   if(!best||time>newest){best=slot;newest=time;chosen=std::move(value);chosenBackup=backup;}}
  if(!best){notice=mode>10?"Save slot "+std::to_string(mode-10)+" is empty.\n":std::string("No co-op save was found. Use a tape recorder in a co-op game first.\n");return back;}
  reset();checkpointWorldStarted=false;const std::string map=chosen.map;const int difficulty=chosen.difficulty;if(chosen.options.have)sessionOptions=chosen.options;
@@ -390,11 +413,78 @@ void chapter_frame(){
 struct StoryEntry {const char* file;int chapter,slot;};
 constexpr StoryEntry StoryEntries[]={{"Chapter-0-Prologue",0,0},{"Chapter-1-Lost-in-a-City",1,0},{"Chapter-2-Who-is-that-Doctor",2,0},{"Chapter-3-The-City-is-not-Safe",3,0},
  {"Chapter-4-Drowned-in-Sorrow",4,0},{"Chapter-5-Leaving-this-for-Good",5,0},{"Chapter-6-Its-not-Over-Yet",6,0},{"Chapter-7-Only-Safe-at-Home",7,0},
- {"Load-Save-Slot-1",-1,1},{"Load-Save-Slot-2",-1,2},{"Load-Save-Slot-3",-1,3}};
+ {"Load-Save-Slot-1",-1,1},{"Load-Save-Slot-2",-1,2},{"Load-Save-Slot-3",-1,3},{"Load-Save-Slot-4",-1,4},{"Load-Save-Slot-5",-1,5}};
 struct cvar_t {char* name;char* string;int flags;float value;cvar_t* next;};   // engine cvar_s
 cvar_t collisionCvar{const_cast<char*>("sc_collision"),const_cast<char*>("1"),0,1.f,nullptr};
+// --- Unlock extras: the Chapter 1 secret room (v0.7, docs/V07_TODO.md 2) -------------------
+// Katz 2026-10-27: a host option "Unlock extras" (Create Server window, beside
+// players, difficulty and collision) opens the Chapter 1 padlock room on
+// s4_start with every unlockable inside. Two locks keep it shut in co-op:
+//  - the converted door (func_button unlockablesdoor) is locked by the item
+//    "sc5_extras_later" that nobody carries (v0.5 maps); with the option on,
+//    that lockedby key never reaches the game (CBaseButton::Spawn then leaves
+//    it unlocked, decomp buttons.cpp 809);
+//  - the unlockables remove themselves when locked (decomp CoF_FAMAS.cpp 72,
+//    CoF_Axe.cpp 66, CoF_Camera.cpp 75, items.cpp 560): they ask
+//    CBasePlayer::CheckingEndingOrUnlockables (player.cpp 15313), which reads
+//    the host's scriptsettings.dat through LOAD_FILE_FOR_ME and looks for a
+//    "locked" or an "unlocked" token on a fixed line per unlock bit. With the
+//    option on, the server DLL's LoadFileForMe (engine slot 95) returns the
+//    file with each line's locked token changed to its unlocked token (same
+//    length, in the engine's own buffer). Session only: the file on disk is
+//    never written. The ending lines (47, 48) are left as they are.
+// The wardrobe in that room (cof_clothesmenu "clothes", its button and camera)
+// always gives player 1 the outfit view (decomp effects.cpp 11834); it is
+// retired on the s4_start maps so nobody is stuck in it. Outfits come from the
+// player model menu instead.
+cvar_t extrasCvar{const_cast<char*>("sc_extras"),const_cast<char*>("0"),0,0.f,nullptr};
+bool extrasUnlocked=false;
+struct UnlockLine {int line;const char* locked;const char* open;};
+const UnlockLine UnlockLines[]={
+ {15,"v9agjak+p)(,o3qb)aq4","v9agjak+p)(,03qb)aq4"},{7,"ye&ole1^0(fcanb3v5t4","ye&0le1^0(fcanb3v5t4"},{45,"1r6fd46ob7u2yj9q83yx","1r6fd46ob7u2yj9r83yx"},
+ {22,"2quwo6z3y4w\243ld)y!i35","2quvo6z3y4w\243ld)y!i35"},{3,"z3,4lj)4b!9g7vgi4x5a","z3,4rj)4b!9g7vgi4x5a"},{39,"r1&,iji4cjtvf,44w919","r1&,iji4cjtvf.44w919"},
+ {51,"olt0\243s^\243rn(aki!9eqkh","olt0\243s^\243rn(aki!9eqkj"},{52,"h*wchks\243n&%!\243bf%jtew","h*wchks\243n&%!\243bf%jtei"},{53,"%xn%i)jhxmfnbgjsr^if","\243xn%i)jhxmfnbgjsr^if"},
+ {54,"fy^xix&&vkz)vcdn!wtv","fy^xix&&vkz)vcrn!wtv"},{55,"jwsyv**yb&(qtqlg)moj","jwtyv**yb&(qtqlg)moj"},{56,"henp(cm$at!n%\243f(c$jp","henp(cm$at!m%\243f(c$jp"},
+ {57,"yef!xkyzw*^vd*tj)zkc","yef!&kyzw*^vd*tj)zkc"},{58,"z(*mbwy(talqlrqf$lmw","z(*mbwy(tolqlrqf$lmw"},{59,"zgpwg\243vyqlzensuauwat","zwpwg\243vyqlzensuauwat"},
+ {60,"dzpy)*iiy$oj!akyfbn%","dzpy)*iiy$0j!akyfbn%"},{61,"pe%%*\243\243rxa(%(bog)l^j","pe%%*\243\243rxr(%(bog)l^j"},{62,"efq%)x)mk\243*odxsdocb)","efq%)u)mk\243*odxsdocb)"},
+ {70,"pzakmx&p^lbk^kw($(fo","pzakhx&p^lbk^kw($(fo"},{71,"g*q$cceqhz&vcdp(au%!","g*q$cceqhz&vcdp(av%!"},{72,"aaa^$i)whenzprdh!vus","aba^$i)whenzprdh!vus"},
+ {73,"mwu\243g$&ztmkfwej(bg^a","mwu\243g$&stmkfwej(bg^a"},{74,"tzi&aoxfbkb^n&ikaxj%","tzi&a0xfbkb^n&ikaxj%"},{75,"wph!uhhgrws)*erdb*rg","wph!uhmgrws)*erdb*rg"},
+ {76,"&x&w%dvcr&$yoqs%c%ar","&x&v%dvcr&$yoqs%c%ar"},{77,"feyvvuxq^i)brfentm$&","foyvvuxq^i)brfentm$&"},{78,"*j%gb*^noyresqjihoez","*j%gb*^noyresqjihoes"},
+ {79,"nz(xdxj*w(\243!&uh\243qn*j","nz(xdxj*w)\243!&uh\243qn*j"},{80,"lvdw&bhwjqsjm$pfwnp)","rvdw&bhwjqsjm$pfwnp)"},{81,"zqv%n(nqquvh)dlmtl!x","zqv%n(noquvh)dlmtl!x"},
+ {82,")cfhc$vle$^hn\243padlvd",")cfhc$vle$^hn\243podlvd"},{83,"&fx!hd$bw^ayk%dfmcbg","&fx!hd$bw!ayk%dfmcbg"}};
+// Lines as CheckingEndingOrUnlockables counts them: strtok on '\n' (empty lines are skipped).
+int extras_unlock(char* data,int length){
+ int changed=0,line=0;
+ for(int at=0;at<length;){
+  while(at<length&&data[at]=='\n')++at;if(at>=length)break;
+  int end=at;while(end<length&&data[end]!='\n'&&data[end])++end;++line;
+  for(const auto& u:UnlockLines){if(u.line!=line)continue;const int n=static_cast<int>(std::strlen(u.locked));
+   for(int k=at;k+n<=end;++k)if(!std::memcmp(data+k,u.locked,n)){std::memcpy(data+k,u.open,n);++changed;break;}}
+  if(end<length&&!data[end])break;at=end;
+ }
+ return changed;
+}
+bool extrasLogged=false;
+unsigned char* __cdecl load_file_hook(char* name,int* length){
+ auto data=eng<unsigned char*(__cdecl*)(char*,int*)>(95)(name,length);
+ if(data&&extrasUnlocked&&name&&length&&*length>0){const char* base=std::strrchr(name,'/');base=base?base+1:name;
+  if(!_stricmp(base,"scriptsettings.dat")){const int n=extras_unlock(reinterpret_cast<char*>(data),*length);
+   if(!extrasLogged){extrasLogged=true;char line[140]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] EXTRAS unlocked for this game (%d lock(s) opened in memory; the file is not changed)\n",n);log(line);}}}
+ return data;
+}
+bool extras_keyvalue_dropped(const KeyValue* kv){
+ return extrasUnlocked&&kv&&kv->classname&&kv->key&&kv->value&&!std::strcmp(kv->classname,"func_button")&&!std::strcmp(kv->key,"lockedby")&&!std::strcmp(kv->value,"sc5_extras_later");
+}
+bool wardrobeDone=false;
+void wardrobe_frame(){
+ if(wardrobeDone||!scoped()||!globals)return;wardrobeDone=true;if(std::strncmp(map_name(),"s4_start",8))return;int n=0;
+ for(const char* name:{"clothes","clothescamera","simonclothes"}){Edict* e=nullptr;for(int k=0;k<8;++k){e=find_next(e,"targetname",name);if(!e)break;entity_retire(e);++n;}}
+ {Edict* b=nullptr;for(int k=0;k<8;++k){b=find_next(b,"target","clothes");if(!b)break;entity_retire(b);++n;}}
+ if(n){char line[140]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] EXTRAS wardrobe removed (%d entities: outfits come from the player model menu)\n",n);log(line);}
+}
 const StoryEntry* story_entry(const char* map){if(!map)return nullptr;for(const auto& s:StoryEntries)if(!_stricmp(map,s.file))return &s;return nullptr;}
 std::string story_entry_command(const StoryEntry& s,std::string& notice){
+ extrasUnlocked=engine[57]&&eng<float(__cdecl*)(const char*)>(57)("sc_extras")!=0.f;extrasLogged=false;   // v0.7: Unlock extras (this game only)
  if(s.slot)return menu_host_command(10+s.slot,notice);   // saved players, collision and difficulty win
  reset();checkpointWorldStarted=false;checkpointPrepared=false;sessionOptions=SessionOptions{};sessionOptions.have=true;
  const int slots=globals?load<int>(globals,0x90):2;sessionOptions.maxPlayers=slots<2?2:slots>4?4:slots;
@@ -405,7 +495,7 @@ std::string story_entry_command(const StoryEntry& s,std::string& notice){
 void story_entry_redirect(){
  const auto s=verified&&globals?story_entry(map_name()):nullptr;if(!s||!engine[39])return;
  std::string notice;std::string command;try{command=story_entry_command(*s,notice);}catch(...){notice="The co-op save could not be read.";command="disconnect;maxplayers 1;deathmatch 0;map c_game_menu1\n";}
- char line[300]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] HOST %s: players=%d collision=%s difficulty=%d%s%s\n",s->file,sessionOptions.maxPlayers,sessionOptions.collision?"on":"off",difficulty_now(),notice.empty()?"":" refused: ",notice.c_str());log(line);
+ char line[300]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] HOST %s: players=%d collision=%s extras=%s difficulty=%d%s%s\n",s->file,sessionOptions.maxPlayers,sessionOptions.collision?"on":"off",extrasUnlocked?"unlocked":"locked",difficulty_now(),notice.empty()?"":" refused: ",notice.c_str());log(line);
  eng<void(__cdecl*)(const char*)>(39)(command.c_str());
 }
 void __cdecl stuff_command(Edict* e,const char* format,...){
@@ -434,8 +524,8 @@ void __cdecl stuff_command(Edict* e,const char* format,...){
 // wiped by the HUD reset. It is now sent once the client's own commands arrive
 // (CmdStart) and then every 5 s without a fade-in, so it is always there.
 // v0.1 (user): the build is named v0.1 (v0.2 since 2026-10-16), and Special Thanks lists Mesilll,
-// Michal Eminov and caixa in that order (it misspelled "Michael" before). v0.6 (Katz 2026-10-25): joah added.
-constexpr const char* MenuCredit="Co-op mod v0.6.2 developed by Anas Sammak (koolkat)\nSpecial thanks: Mesilll, Michal Eminov, caixa, joah";
+// Michal Eminov and caixa in that order (it misspelled "Michael" before). v0.6 (Katz 2026-10-25): joah added; v0.7 (Katz): written Joah230.
+constexpr const char* MenuCredit="Co-op mod v0.7 developed by Anas Sammak (koolkat)\nSpecial thanks: Mesilll, Michal Eminov, caixa, Joah230";
 struct MenuCreditState{int serial=-1;float next=0,active=-1;bool logged=false,shown=false;};
 MenuCreditState menuCredit;
 void menu_credit_reset(){const bool logged=menuCredit.logged;menuCredit={};menuCredit.logged=logged;}

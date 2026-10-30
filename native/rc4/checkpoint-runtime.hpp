@@ -323,7 +323,7 @@ int argument_number(int i){const char* s=eng<const char*(__cdecl*)(int)>(83)(i);
 bool checkpoint_command(Edict* actor,const char* command){
  if(!command||std::strncmp(command,"sc_checkpoint_",14))return false;
  if(!checkpoint_host(actor)){checkpoint_notice(actor,"[STORYCOOP] Checkpoint controls belong to the host.\n");return true;}
- if(!std::strcmp(command,"sc_checkpoint_slot")){int slot=argument_number(1);if(slot>=1&&slot<=3){checkpointSlot=slot;checkpoint_notice(actor,"[STORYCOOP] Save slot selected. Use a tape recorder to commit.\n");}else checkpoint_notice(actor,"[STORYCOOP] Slot must be 1, 2 or 3.\n");}
+ if(!std::strcmp(command,"sc_checkpoint_slot")){int slot=argument_number(1);if(slot>=1&&slot<=5){checkpointSlot=slot;checkpoint_notice(actor,"[STORYCOOP] Save slot selected. Use a tape recorder to commit.\n");}else checkpoint_notice(actor,"[STORYCOOP] Slot must be 1, 2 or 3.\n");}
  else if(!std::strcmp(command,"sc_checkpoint_bind")){int uid=argument_number(1);const char* key=eng<const char*(__cdecl*)(int)>(83)(2);std::string name=key?key:"";if(uid<=0||name.empty()||name.size()>48||!checkpoint_identity(name)||name.find(':')!=name.npos){checkpoint_notice(actor,"[STORYCOOP] Bind requires a current status USERID and a stable profile KEY (letters/digits/underscore/hyphen).\n");return true;}
   bool exists=false;for(int i=1;i<=load<int>(globals,0x90);++i){auto e=eng<Edict*(__cdecl*)(int)>(72)(i);if(live(e)&&user_id(e)==uid)exists=true;}if(exists){profileBindings[uid]="profile:"+name;checkpoint_notice(actor,"[STORYCOOP] Host assigned profile. Use the same person/key on future joins.\n");}else checkpoint_notice(actor,"[STORYCOOP] No live participant has that USERID.\n");
  }else checkpoint_notice(actor,"[STORYCOOP] Restore is a fresh-launch server command; see Continue instructions.\n");
@@ -455,8 +455,8 @@ std::string save_slot_label(const std::filesystem::path& dir,int slot){
 // recorder again shows the list again instead of saving to the last slot.
 std::string save_choice_text(){
  const auto dir=checkpoint_directory();std::string text="SAVE GAME (host's PC)\n";
- for(int slot=1;slot<=3;++slot)text+=std::to_string(slot)+": "+save_slot_label(dir,slot)+"\n";
- return text+"Press 1, 2 or 3\n";
+ for(int slot=1;slot<=5;++slot)text+=std::to_string(slot)+": "+save_slot_label(dir,slot)+"\n";
+ return text+"Press 1 to 5\n";
 }
 void save_choice_print(Edict* e,const char* text){if(live(e)&&engine[80])eng<void(__cdecl*)(Edict*,int,const char*)>(80)(e,1,text);}
 bool save_choice_open(){return saveChoice.actor&&live(saveChoice.actor)&&serial(saveChoice.actor)==saveChoice.serial;}
@@ -478,7 +478,7 @@ void save_choice_begin(Edict* actor,int recorder){
 // "quicksel 1..3" from the choosing player while the list is up.
 bool save_choice_command(Edict* e,const char* command){
  if(!command||std::strcmp(command,"quicksel")||!save_choice_open()||e!=saveChoice.actor)return false;
- const char* a=eng<const char*(__cdecl*)(int)>(83)(1);if(!a||a[0]<'1'||a[0]>'3'||a[1])return true;
+ const char* a=eng<const char*(__cdecl*)(int)>(83)(1);if(!a||a[0]<'1'||a[0]>'5'||a[1])return true;
  save_choice_commit(a[0]-'0');return true;
 }
 void save_choice_frame(){
@@ -490,6 +490,42 @@ void save_choice_frame(){
  if(d>96.f*96.f){save_choice_close("[STORYCOOP] SAVE slot list closed: the player walked away\n");return;}
  if(now>=saveChoice.until){save_choice_close("[STORYCOOP] SAVE slot list closed: no slot chosen\n");return;}
  if(now>=saveChoice.next){saveChoice.next=now+1.f;save_choice_print(saveChoice.actor,saveChoice.text.c_str());}
+}
+// --- The single-player save window for the host (v0.7, docs/V07_TODO.md 4) -----------------
+// Katz 2026-10-27: when the host uses a tape recorder, the game's own save
+// window opens on the host's screen with its sound and fade, the host picks one
+// of five boxes with a double click, then the save sequence plays as in single
+// player; partners keep "Only host can save the game". The window (decomp
+// cl_dll SaveLoad_guess.cpp) is opened by the recorder's own SaveLoad message,
+// which is now passed on to the host. A double click sends "unfreezesave 1024
+// <slot>" (server PreSave: sound, "Saving progress...", 3 s, "Saved", fade):
+// the co-op checkpoint goes to that slot, and the window's later "savehack
+// cofsave<slot>" (the single-player save itself, hud_redraw.cpp 310) is never
+// run in co-op. The window's slot labels are its own files: in co-op launches
+// the client reads and writes SAVE/coopinfo<slot>.cof instead of saveinfo
+// (client-menu.hpp), so the single-player saves and labels are never touched.
+struct SaveWindow {Edict* actor=nullptr;int serial=-1,recorder=0;float until=0;} saveWindow;
+bool saveWindowEnabled=true;   // false: the v0.1 key list (fixtures)
+bool save_window_open(Edict* actor,int recorder,const RecorderMessage& message);
+bool save_window_open(Edict* actor,int recorder,const RecorderMessage& message){
+ if(!saveWindowEnabled||saveLoadMessage<=0||!engine[46]||!engine[47]||!engine[48]||!engine[54]||!globals||!live(actor))return false;
+ eng<void(__cdecl*)(int,int,const float*,Edict*)>(46)(message.destination,message.type,nullptr,actor);
+ for(const auto& w:message.writes){if(w.callback==54)eng<void(__cdecl*)(const char*)>(54)(w.text.c_str());else eng<void(__cdecl*)(int)>(w.callback)(w.value);}
+ eng<void(__cdecl*)()>(47)();
+ saveWindow={actor,serial(actor),recorder,load<float>(globals,0)+120.f};
+ char line[120]{};std::snprintf(line,sizeof(line),"[STORYCOOP] SAVE window opened for player %d (recorder %d)\n",eng<int(__cdecl*)(Edict*)>(71)(actor),recorder);log(line);return true;
+}
+bool save_window_command(Edict* e,const char* command){
+ if(!command||!scoped())return false;
+ if(!std::strcmp(command,"savehack")){char line[120]{};std::snprintf(line,sizeof(line),"[STORYCOOP] SAVE single-player save from the window skipped (player %d)\n",eng<int(__cdecl*)(Edict*)>(71)(e));log(line);return true;}
+ if(std::strcmp(command,"unfreezesave")||!saveWindow.actor||e!=saveWindow.actor||serial(e)!=saveWindow.serial||!globals||load<float>(globals,0)>saveWindow.until)return false;
+ const char* a=eng<const char*(__cdecl*)(int)>(83)(1);const char* b=eng<const char*(__cdecl*)(int)>(83)(2);
+ if(!a||std::strcmp(a,"1024")||!b||b[0]<'1'||b[0]>'5'||b[1])return false;
+ saveChoice={};saveChoice.actor=e;saveChoice.serial=serial(e);saveChoice.recorder=saveWindow.recorder;saveWindow={};
+ save_choice_commit(b[0]-'0');
+ // Saved now: the native PreSave below sets FL_NOTARGET, which a capture one frame later refuses.
+ if(recorderRequest==e){recorderRequest=nullptr;checkpoint_save(e);}
+ return false;   // the native PreSave runs its sequence as well
 }
 bool recorder_begin(int destination,int type,const float*,Edict* actor){
  recorderMessage={};
@@ -522,7 +558,11 @@ bool recorder_end(){
   // A partner's recorder Use saves nothing and shows "Only host can save the
   // game" to that partner only (v0.2: never from merely standing there).
   if(!checkpoint_host(message.actor)){char line[100]{};std::snprintf(line,sizeof(line),"[STORYCOOP] SAVE refused for player %d: only the host can save\n",eng<int(__cdecl*)(Edict*)>(71)(message.actor));log(line);if(engine[80])eng<void(__cdecl*)(Edict*,int,const char*)>(80)(message.actor,1,"Only host can save the game");}
-  else if(const int recorder=near_recorder(message.actor,message.writes[1].text))save_choice_begin(message.actor,recorder);
+  else if(const int recorder=near_recorder(message.actor,message.writes[1].text)){
+   // v0.7 (docs/V07_TODO.md 4): the host gets the single-player save window
+   // (five slots, its sound, fade and post process) instead of the key list.
+   if(save_window_open(message.actor,recorder,message)){return true;}
+   save_choice_begin(message.actor,recorder);}
   else checkpoint_notice(message.actor,"[STORYCOOP] Recorder checkpoint unavailable here; no save committed.\n");
   recorderFadeActor=message.actor;recorderFadeSerial=serial(message.actor);return true;
  }

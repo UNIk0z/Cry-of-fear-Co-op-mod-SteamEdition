@@ -36,7 +36,7 @@ export function readMe(version){
  return [
   `CRY OF FEAR CO-OP - Simon's story for 1 to 4 players (${version})`,
   `Co-op mod ${version} developed by Anas Sammak (koolkat).`,
-  'Special thanks: Mesilll, Michal Eminov, caixa, joah.',
+  'Special thanks: Mesilll, Michal Eminov, caixa, Joah230.',
   '',
   'BOTH PLAYERS',
   '  1. Close Cry of Fear.',
@@ -52,10 +52,11 @@ export function readMe(version){
   '     the co-op main menu (Steam may ask once to allow the launch options).',
   '  4. The HOST clicks "Host Simon\'s Story". The game\'s Create Server window',
   '     opens. In its list pick where to start (Chapter-0-Prologue up to',
-  '     Chapter-7-Only-Safe-at-Home) or a save (Load-Save-Slot-1, 2 or 3).',
+  '     Chapter-7-Only-Safe-at-Home) or a save (Load-Save-Slot-1 to 5).',
   '     Set the number of players (2 to 4) and, on the second page, the',
   '     difficulty and Player collision (on: you bump into each other; off:',
-  '     you walk through each other). Click Start. A save keeps its own',
+  '     you walk through each other) and Unlock extras (the Chapter 1 secret',
+  '     room with every unlockable). Click Start. A save keeps its own',
   '     players, collision and difficulty. You can also play alone.',
   '     Give your friends your address (for example your Radmin VPN address).',
   '  5. A FRIEND clicks "Join Simon\'s Story". A box opens: type the host\'s',
@@ -66,13 +67,21 @@ export function readMe(version){
   '     (Or start "Run Co-op Mod.cmd" from a command prompt as',
   '      "Run Co-op Mod.cmd" join 192.168.1.1   to start and join in one go.)',
   '',
+  'PLAYER MODEL',
+  '  Click "Player Model" in the co-op menu, type one of the listed models and',
+  '  click Log on. Your choice is kept for the next start. To add your own',
+  '  model, put its .mdl file (made for the Cry of Fear player skeleton) in the',
+  '  "playermodels" folder next to "Run Co-op Mod.cmd" and start the mod again.',
+  '  The others see your model when the host has it too (the host can put the',
+  '  same file in their playermodels folder; joining players download it).',
+  '',
   '"Run Co-op Mod.cmd" uses your Steam name as your player name. Starting Cry',
   'of Fear the normal way shows the game\'s own menu; only "Run Co-op Mod.cmd"',
   'starts it with the co-op menu.',
   '',
   'SAVING',
-  '  Only the host can save. The host uses a tape recorder, then presses 1, 2',
-  '  or 3 to pick a save slot (every save asks for a slot). Everyone hears the',
+  '  Only the host can save. The host uses a tape recorder: the game\'s save',
+  '  window opens; double-click one of the five slots. Everyone hears the',
   '  recorder when the save is done. If the friend uses a recorder, they see',
   '  "Only host can save the game". Saves are kept on the host\'s PC. On harder',
   '  difficulties the game itself needs a cassette tape to save.',
@@ -132,6 +141,8 @@ export function main(args){
  }
  for(const [name,text] of Object.entries(PLAYER_COMMANDS))fs.writeFileSync(path.join(root,name),text,{flag:'wx'});
  fs.writeFileSync(path.join(root,'READ ME.txt'),readMe(catalog.coopFixes.id),{flag:'wx'});
+ // v0.7: custom player models go here (Run Co-op Mod.cmd copies them into the game).
+ fs.mkdirSync(path.join(root,'playermodels'));fs.writeFileSync(path.join(root,'playermodels','PUT PLAYER MODELS HERE.txt'),'Put your own player models (.mdl files made for the Cry of Fear player skeleton) in this folder,\r\nthen start "Run Co-op Mod.cmd". Each model shows up in the Player Model box of the co-op menu.\r\nUninstall.cmd leaves this folder alone.\r\n',{flag:'wx'});
  const summary={root,version:catalog.coopFixes.id,files:files.length,catalogSha256:sha256(fs.readFileSync(path.join(candidate,'release.json')))};
  console.log(JSON.stringify(summary));return summary;
 }

@@ -167,7 +167,7 @@ int main(int argc,char** argv){
  store(p1,0x2500,8);store(p1,0x380,reinterpret_cast<std::uint32_t>(&entities[10]));boat_frame(&entities[1]);store(p1,0x2500,0);teleports=0;boat_frame(&entities[1]);assert(teleports==0);
  store(p1,0x2500,8);boat_frame(&entities[1]);store(p1,0x2500,0);place(&entities[1],-800,0,36);place(&entities[2],-3000,0,36);lines.clear();boat_frame(&entities[1]);assert(teleports==0&&logged({"away from a dock"}));
  // --- Saving at ANY recorder of a later alias, with poses and world state.
- spawn_map();world_activate();minimal_globals();saveLoadMessage=8;screenFadeMessage=9;
+ spawn_map();world_activate();minimal_globals();saveLoadMessage=8;screenFadeMessage=9;saveWindowEnabled=false;   // the key list path (the v0.7 window: test-checkpoint-runtime)
  place(&entities[1],40,0,36);store(ev(&entities[1]),0x54,90.f);place(&entities[2],-200,300,36);store(&entities[3],0,1);
  message_begin(1,8,nullptr,&entities[1]);write_byte(0);write_string("Lake");message_end();checkpoint_start_frame();assert(saveChoice.recorder==6&&logged({"CLIENT:SAVE GAME"}));
  save_choice_commit(1);assert(requestedRecorder==6);checkpoint_start_frame();   // the host pressed 1
@@ -280,7 +280,7 @@ int main(int argc,char** argv){
    sceneSeen.clear();sceneFollowers.clear();cameraLeases.clear();}
   // --- v0.4 vote to skip: SPACE (IN_JUMP) votes; N/N fast-forwards the running manager (remaining
   // targets in order) and ends the camera with one toggle; a scene with a time-based target is not offered.
-  {store(ev(cam),0x1d0,intern("ckamera1"));store(ev(cam),0x248,1);store(pd(cam),0x124,1);store(pd(cam),0x104,5.f);make(13,"trigger_cofmobile","sms3hehe",613);make(14,"cof_teleport","2teleport",614);
+  {store(ev(cam),0x1d0,intern("ckamera1"));store(ev(cam),0x248,1);store(pd(cam),0x124,1);store(pd(cam),0x104,5.f);store(pd(cam),0x108,716.f);make(13,"trigger_cofmobile","sms3hehe",613);make(14,"cof_teleport","2teleport",614);
    store(globalData.data(),0,700.f);auto mm=manager(15,"multiscene3",{{"ckamera1",0.5f},{"sms3hehe",6.5f},{"2teleport",15.4f}},1,699.5f);
    CameraLease l3;l3.owner=camera_ref(cam);l3.view=camera_ref(cam);for(int i:{1,2}){l3.playerSerial=serial(&entities[i]);cameraLeases[&entities[i]]=l3;}
    lines.clear();wire.clear();fired.clear();cameraToggles=0;skipScene={};skip_frame();
@@ -291,9 +291,13 @@ int main(int argc,char** argv){
    // v0.5.5: R in the player's own game arrives as the client command "sc_skip".
    assert(!skip_client_command(&entities[2],"other")&&skip_client_command(&entities[2],"sc_skip")&&logged({"SKIP vote (R) player=2 on multiscene3: 2/2"}));skip_frame();
    assert((fired==std::vector<std::string>{"sms3hehe","2teleport"})&&cameraToggles==0&&load<float>(pd(cam),0x108)<700.f&&load<int>(pd(mm),0xdc)==0);   // v0.5.7: ended by its return time, never toggled
-   assert(logged({"SKIP multiscene3 fast-forwarded: 2 remaining target(s) fired in order, 1 camera(s) ended"})&&!skipScene.active);
+   assert(logged({"SKIP multiscene3 jumped"})&&logged({"s to the scene's end: 2 target(s) fired in order, 1 camera(s) ended"})&&!skipScene.active);
+   // v0.7 (Playtest 3 clip 11): a timer after the scene (the lever doors closing 41 s later) keeps its time.
+   store(ev(cam),0x248,1);store(pd(cam),0x108,704.f);make(16,"func_door","doorshut",616);mm=manager(15,"multilever",{{"ckamera1",0.f},{"sms3hehe",1.f},{"doorshut",41.f}},1,699.f);
+   lines.clear();fired.clear();skipScene={};skipAfter={};skip_frame();press(1,false);press(1,true);press(2,false);press(2,true);skip_frame();
+   assert((fired==std::vector<std::string>{"sms3hehe"})&&load<int>(pd(mm),0xe4)==2&&std::fabs(load<float>(pd(mm),0xe8)+41.f-(700.f+36.f))<0.2f&&!skipScene.active);
    // v0.5.5: a scene that still moves a train is offered too; the train is started in order and runs on.
-   store(ev(cam),0x248,1);make(16,"func_train","tbtrain",616);mm=manager(15,"multitscene2",{{"ckamera1",0.f},{"tbtrain",3.f}},1,699.f);
+   store(ev(cam),0x248,1);store(pd(cam),0x108,716.f);store(&entities[16],0,1);make(16,"func_train","tbtrain",616);mm=manager(15,"multitscene2",{{"ckamera1",0.f},{"tbtrain",3.f}},1,699.f);
    lines.clear();fired.clear();skipScene={};skipAfter={};skip_frame();assert(logged({"SKIP offered for multitscene2 (1 manager(s)); runs on after a skip: tbtrain (func_train)"}));
    press(1,false);press(1,true);press(2,false);press(2,true);skip_frame();assert((fired==std::vector<std::string>{"tbtrain"})&&!skipScene.active);
    store(ev(cam),0x248,1);skipScene={};skipAfter={};

@@ -49,6 +49,6 @@ int main(int argc,char** argv){
  p.identity="profile:third";v.players.push_back(p);p.identity="profile:fourth";v.players.push_back(p);assert(decode_checkpoint(encode_checkpoint(v),loaded)&&loaded.players.size()==4);
  const std::filesystem::path dir(argv[1]);assert(commit_checkpoint(dir,1,v));bool backup=false;assert(read_checkpoint(dir,1,loaded,backup)&&!backup);v.players[0].health=64;assert(commit_checkpoint(dir,1,v));assert(read_checkpoint(dir,1,loaded,backup)&&loaded.players[0].health==64&&!backup);
  {std::ofstream f(dir/"slot1.cofsave",std::ios::binary|std::ios::trunc);f<<"damaged";}
- assert(read_checkpoint(dir,1,loaded,backup)&&backup&&loaded.players[0].health==83);assert(!commit_checkpoint(dir,1,v));assert(!commit_checkpoint(dir,4,v));
+ assert(read_checkpoint(dir,1,loaded,backup)&&backup&&loaded.players[0].health==83);assert(!commit_checkpoint(dir,1,v));assert(!commit_checkpoint(dir,6,v)&&!commit_checkpoint(dir,0,v));   // v0.7: slots 1-5
  std::puts("PASS checkpoint format and actual Windows atomic files: distinct/four retained identities, inventory/ammo/code round trip, corruption/truncation/path/identity rejection, backup recovery and corrupt-primary commit refusal");
 }

@@ -488,6 +488,13 @@ bool move_beside(Edict* who,Edict* anchor){
  if(!find_landing({load<float>(a,8),load<float>(a,12),load<float>(a,16)},who,at))return false;
  return teleport_to(who,at,load<float>(a,0x54));
 }
+// v0.7 (Playtest 3 clip 17: a partner moved beside the escaped player landed on the
+// falling train): a spot whose floor is the world, never a moving brush.
+bool move_beside_ground(Edict* who,Edict* anchor){
+ auto a=vars(anchor),w=vars(who);if(!a||!w)return false;std::array<float,3> at{};
+ if(!find_landing({load<float>(a,8),load<float>(a,12),load<float>(a,16)},who,at,true))return false;
+ return teleport_to(who,at,load<float>(a,0x54));
+}
 bool stuck_text(const char* s){
  if(!s)return false;while(*s==' '||*s=='"'||*s=='/'||*s=='!')++s;
  std::string t(s);while(!t.empty()&&(t.back()==' '||t.back()=='"'||t.back()=='\n'))t.pop_back();
@@ -528,6 +535,7 @@ void stuck_command(Edict* e,const char* command){
 // partner. Nobody alive: nothing happens (game over as before).
 constexpr std::size_t PlayerAutoRevive=0x1f2c;
 bool bossOver=false;bool boss_alive();   // boss section below
+bool fall_reveal(Edict* e);   // Playtest 3 section below
 struct FallBack {int serial=-1;SavedPlayer record;bool have=false;Edict* partner=nullptr;int partnerSerial=-1;float due=-1;};
 std::unordered_map<Edict*,FallBack> fallBacks;
 void fall_back_frame(Edict* e){
@@ -536,7 +544,7 @@ void fall_back_frame(Edict* e){
  const bool restored=b.have&&restore_player(e,b.record,false,false,false);if(b.have)equip_want(e,b.record);
  Edict* partner=live(b.partner)&&serial(b.partner)==b.partnerSerial&&player_ready_for_move(b.partner)?b.partner:nullptr;
  for(auto o:connected_players())if(!partner&&o!=e&&player_ready_for_move(o))partner=o;
- const bool moved=partner&&move_beside(e,partner);
+ const bool moved=partner&&move_beside(e,partner);fall_reveal(e);   // v0.7: out from under a stay-out fade (roofs)
  char line[180]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] FALL player=%d back: inventory %s, %s\n",eng<int(__cdecl*)(Edict*)>(71)(e),restored?"restored":b.have?"restore FAILED":"no record",moved?"beside the partner":"at the map's spawn");log(line);
  fallBacks.erase(it);
 }
@@ -607,7 +615,7 @@ bool state_first_visit();   // state-runtime.hpp
 bool copyable_pickup(const std::string& t){
  if(t.rfind("ammo_",0)==0)return true;
  if(t.rfind("weapon_",0)!=0)return false;
- return t!="weapon_glock"&&t!="weapon_mobile"&&t!="weapon_switchblade"&&t!="weapon_dualweapon";
+ return t!="weapon_glock"&&t!="weapon_mobile"&&t!="weapon_switchblade"&&t!="weapon_dualweapon"&&t!="weapon_p345";
 }
 Trace point_trace(const std::array<float,3>& a,const std::array<float,3>& b,Edict* skip){Trace t{};eng<void(__cdecl*)(const float*,const float*,int,int,Edict*,Trace*)>(34)(a.data(),b.data(),1,0,skip,&t);return t;}
 bool copy_spot_clear(const std::array<float,3>& from,const std::array<float,3>& at,Edict* skip){
@@ -625,7 +633,7 @@ void item_copies_frame(){
  static const float ring[][2]={{24,0},{-24,0},{0,24},{0,-24},{24,24},{-24,24},{24,-24},{-24,-24},{48,0},{-48,0},{0,48},{0,-48},{48,24},{-48,24},{48,-24},{-48,-24}};
  int made=0,originals=0,skipped=0;
  for(std::size_t i=1;i<spawnRecords.size()&&made<240;++i){
-  const SpawnRecord r=spawnRecords[i];if(!r.e||!r.pickup||r.dm||world_taken(r)||!copyable_pickup(r.type))continue;auto v=vars(r.e);if(!v)continue;
+  const SpawnRecord r=spawnRecords[i];if(!r.e||!r.pickup||r.dm||world_taken(r)||!copyable_pickup(r.type))continue;auto v=vars(r.e);if(!v||load<float>(v,0x168)<=-2.f)continue;
   ++originals;const std::array<float,3> o{load<float>(v,8),load<float>(v,12),load<float>(v,16)};int placed=0;
   for(const auto& d:ring){if(placed>=copies)break;const std::array<float,3> at{o[0]+d[0],o[1]+d[1],o[2]};if(!copy_spot_clear(o,at,r.e))continue;
    auto c=eng<Edict*(__cdecl*)(int)>(23)(eng<int(__cdecl*)(const char*)>(67)(r.type.c_str()));if(!live(c))break;
@@ -679,25 +687,79 @@ void load_wait_frame(){
 // s4_apartment3sick_e0, landmark down_li while the start is at the ladder hole).
 // Each arriving player is moved to a clear spot beside the landmark once their
 // HUD is ready and their inventory has been applied.
-struct Arrival {const char* from;const char* to;float at[3];};
+std::vector<std::string> manager_targets(Edict* e,int from);   // below
+// v0.7 (Playtest 3 clip 14 "loop map change again": host log 2026-10-28 has 40
+// level changes s4_down <-> s4_apartment3sick_e0 in a row, each with "ARRIVAL
+// player=1 ... moved beside the original landmark"; clip 9 "still wrong
+// teleport": "ARRIVAL ... no clear spot there, stays at the map start" after
+// the college emergency exit; and no ARRIVAL line at all after buscity ->
+// s4_city_e1). Three causes: the spot beside the landmark lies inside the
+// trigger that leads straight back (s4_down and s4_apartment3sick share
+// landmark down_li); the original college1dark landmark 2hcl2 is 512 units
+// lower than hamn3's (-1144 against -632), so single player arrives 512 units
+// above where the player stood, not on the landmark itself; and the arrival
+// was dropped when the old map ran another frame after the change was asked
+// for. Now each arrival works as in single player: the position of the player
+// nearest the source landmark, relative to it, is carried to the destination
+// landmark; every arriving player lands on a clear spot there that is outside
+// every trigger leading to another level (searched outward up to 480 units).
+struct Arrival {const char* from;const char* to;const char* landmark;float src[3];float dst[3];};
 const Arrival Arrivals[]={
- {"apartment3sick","s4_down",{315,-402,380}},{"apartmentsick","s4_apartment3_e4",{-1201,2448,68}},{"apartmentsick","s4_basement_e0",{-3245,2496,502}},
- {"basement","s4_apartmentsick_e1",{-3245,2496,502}},{"buscity","s4_city_e1",{-507,-1184,-54}},{"college1dark","s4_hamn3_e0",{-1351,1705,-632}},
- {"down","s4_apartment3sick_e0",{315,-402,380}},{"park3","s4_roofs2_e1",{2043,357,745}},{"roofs2","s4_roofs_e0",{2044,-1435,122}}};
-struct PendingArrival {const Arrival* a=nullptr;std::set<std::pair<Edict*,int>> placed;float until=0;bool armed=false;};
+ {"apartment3sick","s4_down","down_li",{315,-402,380},{315,-402,380}},{"apartmentsick","s4_apartment3_e4","landfitta",{-1201,2448,68},{-1201,2448,68}},
+ {"apartmentsick","s4_basement_e0","landkuk",{-3245,2496,502},{-3245,2496,502}},{"basement","s4_apartmentsick_e1","landkuk",{-3245,2496,502},{-3245,2496,502}},
+ {"buscity","s4_city_e1","landbc",{-507,-1184,-54},{-507,-1184,-54}},{"college1dark","s4_hamn3_e0","2hcl2",{-1351,1705,-1144},{-1351,1705,-632}},
+ {"down","s4_apartment3sick_e0","down_li",{315,-402,380},{315,-402,380}},{"park3","s4_roofs2_e1","swheh15",{2043,357,745},{2043,357,745}},
+ {"roofs2","s4_roofs_e0","rlm1",{2044,-1435,122},{2044,-1435,122}}};
+struct PendingArrival {const Arrival* a=nullptr;std::array<float,3> offset{0,0,37};std::set<std::pair<Edict*,int>> placed;float until=0;bool armed=false;std::vector<std::array<float,6>> exits;};
 PendingArrival pendingArrival;
 std::string map_base(const std::string& m){std::string b=m.rfind("s4_",0)==0?m.substr(3):m;const auto e=b.rfind("_e");if(e!=std::string::npos&&e+2<b.size()&&std::all_of(b.begin()+e+2,b.end(),[](char c){return c>='0'&&c<='9';}))b.resize(e);return b;}
 void arrival_level_change(const char* map){
  pendingArrival={};if(!map||!globals)return;const std::string from=map_base(map_name());
- for(const auto& a:Arrivals)if(from==a.from&&!_stricmp(map,a.to)){pendingArrival.a=&a;return;}
+ for(const auto& a:Arrivals)if(from==a.from&&!_stricmp(map,a.to)){
+  pendingArrival.a=&a;float best=-1;
+  for(auto e:connected_players()){auto v=vars(e);if(!v||!view_alive(e))continue;std::array<float,3> d{};float dd=0;for(int k=0;k<3;++k){d[k]=load<float>(v,8+k*4)-a.src[k];dd+=d[k]*d[k];}
+   if(dd<600.f*600.f&&(best<0||dd<best)){best=dd;pendingArrival.offset=d;}}
+  return;}
+}
+// Triggers whose fire reaches a level change (relays, counters, managers and trigger_command followed).
+bool exit_reaches(const std::string& name,int depth,std::set<std::string>& seen){
+ if(depth>6||!seen.insert(name).second)return false;
+ for(auto e:skip_named(name)){const std::string c=classname(e);auto v=vars(e);if(!v)continue;
+  if(c=="cof_changelevel"||c=="trigger_changelevel")return true;
+  if(c=="trigger_command"){const char* t=string_at(load<int>(v,0x1d4));if(t&&std::strstr(t,"changelevel"))return true;}
+  if(c=="trigger_relay"||c=="game_counter"){const char* t=string_at(load<int>(v,0x1cc));if(t&&*t&&exit_reaches(t,depth+1,seen))return true;}
+  if(c=="multi_manager")for(const auto& t:manager_targets(e,0))if(exit_reaches(t,depth+1,seen))return true;}
+ return false;
+}
+std::vector<std::array<float,6>> exit_volumes(){
+ std::vector<std::array<float,6>> out;
+ for(const char* type:{"trigger_once","trigger_multiple","trigger_changelevel"}){Edict* t=nullptr;
+  for(int n=0;n<512;++n){t=find_next(t,"classname",type);if(!t)break;auto v=vars(t);if(!v)continue;const char* target=string_at(load<int>(v,0x1cc));std::set<std::string> seen;
+   if(std::strcmp(type,"trigger_changelevel")&&!(target&&*target&&exit_reaches(target,0,seen)))continue;
+   out.push_back({load<float>(v,0xc4),load<float>(v,0xc8),load<float>(v,0xcc),load<float>(v,0xd0),load<float>(v,0xd4),load<float>(v,0xd8)});}}
+ return out;
+}
+bool outside_exits(const std::array<float,3>& at,const std::vector<std::array<float,6>>& exits){
+ for(const auto& x:exits){bool in=true;for(int k=0;k<3;++k){const float lo=at[k]+(k==2?-36.f:-16.f)-8.f,hi=at[k]+(k==2?36.f:16.f)+8.f;if(hi<x[k]||lo>x[3+k])in=false;}if(in)return false;}
+ return true;
+}
+bool arrival_landing(const std::array<float,3>& anchor,Edict* skip,const std::vector<std::array<float,6>>& exits,std::array<float,3>& out){
+ for(float radius:{0.f,48.f,96.f,144.f,192.f,240.f,320.f,400.f,480.f}){
+  const int steps=radius==0?1:radius<=96.f?8:16;
+  for(int k=0;k<steps;++k){const float angle=static_cast<float>(k)*6.2831853f/static_cast<float>(steps);
+   for(float lift:{0.f,18.f,36.f,54.f}){const std::array<float,3> at{anchor[0]+radius*std::cos(angle),anchor[1]+radius*std::sin(angle),anchor[2]+lift};
+    if(outside_exits(at,exits)&&landing_clear(anchor,at,skip)){out=at;return true;}}}
+ }
+ return false;
 }
 void arrival_frame(Edict* e){
  auto& p=pendingArrival;if(!p.a||!globals||!scoped())return;
- if(_stricmp(map_name(),p.a->to)){p={};return;}
- const float now=load<float>(globals,0);if(!p.armed){p.armed=true;p.until=now+60.f;}if(now>p.until){p={};return;}
+ if(_stricmp(map_name(),p.a->to)){if(map_base(map_name())!=p.a->from)p={};return;}   // the old map may run on for a frame
+ const float now=load<float>(globals,0);if(!p.armed){p.armed=true;p.until=now+60.f;p.exits=exit_volumes();}if(now>p.until){p={};return;}
  if(!view_alive(e)||!client_ready(e)||!carry_settled(e)||p.placed.count({e,serial(e)}))return;p.placed.insert({e,serial(e)});
- std::array<float,3> at{};const bool moved=find_landing({p.a->at[0],p.a->at[1],p.a->at[2]},e,at)&&teleport_to(e,at,load<float>(vars(e),0x54));
- char line[180]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] ARRIVAL player=%d from %s: %s\n",eng<int(__cdecl*)(Edict*)>(71)(e),p.a->from,moved?"moved beside the original landmark":"no clear spot there, stays at the map start");log(line);
+ const std::array<float,3> spot{p.a->dst[0]+p.offset[0],p.a->dst[1]+p.offset[1],p.a->dst[2]+p.offset[2]},mark{p.a->dst[0],p.a->dst[1],p.a->dst[2]+37.f};
+ std::array<float,3> at{};const bool moved=(arrival_landing(spot,e,p.exits,at)||arrival_landing(mark,e,p.exits,at))&&teleport_to(e,at,load<float>(vars(e),0x54));
+ char line[200]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] ARRIVAL player=%d from %s: %s (landmark %s, %d exit trigger(s) avoided)\n",eng<int(__cdecl*)(Edict*)>(71)(e),p.a->from,moved?"placed as in single player":"no clear spot there, stays at the map start",p.a->landmark,static_cast<int>(p.exits.size()));log(line);
 }
 // --- A door that locks behind the first player (v0.6) --------------------------------------
 // Playtest 2 clip 14 ("door just gets locked as soon as the other player goes
@@ -724,22 +786,50 @@ void door_lock_lookup(Edict* start,const char* key,const char*,Edict* found){
  const auto& g=it->second.global;if(g.rfind("sc4.door.",0)||g.size()<17||g.compare(g.size()-8,8,".enabled"))return;
  const auto dot=g.rfind('.',g.size()-9);if(dot==std::string::npos)return;const int door=std::atoi(g.c_str()+dot+1);if(door<=0)return;
  for(const auto& l:doorLocks)if(l.door==door)return;
- const float now=load<float>(globals,0);const bool touched=live(lastToucher)&&serial(lastToucher)==lastToucherSerial&&now>=lastTouchTime&&now-lastTouchTime<=1.f;
- doorLocks.push_back({door,now+0.5f,touched?lastToucher:nullptr,touched?lastToucherSerial:-1});
+ doorLocks.push_back({door,load<float>(globals,0)+0.5f,nullptr,-1});
+}
+// v0.7 (Playtest 3: "story locked door must be able to let 2 players in first
+// or atleast if there is a story lock door after the player 1 goes through
+// atleast teleport player 2"; logs of both sessions: no DOORLOCK line at all,
+// 21 "DOOR locked press ... (story lock not open yet)" and 12 "stuck" uses).
+// The v0.6 rule only counted a lock fired within one second of the player's own
+// trigger touch and within 900 units of the destination, which the s4_hamn_e1
+// chase (and the other story locks) did not meet. Of the two fixes Katz named,
+// moving the shut-out partner through is the robust one: the story still locks
+// the door as written, and nobody has to reach the door in time. A converted
+// door N is the func_button that fires cof_story_present<N> (its near side) and
+// lands players on sc4_cd_<N>_dest (its far side). A living player is beyond
+// the door when he is nearer that destination than the button, within 1500
+// units. When a story env_global locks door N, and when a player presses E on
+// a locked door N, every other living player not beyond it (the presser only,
+// for a press) is moved beside the player beyond it who is nearest the
+// destination.
+Edict* door_button(int door){const std::string t="cof_story_present"+std::to_string(door);return find_next(nullptr,"target",t.c_str());}
+float door_dist(Edict* p,const std::array<float,3>& at){auto v=vars(p);float d=0;for(int k=0;k<3;++k){const float x=load<float>(v,8+k*4)-at[k];d+=x*x;}return d;}
+int door_follow(int door,Edict* only,const char* why){
+ Edict* dest=nullptr;{const std::string n="sc4_cd_"+std::to_string(door)+"_dest";dest=find_next(nullptr,"targetname",n.c_str());}
+ auto dv=live(dest)?vars(dest):nullptr;Edict* button=door_button(door);auto bv=live(button)?vars(button):nullptr;if(!dv||!bv)return -1;
+ const std::array<float,3> farSpot{load<float>(dv,8),load<float>(dv,12),load<float>(dv,16)};std::array<float,3> nearSpot{};
+ for(int k=0;k<3;++k)nearSpot[k]=(load<float>(bv,0xc4+k*4)+load<float>(bv,0xd0+k*4))*0.5f;
+ auto beyond=[&](Edict* p){const float d=door_dist(p,farSpot);return d<1500.f*1500.f&&d<door_dist(p,nearSpot);};
+ Edict* anchor=nullptr;for(auto p:connected_players())if(player_ready_for_move(p)&&beyond(p)&&(!anchor||door_dist(p,farSpot)<door_dist(anchor,farSpot)))anchor=p;
+ if(!anchor)return 0;int moved=0,failed=0;
+ for(auto p:connected_players()){if(p==anchor||(only&&p!=only)||!player_ready_for_move(p)||beyond(p))continue;move_beside(p,anchor)?++moved:++failed;}
+ if(moved||failed){char line[200]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] DOORLOCK door %d %s: %d partner(s) moved beside player=%d, %d without a free spot\n",door,why,moved,eng<int(__cdecl*)(Edict*)>(71)(anchor),failed);log(line);}
+ return moved;
 }
 void door_lock_frame(){
  if(doorLocks.empty()||!globals)return;const float now=load<float>(globals,0);
- for(auto it=doorLocks.begin();it!=doorLocks.end();){
-  if(now<it->due){++it;continue;}const DoorLock l=*it;const int door=l.door;it=doorLocks.erase(it);
-  Edict* dest=nullptr;{const std::string n="sc4_cd_"+std::to_string(door)+"_dest";dest=find_next(nullptr,"targetname",n.c_str());}
-  auto dv=live(dest)?vars(dest):nullptr;if(!dv)continue;
-  auto dist=[](Edict* p,void* to){auto v=vars(p);float d=0;for(int k=0;k<3;++k){const float x=load<float>(v,8+k*4)-load<float>(to,8+k*4);d+=x*x;}return d;};
-  // Only a lock fired by a player's own touch beyond the door counts (map-start locks move nobody).
-  Edict* through=live(l.who)&&serial(l.who)==l.whoSerial&&view_alive(l.who)&&dist(l.who,dv)<900.f*900.f?l.who:nullptr;
-  if(!through)continue;int moved=0,failed=0;
-  for(auto p:connected_players())if(p!=through&&view_alive(p)&&dist(p,vars(through))>=300.f*300.f)move_beside(p,through)?++moved:++failed;
-  if(moved||failed){char line[180]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] DOORLOCK door %d locked behind player=%d: %d partner(s) moved through, %d without a free spot\n",door,eng<int(__cdecl*)(Edict*)>(71)(through),moved,failed);log(line);}
- }
+ for(auto it=doorLocks.begin();it!=doorLocks.end();){if(now<it->due){++it;continue;}const int door=it->door;it=doorLocks.erase(it);door_follow(door,nullptr,"locked by the story");}
+}
+// The press on a locked converted door (evidence_sound): the nearest living player within 160 units pressed it.
+std::unordered_map<Edict*,float> doorPressUsed;
+void door_locked_press(Edict* button){
+ auto bv=vars(button);if(!bv||!globals)return;const char* t=string_at(load<int>(bv,0x1cc));if(!t||std::strncmp(t,"cof_story_present",17))return;
+ const int door=std::atoi(t+17);if(door<=0)return;std::array<float,3> c{};for(int k=0;k<3;++k)c[k]=(load<float>(bv,0xc4+k*4)+load<float>(bv,0xd0+k*4))*0.5f;
+ Edict* who=nullptr;for(auto p:connected_players())if(player_ready_for_move(p)&&door_dist(p,c)<160.f*160.f&&(!who||door_dist(p,c)<door_dist(who,c)))who=p;
+ if(!who)return;const float now=load<float>(globals,0);auto& used=doorPressUsed[who];if(now<used)return;used=now+3.f;
+ door_follow(door,who,"pressed while locked");
 }
 // --- Out of the hanging train together (v0.5.7) ----------------------------------------
 // Katz 2026-10-25: "once one of the players exit the train before it falls down
@@ -760,7 +850,7 @@ void train_escape_touch(Edict* trigger,Edict* other){
 void train_escape_frame(){
  if(!trainEscape.who)return;const auto t=trainEscape;trainEscape.who=nullptr;if(!live(t.who)||serial(t.who)!=t.serial)return;
  int moved=0,failed=0;
- for(auto o:connected_players()){if(o==t.who||!view_alive(o))continue;auto a=vars(t.who),b=vars(o);float d=0;for(int k=0;k<3;++k){const float x=load<float>(a,8+k*4)-load<float>(b,8+k*4);d+=x*x;}if(d<160.f*160.f)continue;move_beside(o,t.who)?++moved:++failed;}
+ for(auto o:connected_players()){if(o==t.who||!view_alive(o))continue;auto a=vars(t.who),b=vars(o);float d=0;for(int k=0;k<3;++k){const float x=load<float>(a,8+k*4)-load<float>(b,8+k*4);d+=x*x;}if(d<160.f*160.f)continue;move_beside_ground(o,t.who)?++moved:++failed;}
  char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] TRAIN player=%d reached safety: %d partner(s) moved beside them, %d without a free spot\n",eng<int(__cdecl*)(Edict*)>(71)(t.who),moved,failed);log(line);
 }
 // --- A death in a boss fight is a game over (v0.5.7) -----------------------------------
@@ -1077,6 +1167,7 @@ void evidence_keyvalue(Edict* e,const KeyValue* kv){
 void evidence_sound(Edict* e,const char* sample){
  if(!sample)return;
  if(itemUse.active&&itemUse.sounds.size()<8)itemUse.sounds.emplace_back(sample);
+ if(scoped()&&!std::strcmp(sample,"buttons/latchlocked1.wav")&&live(e)&&!std::strcmp(classname(e),"func_button"))door_locked_press(e);
  if(scoped()&&!std::strcmp(sample,"buttons/latchlocked1.wav")&&live(e)&&!std::strcmp(classname(e),"func_button")&&lockedLines<40){
   ++lockedLines;char line[200]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] DOOR locked press on %.60s (story lock not open yet)\n",targetname(e));log(line);
  }
@@ -1238,24 +1329,66 @@ bool skip_viewing(Edict* e){
 }
 void skip_count_show(){char text[64]{};std::snprintf(text,sizeof(text),"Press R to skip  %d/%d",static_cast<int>(skipScene.votes.size()),skip_needed());skip_show(text);}
 void skip_log(const char* line){if(skipLines<200){++skipLines;log(line);}}
+// v0.7 (Playtest 3 clip 11 "first time i press the 2nd lever it did not work the
+// first time even tho it showed the cutscene", s4_subway1st1: the lever's
+// manager kortdragare2st opens doors 157/159 and, 41 s later, kortdragare2st2
+// closes them again; the fast-forward fired every remaining target at once, so
+// the doors closed in the same frame they opened. Clip 4: after a skip the voice
+// line and other sounds kept playing and the view stayed zoomed in (s4_park3
+// multiirlsophie: ambient_generic voicesounds, cof_camerazoom iszoom1 whose
+// ReturnFOV runs fuser3 seconds after its Use, decomp effects.cpp)).
+// A skip now jumps to the END OF THE SCENE, not to the end of every timer: the
+// scene ends when its last camera would end (a running camera's m_flReturnTime
+// 0x108; a camera still to come: its manager's start + delay + m_flWait 0x104).
+// Each scene manager's clock moves forward by that jump (m_startTime -= jump),
+// so its targets up to the scene's end fire now and later ones (timed doors,
+// chases) keep the time they had left. New delayed relays fire now only when
+// they are due within the jump. Then the one-shot sounds of the scene
+// (ambient_generic with "not looped", spawnflags 32) are stopped the ways the
+// game plays them (ambient at its origin, on its play-from entity's channels,
+// on the players), and each zoom of the scene returns the view at once (its
+// own ReturnFOV think). No camera found: everything is fired as before.
+float skip_jump(float now){
+ float end=-1;
+ Edict* c=nullptr;for(int n=0;n<512;++n){c=find_next(c,"classname","trigger_camera");if(!c)break;void* p=nullptr;if(skip_camera_on(c)&&skipScene.names.count(targetname(c))&&camera_memory(c,p))end=(std::max)(end,load<float>(p,CameraReturnTime));}
+ for(const auto& m:skipScene.managers){void* p=manager_memory(m.e);if(!p||serial(m.e)!=m.serial)continue;const int count=load<int>(p,MmCount),from=load<int>(p,MmIndex);
+  for(int i=from>0?from:0;i<count;++i){const char* name=string_at(load<int>(p,MmNames+i*4));if(!name||!*name)continue;
+   for(auto e:skip_named(name)){void* cp=nullptr;if(!std::strcmp(classname(e),"trigger_camera")&&camera_memory(e,cp))end=(std::max)(end,load<float>(p,MmStart)+load<float>(p,MmDelays+i*4)+load<float>(cp,CameraWait));}}}
+ return end<0?100000.f:(std::max)(0.f,end-now)+0.05f;
+}
+void skip_stop_sounds(){
+ if(!engine[29]||!engine[30])return;int stopped=0;
+ for(const auto& name:skipScene.names)for(auto e:skip_named(name)){
+  auto v=vars(e);if(!v||std::strcmp(classname(e),"ambient_generic")||!(load<unsigned>(v,0x1a4)&32u))continue;
+  const char* sample=string_at(load<int>(v,0x1d8));if(!sample||!*sample)continue;float origin[3]{load<float>(v,8),load<float>(v,12),load<float>(v,16)};
+  eng<void(__cdecl*)(Edict*,float*,const char*,float,float,int,int)>(30)(e,origin,sample,0.f,0.f,32,0);
+  const char* from=string_at(load<int>(v,0x1cc));if(from&&*from)for(auto s:skip_named(from))for(int ch=0;ch<8;++ch)eng<void(__cdecl*)(Edict*,int,const char*,float,float,int,int)>(29)(s,ch,sample,0.f,0.f,32,100);
+  for(auto p:connected_players())eng<void(__cdecl*)(Edict*,int,const char*,float,float,int,int)>(29)(p,6,sample,0.f,0.f,32,100);
+  ++stopped;}
+ int zooms=0;
+ for(const auto& name:skipScene.names)for(auto e:skip_named(name))if(!std::strcmp(classname(e),"cof_camerazoom")){crumb("skip zoom",e);native<void(__cdecl*)(Edict*)>(2)(e);++zooms;}
+ if(stopped||zooms){char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] SKIP %d scene sound(s) stopped, %d zoom(s) returned\n",stopped,zooms);skip_log(line);}
+}
 // The fast-forward: managers first (in the order found), then what they started, until nothing new runs.
 void skip_now(Edict* activatorFallback){
- const float now=load<float>(globals,0);std::set<std::pair<Edict*,int>> done,relays;int fired=0,cameras=0,rounds=0;
+ const float now=load<float>(globals,0),jump=skip_jump(now);std::set<std::pair<Edict*,int>> done,relays;int fired=0,cameras=0,rounds=0;
  {Edict* d=nullptr;for(int n=0;n<512;++n){d=find_next(d,"classname","DelayedUse");if(!d)break;relays.insert({d,serial(d)});}}   // not ours
  for(;rounds<6;++rounds){
   std::vector<Edict*> todo;
   for(const auto& m:skipScene.managers)if(serial(m.e)==m.serial&&manager_running(m.e)&&!done.count({m.e,m.serial}))todo.push_back(m.e);
   {Edict* x=nullptr;for(int n=0;n<1024;++n){x=find_next(x,"classname","multi_manager");if(!x)break;if(manager_running(x)&&skipScene.names.count(targetname(x))&&!done.count({x,serial(x)}))todo.push_back(x);}}
-  std::vector<Edict*> delayed;{Edict* d=nullptr;for(int n=0;n<512;++n){d=find_next(d,"classname","DelayedUse");if(!d)break;if(!relays.count({d,serial(d)}))delayed.push_back(d);}}
+  std::vector<Edict*> delayed;{Edict* d=nullptr;for(int n=0;n<512;++n){d=find_next(d,"classname","DelayedUse");if(!d)break;if(relays.count({d,serial(d)}))continue;relays.insert({d,serial(d)});auto dv=vars(d);if(dv&&load<float>(dv,0x104)-now<=jump+0.01f)delayed.push_back(d);}}
   if(todo.empty()&&delayed.empty())break;
-  for(auto e:todo){void* p=manager_memory(e);if(!p)continue;done.insert({e,serial(e)});fired+=load<int>(p,MmCount)-load<int>(p,MmIndex);
+  for(auto e:todo){void* p=manager_memory(e);if(!p||!done.insert({e,serial(e)}).second)continue;const int before=load<int>(p,MmIndex);
    for(const auto& t:manager_targets(e,0))skipScene.names.insert(t);
-   store(p,MmStart,now-100000.f);store(vars(e),0x104,now);crumb("skip manager",e);native<void(__cdecl*)(Edict*)>(2)(e);}
-  for(auto d:delayed){relays.insert({d,serial(d)});if(live(d)){crumb("skip delayed",d);native<void(__cdecl*)(Edict*)>(2)(d);}}
+   store(p,MmStart,load<float>(p,MmStart)-jump);store(vars(e),0x104,now);crumb("skip manager",e);native<void(__cdecl*)(Edict*)>(2)(e);
+   if(manager_memory(e)==p)fired+=load<int>(p,MmIndex)-before;}
+  for(auto d:delayed){if(live(d)){crumb("skip delayed",d);native<void(__cdecl*)(Edict*)>(2)(d);}}
  }
  // Scene cameras still on: ended through their own end path (camera_end), never toggled.
  Edict* c=nullptr;for(int n=0;n<512;++n){c=find_next(c,"classname","trigger_camera");if(!c)break;if(skip_camera_on(c)&&skipScene.names.count(targetname(c))&&camera_end(c,activatorFallback)>=0)++cameras;}
- char line[240]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] SKIP %s fast-forwarded: %d remaining target(s) fired in order, %d camera(s) ended, %d round(s)\n",skipScene.label.c_str(),fired,cameras,rounds);skip_log(line);
+ skip_stop_sounds();
+ char line[260]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] SKIP %s jumped %.1f s to the scene's end: %d target(s) fired in order, %d camera(s) ended, %d round(s)\n",skipScene.label.c_str(),jump<99999.f?jump:-1.f,fired,cameras,rounds);skip_log(line);
  skip_show("Cutscene skipped",1.5f);skipPromptShown=false;skipAfter={skipScene.names,{},load<float>(globals,0)+2.f};skipScene={};
 }
 void skip_frame(){
@@ -1391,4 +1524,145 @@ bool skip_client_command(Edict* e,const char* command){
   return true;}
  skip_vote(e,"R");return true;
 }
-void coop_map_changed(){collision_restore();itemCopiesDone=false;forcedVisible.clear();bossOver=false;fallBacks.clear();doorGlobals.clear();doorLocks.clear();trainEscape={};floorWallsDone=false;quickNotices.clear();fallWatch.clear();equipWants.clear();nightmareLogged=false;morphineWatch.clear();prologueSkip={};partyLimitLogged=-1;joinWait={};skipScene={};skipAfter={};skipJump.clear();skipLines=0;evidence_reset();drowned_reset();give_reset();stuckUsed.clear();nightmareRegroup={};nameStates.clear();lastPlaces.clear();sceneSeen.clear();sceneFollowers.clear();idleProbes.clear();doorMusicLines=0;sceneMoveLines=0;}
+// --- Playtest 3 (v0.7) -------------------------------------------------------------------
+// A queued weapon the player no longer owns. Host crash 2026-10-28
+// (crash-20261028-214041.dmp, s4_attic_e0, right after player 2's inventory was
+// restored): hl.dll+0x7E190 is CTmp::Deploy reading m_pPlayer->m_bFirstDeploy
+// with m_pPlayer NULL (ECX 0x0E = m_iId, EAX 0), called by CBasePlayer::PostThink
+// for the pending switch (100EDFB4..100EE061: m_bWeaponWaitingToDeploy +0x1EF9,
+// m_pNextItem +0x2538, m_pActiveItem +0x252C, m_pLastItem +0x2534). SwitchWeapon
+// queues m_pNextItem, and RemoveAllItems, RemovePlayerItem and DropPlayerItem
+// never clear it (decomp player.cpp), so a weapon taken away while queued (the
+// restore clears and gives items; the bag and inventory drops) is deployed with
+// no owner. Before each native PreThink and PostThink a queued or last item
+// that is not in the player's own item lists (m_rgpPlayerItems +0x2514, six
+// slots chained by m_pNext +0x164, owner m_pPlayer +0x160; HasNamedPlayerItem
+// 100E2380) is taken off the queue.
+constexpr std::size_t PlayerItemLists=0x2514,PlayerLastItem=0x2534,PlayerNextItem=0x2538,PlayerDeployQueued=0x1ef9,ItemOwner=0x160,ItemNext=0x164;
+bool player_owns_item(void* p,std::uint32_t item){
+ if(!item)return false;
+ for(std::size_t s=0;s<6;++s){auto it=load<std::uint32_t>(p,PlayerItemLists+s*4);
+  for(int n=0;n<64&&it;++n){if(it==item)return load<std::uint32_t>(reinterpret_cast<void*>(it),ItemOwner)==reinterpret_cast<std::uint32_t>(p);it=load<std::uint32_t>(reinterpret_cast<void*>(it),ItemNext);}}
+ return false;
+}
+std::set<std::pair<Edict*,int>> deployLogged;
+void deploy_guard(Edict* e){
+ void* p=nullptr;std::size_t n=0;if(!scoped()||!player_memory(e,p,n))return;
+ const auto next=load<std::uint32_t>(p,PlayerNextItem),last=load<std::uint32_t>(p,PlayerLastItem);
+ const bool badNext=next&&load<unsigned char>(p,PlayerDeployQueued)&&!player_owns_item(p,next),badLast=last&&!player_owns_item(p,last);
+ if(!badNext&&!badLast)return;
+ if(badNext)store<std::uint32_t>(p,PlayerNextItem,0);
+ if(badLast)store<std::uint32_t>(p,PlayerLastItem,0);
+ if(deployLogged.insert({e,serial(e)}).second){char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] WEAPON player=%d: a %s weapon was no longer his, taken off the switch\n",eng<int(__cdecl*)(Edict*)>(71)(e),badNext?"queued":"last");log(line);}
+}
+// Player collision on means a solid partner (Playtest 3: "when checking the
+// option it must staticly block the players like in counter strike"; more.txt:
+// "player collision setting doesnt do anything"). CoF's multiplayer code lets
+// players walk through each other: CBasePlayer::MultiplayerTouch makes both
+// SOLID_NOT on any touch, and PreThink keeps a player SOLID_NOT while his box
+// overlaps another player's (decomp player.cpp 4070-4089, 15099); the engine
+// pads absmin/absmax by one unit, so players standing side by side already
+// "overlap". With collision on, player-on-player touches no longer reach the
+// game, and after the native PreThink a living, visible, unfrozen player with
+// no attached camera stays SOLID_SLIDEBOX unless his box is really inside
+// another player's (over 4 units deep on every axis: the native unsticking is
+// kept until they separate).
+bool collision_touch_blocked(Edict* e,Edict* other){return scoped()&&!collision_off()&&e!=other&&live(e)&&live(other)&&!std::strcmp(classname(e),"player")&&!std::strcmp(classname(other),"player");}
+void collision_hold(Edict* e){
+ void* p=nullptr;std::size_t n=0;auto v=vars(e);
+ if(!scoped()||collision_off()||!globals||!v||!view_alive(e)||load<int>(v,0x10c)!=0||!player_memory(e,p,n)||load<std::uint32_t>(p,0x5ac)||load<int>(v,0xb4)==0||(load<unsigned>(v,0x118)&0x80u)||(load<unsigned>(v,0x1a8)&FlFrozen))return;
+ for(int i=1;i<=load<int>(globals,0x90);++i){auto o=eng<Edict*(__cdecl*)(int)>(72)(i);auto q=vars(o);if(o==e||!q||!live(o)||std::strcmp(classname(o),"player")||!view_alive(o))continue;
+  bool deep=true;for(int k=0;k<3;++k){const float overlap=(std::min)(load<float>(v,0xd0+k*4),load<float>(q,0xd0+k*4))-(std::max)(load<float>(v,0xc4+k*4),load<float>(q,0xc4+k*4));if(overlap<=4.f)deep=false;}
+  if(deep)return;}
+ store(v,0x10c,3);
+}
+// Invisible partner after a door (Playtest 3 clips 5 and 7: "when the other
+// person goes into that room they turn invisible"; host logs: "VISIBLE ... still
+// not sent (effects 80)" on the college and harbour maps). In multiplayer
+// CBasePlayer::PostThink adds EF_NODRAW while b_GoingThroughADoor (+0x1EA4) is
+// set (hl.dll 100EBD75..100EBDB5), the native doors set and clear that flag
+// (decomp CoF_InterDoor.cpp 336/521, CoF_InterDoorCoop.cpp 453/632), and no
+// code ever takes EF_NODRAW away again, so the player stays hidden from the
+// others (AddToFullPack skips EF_NODRAW). When the flag drops, the hiding it
+// caused is removed; a flag left set for 3 s after the player got his
+// controls back is cleared as well.
+constexpr std::size_t PlayerThroughDoor=0x1ea4;
+struct DoorHide {int serial=-1;bool through=false;float since=0;};
+std::unordered_map<Edict*,DoorHide> doorHides;
+void door_hide_frame(Edict* e){
+ void* p=nullptr;std::size_t n=0;auto v=vars(e);if(!scoped()||!globals||!v||!player_memory(e,p,n))return;
+ auto& h=doorHides[e];if(h.serial!=serial(e))h={serial(e),false,0};
+ const float now=load<float>(globals,0);
+ if(load<unsigned char>(p,PlayerThroughDoor)){
+  if(!h.through){h.through=true;h.since=now;}
+  if(load<unsigned>(v,0x1a8)&FlFrozen)h.since=now;   // still in the door's fade
+  if(now-h.since<3.f)return;
+  store<unsigned char>(p,PlayerThroughDoor,0);char line[120]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] DOORHIDE player=%d door flag left set, cleared\n",eng<int(__cdecl*)(Edict*)>(71)(e));log(line);
+ }else if(!h.through)return;
+ h.through=false;
+ if(view_alive(e)&&(load<unsigned>(v,0x118)&0x80u)){store(v,0x118,load<unsigned>(v,0x118)&~0x80u);char line[120]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] DOORHIDE player=%d visible again after a door\n",eng<int(__cdecl*)(Edict*)>(71)(e));log(line);}
+}
+// Stuck pickup text (Playtest 3 screenshot "please try to remove that annoying
+// text it doesnt go away": a red "Picked up ..." line). The client's message
+// strip (decomp cl_dll HUDControl_guess.cpp 1579-1610) fades a ProFont text in,
+// holds it 4 s and fades it out; CHUDControl::Initialize (map load) sets its
+// alpha to 0, fully drawn, without clearing the text or starting the hold, so
+// a text still on screen at a level change stays for good. 1.5 s after a
+// player's HUD reset or init an empty ProFont clears it (MsgFunc_ProFont copies
+// the empty text and nothing is drawn); a new ProFont before then makes it
+// unneeded.
+extern int proFontMessage;
+std::unordered_map<Edict*,std::pair<int,float>> stripClears;
+void strip_clear_arm(Edict* e){if(globals&&live(e))stripClears[e]={serial(e),load<float>(globals,0)+1.5f};}
+void strip_clear_sent(int dest,Edict* e){if(dest==0||dest==2)stripClears.clear();else if(e)stripClears.erase(e);}
+void strip_clear_frame(Edict* e){
+ auto it=stripClears.find(e);if(it==stripClears.end()||!globals)return;if(it->second.first!=serial(e)){stripClears.erase(it);return;}
+ if(load<float>(globals,0)<it->second.second||proFontMessage<=0||!engine[46]||!engine[47]||!engine[48]||!engine[54])return;stripClears.erase(it);
+ eng<void(__cdecl*)(int,int,const float*,Edict*)>(46)(1,proFontMessage,nullptr,e);eng<void(__cdecl*)(int)>(48)(0);eng<void(__cdecl*)(const char*)>(54)("");eng<void(__cdecl*)()>(47)();
+}
+// Black screen after a roof fall (Playtest 3 clip 3 "same as before but now i
+// can move", s4_roofs_e1): the fall trigger *31 fires multifallheh -> env_fade
+// fadefall (spawnflags 8: stay faded out, for every player), as single player
+// does before the death. The fall respawn (v0.6) brought the player back under
+// that fade, and the partner went black too. The maps' only stay-out fades are
+// these (s4_roofs*, fadefall). At map start a stay-out env_fade that covers all
+// players is limited to its activator (flag 4), and a player back from a fall
+// gets the reveal the converted doors use (from black, 0.6 s, him only).
+bool fadesDone=false;
+void stayout_fades_frame(){
+ if(fadesDone||!scoped())return;fadesDone=true;int n=0;Edict* f=nullptr;
+ for(int k=0;k<256;++k){f=find_next(f,"classname","env_fade");if(!f)break;auto v=vars(f);if(!v)continue;const unsigned s=load<unsigned>(v,0x1a4);if((s&8u)&&!(s&4u)){store(v,0x1a4,s|4u);++n;}}
+ if(n){char line[140]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] FADES %d stay-out fade(s) limited to the player who triggers them\n",n);log(line);}
+}
+bool fall_reveal(Edict* e){return helper_use_pairs("env_fade",{{"spawnflags","5"},{"duration","0.6"},{"holdtime","0"},{"renderamt","255"},{"rendercolor","0 0 0"}},e);}
+// Quest items stay one per team (Katz 2026-10-29: "one per team however it
+// atleast should say that a player picked up the quest item"; Playtest 3 clip
+// 15: "there was no fuse on the floor ... i thought caixa picked it up"). When
+// an inventory card that is not a weapon (fuse, key, keycard, rope, tape...)
+// shows up in a player's six inventory slots (+0x2200) after his inventory was
+// brought over on this map, every other player gets the game's pickup line
+// (ProFont, yellow): "<name> picked up the <item>". A card he already had on
+// this map (a fall respawn gives it back) is not announced again.
+struct QuestSeen {int serial=-1;bool armed=false;std::set<std::string> cards;};
+std::unordered_map<Edict*,QuestSeen> questSeen;
+std::string quest_label(std::string card){
+ const auto dot=card.rfind('.');if(dot!=std::string::npos)card.resize(dot);
+ for(auto& c:card){if(c=='_')c=' ';else c=static_cast<char>(std::tolower(static_cast<unsigned char>(c)));}return card;
+}
+void quest_notice_frame(Edict* e){
+ if(!scoped()||!globals||!live(e)||std::strcmp(classname(e),"player"))return;
+ auto& q=questSeen[e];if(q.serial!=serial(e))q={serial(e),false,{}};
+ if(!client_ready(e)||!carry_settled(e))return;
+ const auto cards=item_cards(e);
+ if(!q.armed){q.armed=true;for(const auto& c:cards)if(!c.empty())q.cards.insert(c);return;}
+ for(const auto& c:cards){
+  if(c.empty()||c.rfind("weapon_",0)==0||!q.cards.insert(c).second)continue;
+  std::string who;if(engine[106]&&engine[107]){auto buffer=eng<char*(__cdecl*)(Edict*)>(106)(e);const char* n=buffer?eng<char*(__cdecl*)(char*,char*)>(107)(buffer,const_cast<char*>("name")):nullptr;who=n&&*n?n:"";}
+  if(who.empty())who="Player "+std::to_string(eng<int(__cdecl*)(Edict*)>(71)(e));
+  const std::string text=who+" picked up the "+quest_label(c);int told=0;
+  if(proFontMessage>0&&engine[46]&&engine[47]&&engine[48]&&engine[54])for(auto o:connected_players()){if(o==e||!client_ready(o))continue;
+   eng<void(__cdecl*)(int,int,const float*,Edict*)>(46)(1,proFontMessage,nullptr,o);eng<void(__cdecl*)(int)>(48)(0);eng<void(__cdecl*)(const char*)>(54)(text.c_str());eng<void(__cdecl*)()>(47)();++told;}
+  char line[200]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] QUEST player=%d picked up %.60s (%d partner(s) told)\n",eng<int(__cdecl*)(Edict*)>(71)(e),c.c_str(),told);log(line);
+ }
+}
+void coop_map_changed(){collision_restore();wardrobeDone=false;questSeen.clear();deployLogged.clear();doorHides.clear();stripClears.clear();fadesDone=false;doorPressUsed.clear();itemCopiesDone=false;forcedVisible.clear();bossOver=false;fallBacks.clear();doorGlobals.clear();doorLocks.clear();trainEscape={};floorWallsDone=false;quickNotices.clear();fallWatch.clear();equipWants.clear();nightmareLogged=false;morphineWatch.clear();prologueSkip={};partyLimitLogged=-1;joinWait={};skipScene={};skipAfter={};skipJump.clear();skipLines=0;evidence_reset();drowned_reset();give_reset();stuckUsed.clear();nightmareRegroup={};nameStates.clear();lastPlaces.clear();sceneSeen.clear();sceneFollowers.clear();idleProbes.clear();doorMusicLines=0;sceneMoveLines=0;}

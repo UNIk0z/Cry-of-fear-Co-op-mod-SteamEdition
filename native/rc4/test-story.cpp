@@ -158,16 +158,20 @@ int main(int argc,char** argv_){
  {Checkpoint value;story_capture(value);assert(value.endingFlags==3);story_reset();assert(endingShared==0);story_load(value);assert(endingShared==3);
   reset_players();story_reset();story_frame();assert(!load<unsigned char>(pd(e),0x4cd));}
 
- // Story wound and night vision are kept per player across a map change.
+ // v0.7: the Doctor's shot (one player's health cap) becomes every player's; night vision stays per player.
  reset_players();story_reset();messages.clear();register_message("HealthCap",1);assert(healthCapMessage==77);
  profileBindings[1]="profile:host";profileBindings[2]="profile:guest";store(globals,0,30.f);
  story_frame();store(pd(e),0x60c,2);store<unsigned char>(pd(other),0x434,1);story_frame();
- reset_players();story_map_changed();store(globals,0,40.f);allocations.at(e).hudDue=50.f;
- story_frame();assert(load<int>(pd(e),0x60c)==0&&messages.empty());
+ assert(load<int>(pd(other),0x60c)==2&&capShared==2&&messages.size()==1&&messages[0]==(std::array<int,3>{{77,2,2}})&&logged("STORY health cap 2 from player=1, now every player's"));
+ // A level change rebuilds both players without it: each gets it back once his HUD is ready.
+ reset_players();story_map_changed();messages.clear();store(globals,0,40.f);allocations.at(e).hudDue=50.f;
+ story_frame();assert(load<int>(pd(e),0x60c)==0&&load<int>(pd(other),0x60c)==2&&messages.size()==1);
  store(globals,0,51.f);story_frame();
- assert(load<int>(pd(e),0x60c)==2&&load<unsigned char>(pd(other),0x434)==1&&!load<unsigned char>(pd(e),0x434)&&messages.size()==1&&messages[0]==(std::array<int,3>{{77,1,2}})&&logged("STORY player=1 kept health-cap=2 night-vision=0"));
- // Applied once per map: a later native change is followed, not overridden.
- store(pd(e),0x60c,0);story_frame();assert(load<int>(pd(e),0x60c)==0&&messages.size()==1);
+ assert(load<int>(pd(e),0x60c)==2&&load<unsigned char>(pd(other),0x434)==1&&!load<unsigned char>(pd(e),0x434)&&messages.size()==2&&messages[1]==(std::array<int,3>{{77,1,2}}));
+ // The story clearing it on one player (impulse 0) clears it for everyone.
+ store(pd(e),0x60c,0);story_frame();assert(load<int>(pd(other),0x60c)==0&&capShared==0&&messages.size()==3);
+ // A checkpoint keeps it.
+ {Checkpoint v;SavedPlayer s1;s1.identity="profile:host";s1.healthCap=1;v.players.push_back(s1);story_load(v);assert(capShared==1);story_reset();}
  profileBindings.clear();
 
  // Checkpoint schema 4+ round trip with the new fields; schema 3 still loads.

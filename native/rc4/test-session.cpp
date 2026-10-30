@@ -141,7 +141,7 @@ int main(int argc,char** argv_){
  store(globals,0x0c,3);store(globals,0,20.f);menu_credit_frame();assert(messageBegins==0);
  menu_credit_active(&entities[2]);menu_credit_frame();assert(messageBegins==0);   // only the menu's own client
  menu_credit_active(&entities[1]);store(globals,0,20.4f);menu_credit_frame();assert(messageBegins==0);
- store(globals,0,20.6f);menu_credit_frame();assert(messageBegins==1&&messageText=="Co-op mod v0.6.2 developed by Anas Sammak (koolkat)\nSpecial thanks: Mesilll, Michal Eminov, caixa, joah"&&logged("MENU credit shown bottom-left"));
+ store(globals,0,20.6f);menu_credit_frame();assert(messageBegins==1&&messageText=="Co-op mod v0.7 developed by Anas Sammak (koolkat)\nSpecial thanks: Mesilll, Michal Eminov, caixa, Joah230"&&logged("MENU credit shown bottom-left"));
  assert((message==std::vector<int>{1,23,29,4,163,7454,0,200,200,200,180,200,200,200,180,256,256,7680}));
  store(globals,0,24.f);menu_credit_frame();assert(messageBegins==1);store(globals,0,25.7f);menu_credit_frame();assert(messageBegins==2&&message[15]==0);
  // Back from a game: a new map, no credit until that client is running again.
@@ -179,7 +179,7 @@ int main(int argc,char** argv_){
  assert(serverCommands.size()==1&&serverCommands[0]=="disconnect;maxplayers 1;deathmatch 0;map c_game_menu1\n"&&logged("CLIENT:Save slot 3 is empty.")&&!checkpointPrepared);
  // The stuffed map must be the selected entry; unknown ids select nothing.
  clientCommands.clear();argv={"campaign","sc4coop_slot2"};menu_command("campaign");stuff_command(e,"map sc4coop_slot1");assert(clientCommands.size()==1&&menuMode==12);
- argv={"campaign","sc4coop_slot4"};menu_command("campaign");assert(menuMode==0);argv={"campaign","sc4coop_slot22"};menu_command("campaign");assert(menuMode==0);
+ argv={"campaign","sc4coop_slot5"};menu_command("campaign");assert(menuMode==15);argv={"campaign","sc4coop_slot6"};menu_command("campaign");assert(menuMode==0);argv={"campaign","sc4coop_slot22"};menu_command("campaign");assert(menuMode==0);
  // v0.5: a single-player story map typed in a co-op game becomes its co-op version;
  // the menu, maps without one and a real single-player game (1 slot) are left alone.
  engine[110]=reinterpret_cast<void*>(&map_valid);serverCommands.clear();
@@ -190,7 +190,12 @@ int main(int argc,char** argv_){
  // v0.5.1 Host: an entry of the Create Server window restarts the server on its chapter with the window's options.
  {reset_players();serverCommands.clear();lines.clear();collisionCvarValue=0.f;difficultyValue=3.f;store(globals,0x90,3);store(globals,0x0c,12);story_entry_redirect();
   assert(serverCommands.back()=="disconnect;maxplayers 3;mp_footsteps 1;sv_maxupdaterate 100;sv_lan 0;difficulty 3;map s4_basement_e0\n"&&sessionOptions.have&&sessionOptions.maxPlayers==3&&sessionOptions.collision==0);
-  assert(logged("HOST Chapter-2-Who-is-that-Doctor: players=3 collision=off difficulty=3"));
+  assert(logged("HOST Chapter-2-Who-is-that-Doctor: players=3 collision=off extras=locked difficulty=3"));
+  // v0.7 Unlock extras: each line's locked token turns into its unlocked token in the engine's buffer (same length).
+  {std::string f="x\n\nl2\nz3,4lj)4b!9g7vgi4x5a\nl4\nl5\nl6\nye&ole1^0(fcanb3v5t4\n";for(int i=8;i<=14;++i)f+="l"+std::to_string(i)+"\n";f+="v9agjak+p)(,o3qb)aq4\r\n";
+   std::string g=f;assert(extras_unlock(g.data(),static_cast<int>(g.size()))==3&&g.size()==f.size()&&g.find("z3,4rj)4b!9g7vgi4x5a")!=std::string::npos&&g.find("ye&0le1^0(fcanb3v5t4")!=std::string::npos&&g.find("v9agjak+p)(,03qb)aq4\r\n")!=std::string::npos);
+   std::string h="z3,4lj)4b!9g7vgi4x5a\n";assert(extras_unlock(h.data(),static_cast<int>(h.size()))==0);   // line 1 holds no unlock
+   KeyValue lock{const_cast<char*>("func_button"),const_cast<char*>("lockedby"),const_cast<char*>("sc5_extras_later"),0};extrasUnlocked=false;assert(!extras_keyvalue_dropped(&lock));extrasUnlocked=true;assert(extras_keyvalue_dropped(&lock));extrasUnlocked=false;}
   store(globals,0x90,1);story_entry_redirect();assert(sessionOptions.maxPlayers==2);   // a 1-slot window still makes a co-op server
   // A save entry loads that slot with its own saved settings.
   store(globals,0x90,2);store(globals,0x0c,13);story_entry_redirect();assert(checkpointPrepared&&checkpointSlot==1&&serverCommands.back().find("map s4_start2\n")!=std::string::npos);
@@ -205,12 +210,13 @@ int main(int argc,char** argv_){
   assert(std::string(reinterpret_cast<const char*>(img.data()+0x1473CC))=="gfx/vgui/sc_joinbox.tga"&&std::string(reinterpret_cast<const char*>(img.data()+0x1474F4))=="Port (empty: 27015)");
   argv={"computercheck","Type","the"};assert(join_box_command(j,"computercheck")&&messageBegins==2&&message[3]==1&&logged("JOIN refused"));   // the prompt itself is no address
   argv={"computercheck","26.0.0.5","70000"};assert(join_box_command(j,"computercheck")&&messageBegins==3);
-  argv={"computercheck","26.0.0.5",""};assert(join_box_command(j,"computercheck")&&serverCommands.back()=="connect 26.0.0.5:27015\n"&&img==shipped&&!joinBox.who);
-  argv={"sc_joinbox"};join_box_command(j,"sc_joinbox");argv={"computercheck","host.example:27020","Port"};join_box_command(j,"computercheck");assert(serverCommands.back()=="connect host.example:27020\n");
+  argv={"computercheck","26.0.0.5",""};const auto sentBefore=serverCommands.size();assert(join_box_command(j,"computercheck")&&serverCommands.size()==sentBefore&&!pendingJoin.target.empty());   // v0.7: the connect waits 0.6 s
+  join_connect_frame();assert(serverCommands.size()==sentBefore);pendingJoin.due=0;join_connect_frame();assert(serverCommands.back()=="connect 26.0.0.5:27015\n"&&img==shipped&&!joinBox.who&&pendingJoin.target.empty());
+  argv={"sc_joinbox"};join_box_command(j,"sc_joinbox");argv={"computercheck","host.example:27020","Port"};join_box_command(j,"computercheck");pendingJoin.due=0;join_connect_frame();assert(serverCommands.back()=="connect host.example:27020\n");
   // v0.6.1: the raw text (pfnCmd_Args) wins over the tokens the engine cut at ':' and '('.
   {static std::string joinRaw;engine[82]=reinterpret_cast<void*>(+[]()->const char*{return joinRaw.c_str();});
-   argv={"sc_joinbox"};join_box_command(j,"sc_joinbox");joinRaw="26.0.0.5:27016 Port (empty: 27015)";argv={"computercheck","26.0.0.5",":"};join_box_command(j,"computercheck");assert(serverCommands.back()=="connect 26.0.0.5:27016\n");
-   argv={"sc_joinbox"};join_box_command(j,"sc_joinbox");joinRaw="10.0.0.2 Port (empty: 27015)";argv={"computercheck","10.0.0.2","Port"};join_box_command(j,"computercheck");assert(serverCommands.back()=="connect 10.0.0.2:27015\n");
+   argv={"sc_joinbox"};join_box_command(j,"sc_joinbox");joinRaw="26.0.0.5:27016 Port (empty: 27015)";argv={"computercheck","26.0.0.5",":"};join_box_command(j,"computercheck");pendingJoin.due=0;join_connect_frame();assert(serverCommands.back()=="connect 26.0.0.5:27016\n");
+   argv={"sc_joinbox"};join_box_command(j,"sc_joinbox");joinRaw="10.0.0.2 Port (empty: 27015)";argv={"computercheck","10.0.0.2","Port"};join_box_command(j,"computercheck");pendingJoin.due=0;join_connect_frame();assert(serverCommands.back()=="connect 10.0.0.2:27015\n");
    engine[82]=nullptr;}
   argv={"sc_joinbox"};join_box_command(j,"sc_joinbox");assert(img!=shipped);argv={"stopcomputer"};assert(join_box_command(j,"stopcomputer")&&img==shipped&&logged("JOIN box closed"));
   // The computer puzzle in the story is never taken.
@@ -243,9 +249,9 @@ int main(int argc,char** argv_){
   // An older install's patched file (everything but the new title path) is completed.
   auto older=once;const auto logo=client_text("gfx/vgui/menu_logo.tga",23);std::copy(logo.begin(),logo.end(),older.begin()+0x14389C);
   assert(client_menu_apply(older.data(),older.size(),loaded,why)==1&&older==once);
-  auto foreign=once;foreign[0x2DE39+1]=0x07;const auto before=foreign;assert(client_menu_apply(foreign.data(),foreign.size(),loaded,why)==0&&foreign==before&&why.find("1002DE39")!=std::string::npos);
+  auto foreign=once;foreign[0x2DE46+1]=0x07;const auto before=foreign;assert(client_menu_apply(foreign.data(),foreign.size(),loaded,why)==0&&foreign==before&&why.find("1002DE46")!=std::string::npos);
  }
- assert(client_patches().size()==54);
+ assert(client_patches().size()==68);
  // Every adapter line is also kept in a per-session log beside the saves.
  {bool found=false;std::error_code error;for(const auto& item:std::filesystem::directory_iterator(std::filesystem::path(gameDir)/"storycoop_logs",error)){const auto n=item.path().filename().string();if(n.rfind("rc4-",0)==0){std::ifstream in(item.path());std::string all((std::istreambuf_iterator<char>(in)),{});found=all.find("MENU host new co-op game")!=std::string::npos;}}assert(found);}
  // v0.3 crash report: code, module+offset, map, the last steps and stack code addresses in one line, then a minidump.

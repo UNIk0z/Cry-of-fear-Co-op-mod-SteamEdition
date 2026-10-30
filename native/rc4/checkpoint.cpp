@@ -168,9 +168,9 @@ bool decode_checkpoint(const std::vector<unsigned char>& b,Checkpoint& out){
   if(r.at!=b.size()||!valid(v))return false;out=std::move(v);return true;
  }catch(const std::exception&){return false;}
 }
-bool read_checkpoint(const std::filesystem::path& d,int slot,Checkpoint& v,bool& backup){backup=false;if(slot<1||slot>3||!ordinary(d,true))return false;auto p=slot_path(d,slot);if(file_read(p,v))return true;backup=true;return file_read(p.wstring()+L".bak",v);}
+bool read_checkpoint(const std::filesystem::path& d,int slot,Checkpoint& v,bool& backup){backup=false;if(slot<1||slot>5||!ordinary(d,true))return false;auto p=slot_path(d,slot);if(file_read(p,v))return true;backup=true;return file_read(p.wstring()+L".bak",v);}
 bool commit_checkpoint(const std::filesystem::path& d,int slot,const Checkpoint& v){
- if(slot<1||slot>3)return false;auto b=encode_checkpoint(v);if(b.empty())return false;
+ if(slot<1||slot>5)return false;auto b=encode_checkpoint(v);if(b.empty())return false;
  if(!CreateDirectoryW(d.c_str(),nullptr)&&GetLastError()!=ERROR_ALREADY_EXISTS)return false;if(!ordinary(d,true))return false;
  const auto p=slot_path(d,slot),backup=std::filesystem::path(p.wstring()+L".bak"),tmp=std::filesystem::path(p.wstring()+L".tmp-"+std::to_wstring(GetCurrentProcessId()));
  HANDLE h=CreateFileW(tmp.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,nullptr);if(h==INVALID_HANDLE_VALUE)return false;

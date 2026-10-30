@@ -54,7 +54,7 @@ test('v0.1 launchers: Join loads the co-op adapter; both pass the Steam name as 
 
 test('v0.1 READ ME: version, credits, host-only saving, base-game menu',()=>{
  const text=readMe('v0.1');
- for(const s of ['(v0.1)','developed by Anas Sammak (koolkat).','Special thanks: Mesilll, Michal Eminov, caixa, joah.','Only the host can save.','"Only host can save the','shows the game\'s own menu'])assert.ok(text.includes(s),s);
+ for(const s of ['(v0.1)','developed by Anas Sammak (koolkat).','Special thanks: Mesilll, Michal Eminov, caixa, Joah230.','Only the host can save.','"Only host can save the','shows the game\'s own menu'])assert.ok(text.includes(s),s);
  assert.ok(!/Michael|Either player can save/.test(text));
 });
 

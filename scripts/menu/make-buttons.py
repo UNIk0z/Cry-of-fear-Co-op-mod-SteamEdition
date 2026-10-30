@@ -9,7 +9,7 @@ import math, random, struct, sys
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 W, H = 280, 38
-LABELS = {'sc_host': "Host Simon's Story", 'sc_join': "Join Simon's Story"}
+LABELS = {'sc_host': "Host Simon's Story", 'sc_join': "Join Simon's Story", 'sc_mdl': "Player Model"}   # v0.7: Player Model
 FONT = 'C:/Windows/Fonts/arial.ttf'
 
 def alpha_mask(text):

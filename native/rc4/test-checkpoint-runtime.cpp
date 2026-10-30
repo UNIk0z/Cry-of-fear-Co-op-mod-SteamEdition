@@ -83,12 +83,20 @@ int main(int argc,char** argv){
  // v0.2 (user): standing at or looking at a recorder shows nothing; a whole
  // player frame next to the recorder prints no restriction to anyone.
  printedTo=nullptr;checkpoint_start_frame();checkpoint_start_frame();assert(printedTo==nullptr);
- // The host's recorder Use shows the three slots on the host's PC; nothing is saved or heard yet.
+ // v0.7: the host's recorder Use opens the game's own save window (its SaveLoad message goes to the host); nothing is saved yet.
  message_begin(1,8,nullptr,&edicts[1]);write_byte(0);write_string("Storage Tunnel");message_end();checkpoint_start_frame();
- assert(printedTo==&edicts[1]&&printedType==1&&printedText=="SAVE GAME (host's PC)\n1: empty\n2: empty\n3: empty\nPress 1, 2 or 3\n"&&soundCount==0&&played.empty()&&saveChoice.actor==&edicts[1]&&!std::filesystem::exists(noFile));
+ assert(saveWindow.actor==&edicts[1]&&logged_line({"SAVE window opened for player 1 (recorder"})&&!saveChoice.actor&&!std::filesystem::exists(noFile));
+ // Only the host's double click (unfreezesave 1024 <slot>) saves and the native PreSave still runs; the window's savehack never does.
+ args={"unfreezesave","1024","1"};assert(!save_window_command(&edicts[2],"unfreezesave")&&saveWindow.actor);assert(save_window_command(&edicts[1],"savehack"));
+ args={"unfreezesave","1024","7"};assert(!save_window_command(&edicts[1],"unfreezesave")&&saveWindow.actor);
+ args={"unfreezesave","1024","1"};savedTold.clear();assert(!save_window_command(&edicts[1],"unfreezesave")&&!saveWindow.actor&&std::filesystem::exists(noFile));checkpoint_start_frame();   // saved before the native PreSave sets FL_NOTARGET
+ std::filesystem::remove(noFile);std::filesystem::remove(checkpoint_directory()/"slot1.cofmap");std::filesystem::remove(checkpoint_directory()/"slot1.cofsave.bak");played.clear();soundCount=0;printedTo=nullptr;saveWindowEnabled=false;
+ // Without the window (v0.1 key list): the host's recorder Use shows the slots on the host's PC; nothing is saved or heard yet.
+ message_begin(1,8,nullptr,&edicts[1]);write_byte(0);write_string("Storage Tunnel");message_end();checkpoint_start_frame();
+ assert(printedTo==&edicts[1]&&printedType==1&&printedText=="SAVE GAME (host's PC)\n1: empty\n2: empty\n3: empty\n4: empty\n5: empty\nPress 1 to 5\n"&&soundCount==0&&played.empty()&&saveChoice.actor==&edicts[1]&&!std::filesystem::exists(noFile));
  // Only the host's 1, 2 or 3 is taken; anything else passes or is ignored.
  args={"quicksel","2",""};assert(!save_choice_command(&edicts[2],"quicksel")&&!save_choice_command(&edicts[1],"weapontoggle"));
- args={"quicksel","4",""};assert(save_choice_command(&edicts[1],"quicksel")&&saveChoice.actor==&edicts[1]);
+ args={"quicksel","6",""};assert(save_choice_command(&edicts[1],"quicksel")&&saveChoice.actor==&edicts[1]);
  args={"quicksel","1",""};savedTold.clear();assert(save_choice_command(&edicts[1],"quicksel")&&!saveChoice.actor);checkpoint_start_frame();assert(std::filesystem::exists(noFile));
  // Written on the host's PC with the host as its owner; both players are told
  // where it went and each hears the recorder's save sound once, on their own client.
