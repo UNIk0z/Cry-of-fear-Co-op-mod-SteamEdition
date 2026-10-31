@@ -26,3 +26,5 @@ node_modules/
 *.cofmap
 storycoop_logs/
 storycoop_saves/
+/launcher/obj/
+/launcher/out/

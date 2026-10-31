@@ -25,6 +25,12 @@ Two builds of the same source are not byte-identical (the compiler and linker
 stamp them), and the source hashes change with line endings (CRLF or LF). The
 released v0.5.1 adapter has SHA256 `a1181dbf...`.
 
+## Build the launcher
+
+`launcher/build-launcher.ps1 -Version 0.7.2` builds `launcher/out/Cry of Fear Co-op.exe` with
+the C# compiler of the .NET Framework, using the icon of your installed game.
+`scripts/player-package.mjs` copies it into the player ZIP when it is there.
+
 ## Native tests
 
 ```
