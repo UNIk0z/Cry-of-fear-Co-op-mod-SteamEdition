@@ -15,7 +15,7 @@
 
 ## ⬇️ Download
 
-### **[Click here to download Cry of Fear Co-op v0.7.1](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.7.1/Cry.of.Fear.Co-op.v0.7.1.zip)**
+### **[Click here to download Cry of Fear Co-op v0.7.2](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.7.2/Cry.of.Fear.Co-op.v0.7.2.zip)**
 
 > [!IMPORTANT]
 > **Don't use the green "Code" button or "Download ZIP".** That gives you the
@@ -28,6 +28,8 @@
 2. Right-click the ZIP and choose **Extract All**.
 3. With Cry of Fear closed, run **`Install.cmd`** (every player).
 4. To play, run **`Run Co-op Mod.cmd`**. See [Play](#2-play) below.
+
+**`Cry of Fear Co-op.exe`** in the download does the same steps with buttons: Install, Run Co-op Mod, Check for Updates and Uninstall.
 
 > [!WARNING]
 > **This mod is unfinished,**
@@ -66,6 +68,7 @@ The download has these files:
 
 | File | When to use it |
 |---|---|
+| `Cry of Fear Co-op.exe` | Buttons for Install, Run Co-op Mod, Check for Updates and Uninstall |
 | `Install.cmd` | Once per new version, with the game closed |
 | `Check for Updates.cmd` | To see if a newer version is out (it can download it for you) |
 | `Run Co-op Mod.cmd` | **Every time you play** |
@@ -149,9 +152,11 @@ Every bug report needs the **log file**. That's how we can see what happened.
 - Three and four players have not been tested yet.
 - Open bugs: a crawler enemy is missing in the subway, and crouching on a save
   station jitters.
-- The v0.7 and v0.7.1 fixes have not been tried in a co-op session yet, including the
+- The v0.7, v0.7.1 and v0.7.2 fixes have not been tried in a co-op session yet, including the
   university enemies, the elevator scene after entering the code and the door
-  opened from the other side. The outfits have only been tried alone so far.
+  opened from the other side, and the v0.7.2 ladder and revive fixes. The outfits have only been tried alone so far.
+- `Cry of Fear Co-op.exe` is new and has only been tested with fake scripts. A real install, uninstall and
+  update with it have not been run. If it misbehaves, use the `.cmd` files.
 
 ## Credits
 
