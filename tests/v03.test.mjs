@@ -52,14 +52,9 @@ test('v0.3 package: v0.2 parent, maps identical, new adapter',{skip:!(pkg&&previ
  const known=JSON.parse(fs.readFileSync(path.join(pkg,'known-builds.json')));assert.equal(known.builds[0].catalogSha256,V03_PARENT);
 });
 
-test('public build: one "Run Co-op Mod.cmd" (v0.4: double-click hosts, "join [address]" joins), READ ME with logs and the Discord placeholder, GitHub README',async()=>{
- const {PLAYER_COMMANDS}=await import('../scripts/player-package.mjs');
- assert.deepEqual(Object.keys(PLAYER_COMMANDS).sort(),['Check for Updates.cmd','Install.cmd','Run Co-op Mod.cmd','Uninstall.cmd']);   // v0.5: install and update are separate
- const run=PLAYER_COMMANDS['Run Co-op Mod.cmd'];
- assert.ok(!/choice|errorlevel 2|Press H/.test(run)&&run.includes('set "cofFiles=%~dp0files"')&&run.includes('if /i "%~1"=="join" goto join'));
- assert.ok(run.includes(String.raw`-File "%cofFiles%\host-story-coop.ps1" -MenuOnly`)&&run.includes(String.raw`-File "%cofFiles%\join-coop.ps1" -HostAddress "%~2"`)&&run.includes(String.raw`if not exist "%cofFiles%\host-story-coop.ps1" goto missing`)&&run.endsWith('exit /b %cofExit%\r\n'));
- // The first command a double-click reaches is the host launch.
- const lines=run.split('\r\n');assert.ok(lines.findIndex(l=>l.includes('host-story-coop.ps1" -MenuOnly'))<lines.indexOf(':join'));
+test('public build: one launcher (v0.7.2: no .cmd files), READ ME with logs and the Discord placeholder, GitHub README',async()=>{
+ const launcher=fs.readFileSync(path.join(repo,'launcher','CoopLauncher.cs'),'utf8');
+ assert.ok(launcher.includes('"host-story-coop.ps1", " -MenuOnly"')&&launcher.includes('"setup-coop.ps1", ""')&&launcher.includes('"setup-coop.ps1", " -Uninstall"'));
  const t=readMe('v0.3');assert.ok(t.includes('https://discord.gg/hgEGSf9MFZ')&&t.includes(String.raw`cryoffear\storycoop_logs`)&&t.includes('UNFINISHED')&&t.includes('connect 192.168.1.1:27015')&&!/Host a game|Join a game/.test(t));
  const gh=fs.readFileSync(path.join(repo,'docs','README.md'),'utf8');
  assert.ok(gh.includes('https://discord.gg/hgEGSf9MFZ')&&gh.includes('storycoop_logs')&&gh.includes('Run Co-op Mod.cmd')&&gh.includes('unfinished')&&gh.includes('connect 192.168.1.1:27015'));

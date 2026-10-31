@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param([string]$HostAddress,[string]$GameDirectory)
-# The friend's side ("Run Co-op Mod.cmd", J). Checks that this PC has the same co-op
-# version as release.json (run "Install.cmd" first), then starts Cry of Fear
+# The friend's side (J). Checks that this PC has the same co-op
+# version as release.json (Install in the launcher first), then starts Cry of Fear
 # through Steam and connects to the host's address.
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'find-cof.ps1')
@@ -16,8 +16,8 @@ $ok=[IO.File]::Exists($map) -and ([BitConverter]::ToString($digest.ComputeHash([
 $dll=Join-Path $GameDirectory 'cl_dlls\storycoop_rc4.dll'
 $ok=$ok -and [IO.File]::Exists($dll) -and ([BitConverter]::ToString($digest.ComputeHash([IO.File]::ReadAllBytes($dll))).Replace('-','').ToLowerInvariant() -ceq $catalog.runtimeAdapter.sha256)
 $digest.Dispose()
-if (-not [IO.File]::Exists($dll)) { throw ('The co-op mod is not installed in '+$GameDirectory+'. Close Cry of Fear and run "Install.cmd" from this folder first.') }
-if (-not $ok) { Write-Warning ('This PC has a different co-op version than this folder ('+$catalog.coopFixes.id+'). Joining anyway; if the game refuses, close it and run "Install.cmd" from this folder. Both players need the same version.') }
+if (-not [IO.File]::Exists($dll)) { throw ('The co-op mod is not installed in '+$GameDirectory+'. Close Cry of Fear and click Install in "Cry of Fear Co-op.exe" in this folder first.') }
+if (-not $ok) { Write-Warning ('This PC has a different co-op version than this folder ('+$catalog.coopFixes.id+'). Joining anyway; if the game refuses, close it and click Install in "Cry of Fear Co-op.exe" in this folder. Both players need the same version.') }
 Write-CofAddonWarning $GameDirectory
 if (-not $HostAddress) { $HostAddress=Read-Host 'Host address (the IP your friend gives you, for example 26.171.21.225)' }
 $HostAddress=$HostAddress.Trim()

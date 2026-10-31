@@ -64,7 +64,7 @@ environment variable. For example, `COF_V04_MAPS` is the v0.4 map build that
 
 ## Running a build
 
-Either install a player package (Install.cmd), or copy your
+Either install a player package (Install in `Cry of Fear Co-op.exe`), or copy your
 `storycoop_rc4.dll` to `<game>\cryoffear\cl_dlls\` and start
 `cof.exe -game cryoffear -dll cl_dlls/storycoop_rc4.dll -num_edicts 4096 -heapsize 1536000`
 with the co-op maps installed. Each session's adapter log is written to

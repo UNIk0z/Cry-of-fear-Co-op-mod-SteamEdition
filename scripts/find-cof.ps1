@@ -2,7 +2,7 @@
 # from Steam's own registry entry and library list. Dot-sourced; read only.
 # Launcher (Katz, 2026-10-30): the .exe runs these scripts without a console
 # window and sets COF_LAUNCHER=1; a step line then moves its progress bar.
-# Written straight to stdout so no function result changes; the .cmd files
+# Written straight to stdout so no function result changes; a console
 # never show it.
 function Write-CofStep([int]$Percent,[string]$Text) {
     if ($env:COF_LAUNCHER -eq '1') { [Console]::Out.WriteLine('##cof-progress '+$Percent+' '+$Text); [Console]::Out.Flush() }

@@ -38,9 +38,8 @@ test('v0.4 launcher: double-click hosts and starts cof.exe directly while Steam 
  const find=script('find-cof.ps1'),host=script('host-story-coop.ps1'),join=script('join-coop.ps1');
  assert.ok(find.includes('function Start-CofGame')&&find.includes("@('-game','cryoffear')+$Arguments")&&find.includes("'-applaunch','223710'")&&find.includes("WriteAllText($appId,'223710')"));
  assert.ok(host.includes('Start-CofGame $GameDirectory')&&join.includes('Start-CofGame $GameDirectory'));
- const {PLAYER_COMMANDS,readMe}=await import('../scripts/player-package.mjs');
- const run=PLAYER_COMMANDS['Run Co-op Mod.cmd'];assert.ok(!/choice/.test(run)&&run.includes('-MenuOnly'));
- const t=readMe('v0.4');assert.ok(t.includes('double-click "Run Co-op Mod.cmd"')&&t.includes('connect 192.168.1.1:27015')&&!/presses H|presses J/.test(t));
+ const {readMe}=await import('../scripts/player-package.mjs');
+ const t=readMe('v0.4');assert.ok(t.includes('click Run Co-op Mod')&&!t.includes('.cmd')&&t.includes('connect 192.168.1.1:27015')&&!/presses H|presses J/.test(t));
 });
 
 test('v0.4 package (set COF_V04_PACKAGE to the candidate folder)',{skip:!process.env.COF_V04_PACKAGE},()=>{

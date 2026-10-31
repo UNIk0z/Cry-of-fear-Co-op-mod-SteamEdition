@@ -44,7 +44,7 @@ if ($MenuOnly -and [IO.File]::Exists((Join-Path $PSScriptRoot 'find-cof.ps1'))) 
 # now shows Steam names itself and uses this sc_name userinfo key as a fallback.
 if ($MenuOnly) { $launchArguments+='-insecure'; if ($persona) { $launchArguments+=@('+name',('"'+$persona+'"'),'+setinfo','sc_name',('"'+$persona+'"')) } }
 # v0.7 (player model menu): custom models from the mod's "playermodels" folder
-# (next to "Run Co-op Mod.cmd": name.mdl or name\name.mdl) are copied to
+# (next to "Cry of Fear Co-op.exe": name.mdl or name\name.mdl) are copied to
 # cryoffear\models\player\<name>\<name>.mdl, the only place the game reads
 # player models; a model already there is never replaced. The model picked in
 # the game's Player Model box (cryoffear\storycoop_model.txt) is sent again.
@@ -82,17 +82,17 @@ if ($ShowCommand) { Write-Output ('"'+$SteamExe+'" '+($launchArguments -join ' '
 if (Get-Process -Name 'cof','cryoffear' -ErrorAction SilentlyContinue) { throw 'Close Cry of Fear normally before launching this Steam session.' }
 # v0.3: Steam running as administrator ignores a launch request from a normal window.
 if ($MenuOnly -and (Get-Command Test-SteamElevated -ErrorAction SilentlyContinue) -and (Test-SteamElevated) -and -not (Test-CofAdmin)) { Invoke-CofElevated $PSCommandPath @('-MenuOnly') 'Steam is running as administrator, so the game must be started as administrator too (or restart Steam normally).' }
-if ($NativeRC4 -and -not [IO.File]::Exists((Join-Path $GameDirectory 'cl_dlls\storycoop_rc4.dll'))) { throw ('The co-op mod is not installed in '+$GameDirectory+'. Run "Install.cmd" first (game closed), then start it again.') }
+if ($NativeRC4 -and -not [IO.File]::Exists((Join-Path $GameDirectory 'cl_dlls\storycoop_rc4.dll'))) { throw ('The co-op mod is not installed in '+$GameDirectory+'. Click Install in "Cry of Fear Co-op.exe" first (game closed), then start it again.') }
 # coop-fixes-012: the launcher checks which co-op version this PC has. v0.5: a
 # different installed version is named and still started (it was reported as
-# "not installed" although the game ran it); Install.cmd from this folder updates it.
+# "not installed" although the game ran it); Install in the launcher updates it.
 if ($MenuOnly -and [IO.File]::Exists((Join-Path $PSScriptRoot 'release.json'))) {
     $release=Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'release.json') | ConvertFrom-Json
     $sha=(Get-FileHash -LiteralPath (Join-Path $GameDirectory 'cl_dlls\storycoop_rc4.dll') -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($sha -cne $release.runtimeAdapter.sha256) {
         $name='an older or unknown version'
         if ([IO.File]::Exists((Join-Path $PSScriptRoot 'known-builds.json'))) { $known=@((Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'known-builds.json') | ConvertFrom-Json).builds | Where-Object { $_.adapter -ceq $sha }); if ($known.Count) { $name='co-op '+[string]$known[0].id } }
-        Write-Warning ('This PC runs '+$name+', not co-op '+$release.coopFixes.id+' from this folder. Starting it anyway. To update: close the game and run "Install.cmd" from this folder. Both players need the same version.')
+        Write-Warning ('This PC runs '+$name+', not co-op '+$release.coopFixes.id+' from this folder. Starting it anyway. To update: close the game and click Install in "Cry of Fear Co-op.exe" in this folder. Both players need the same version.')
     }
 }
 if (Get-Command Write-CofAddonWarning -ErrorAction SilentlyContinue) { Write-CofAddonWarning $GameDirectory }
@@ -112,5 +112,5 @@ elseif ($NativeRC4 -and -not $MenuOnly) { . (Join-Path $PSScriptRoot 'read-coop-
 # the game's own CoFLaunchApp window (resolution + LAUNCH) does not wait for a click.
 if ($MenuOnly -and (Get-Command Start-CofGame -ErrorAction SilentlyContinue)) { $null=Start-CofGame $GameDirectory @($launchArguments | Select-Object -Skip 2) }
 else { Start-Process -FilePath $SteamExe -ArgumentList $launchArguments -WindowStyle Hidden }
-if ($MenuOnly) { Write-Output 'Starting Cry of Fear with the co-op mod. In the main menu choose "Host Simon''s Story", then "Simon''s Story: New Game" or "Load Slot 1/2/3". Your friend opens the same menu with "Run Co-op Mod.cmd" and types in the console (~): connect <your IP>:27015' }
+if ($MenuOnly) { Write-Output 'Starting Cry of Fear with the co-op mod. In the main menu choose "Host Simon''s Story", then "Simon''s Story: New Game" or "Load Slot 1/2/3". Your friend opens the same menu with Run Co-op Mod and types in the console (~): connect <your IP>:27015' }
 else { Write-Output "Launch requested through Steam. Confirm status shows 2 max players and $launchMap; follow TESTING.md." }

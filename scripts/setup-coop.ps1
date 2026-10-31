@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param([string]$GameDirectory,[switch]$CheckOnly,[switch]$Uninstall)
 # One-step install, update and uninstall, for the host's PC and the friend's PC
-# alike ("Install.cmd" / "Uninstall.cmd"). The version is release.json's.
+# alike (Install / Uninstall in "Cry of Fear Co-op.exe"). The version is release.json's.
 # 1. Finds Cry of Fear through Steam (or -GameDirectory ...\cryoffear) and
 #    names the co-op version installed now (by the adapter's SHA256).
 # 2. Sets aside every file an earlier co-op build left behind: older RC4 maps,
@@ -161,7 +161,7 @@ if ($moves.Count) {
     Write-Output 'Delete that folder yourself once you are happy (it frees the disk space).'
 }
 foreach ($rel in $titles) { [IO.File]::Move((Join-Path $game ($rel+'.storycoop-original')),(Join-Path $game $rel)); Write-Output "Put the game's own $rel back." }
-if ($Uninstall) { Write-CofStep 100 'Done'; Write-Output 'DONE: the co-op mod is uninstalled. Your co-op saves (storycoop_saves) and logs were kept; "Install.cmd" puts it back.'; return }
+if ($Uninstall) { Write-CofStep 100 'Done'; Write-Output 'DONE: the co-op mod is uninstalled. Your co-op saves (storycoop_saves) and logs were kept; Install in "Cry of Fear Co-op.exe" puts it back.'; return }
 $installer=Join-Path $PSScriptRoot 'install-story-package.ps1'
 Write-CofStep 45 'Installing the co-op files (a few minutes the first time)'
 Write-Output 'Installing: the co-op maps are built from your own game files (a few minutes the first time). Please wait...'

@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param([switch]$NoDownload,[string]$ReleaseApi='https://api.github.com/repos/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/latest',[int]$TimeoutSeconds=15)
-# v0.5 (Katz: installing and updating are separate; "Check for Updates.cmd").
+# v0.5 (Katz: installing and updating are separate; Check for Updates).
 # Asks the project's GitHub releases page for the newest version and compares it
 # with this folder's version (release.json). A newer one can be downloaded to
 # the Downloads folder; nothing is ever run, extracted or installed by this
@@ -27,8 +27,8 @@ try {
         $sha=(Get-FileHash -LiteralPath $adapter -Algorithm SHA256).Hash.ToLowerInvariant()
         $catalog=Get-Content -Raw -LiteralPath $catalogPath | ConvertFrom-Json
         if ($sha -ceq $catalog.runtimeAdapter.sha256) { Write-Output "Installed in the game: co-op $current." }
-        else { Write-Output 'Installed in the game: a different co-op version. Run "Install.cmd" from this folder to install this one.' }
-    } elseif ($game) { Write-Output 'Installed in the game: none yet. Run "Install.cmd" from this folder.' }
+        else { Write-Output 'Installed in the game: a different co-op version. Click Install in "Cry of Fear Co-op.exe" in this folder to install this one.' }
+    } elseif ($game) { Write-Output 'Installed in the game: none yet. Click Install in "Cry of Fear Co-op.exe" in this folder.' }
 } catch {}
 Write-Output 'Checking GitHub for a newer version...'
 try {
@@ -72,4 +72,4 @@ try {
     Write-Output ('DOWNLOAD FAILED: '+$_.Exception.Message+'. Get it from the release page instead.'); exit 3
 }
 Write-Output "Downloaded: $target"
-Write-Output 'Next: close Cry of Fear, extract that ZIP to a new folder and run "Install.cmd" from it. Your saves and settings stay as they are.'
+Write-Output 'Next: close Cry of Fear, extract that ZIP to a new folder, open "Cry of Fear Co-op.exe" there and click Install. Your saves and settings stay as they are.'

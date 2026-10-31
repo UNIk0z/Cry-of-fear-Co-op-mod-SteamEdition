@@ -1,6 +1,6 @@
 # v0.7.2 test run
 
-Close Cry of Fear on both PCs. Every player runs "Install.cmd" or the Install button of "Cry of Fear Co-op.exe", then runs the game the same way. Host log lines start with `[STORYCOOP_RC4]`.
+Close Cry of Fear on both PCs. Every player opens "Cry of Fear Co-op.exe", clicks Install, then Run Co-op Mod. Host log lines start with `[STORYCOOP_RC4]`.
 
 ## Launcher (first real run)
 

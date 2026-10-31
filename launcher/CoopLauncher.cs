@@ -1,7 +1,7 @@
 // Cry of Fear Co-op Steam Edition launcher (Katz, 2026-10-30): one window
-// instead of Install.cmd, Uninstall.cmd, Run Co-op Mod.cmd and Check for
-// Updates.cmd. Hosting and joining stay in the game's own co-op menu.
-// Install, Uninstall and Run start the same files\*.ps1 the .cmd files start,
+// as the only way in (v0.7.2: the .cmd files are gone from the ZIP): Install,
+// Uninstall, Run and Check for Updates. Hosting and joining stay in the game's own co-op menu.
+// Install, Uninstall and Run start the files\*.ps1 scripts,
 // with the same arguments, so what they do does not change; their output is
 // read here (no console window) and "##cof-progress N text" lines from
 // find-cof.ps1 Write-CofStep drive the progress bar. The update check follows
@@ -493,7 +493,7 @@ namespace CofCoop
             string path = Path.Combine(files, script);
             if (!File.Exists(path)) { Say("The \"files\" folder is incomplete. Extract the whole ZIP again."); EndUpdate(false); return; }
             ProcessStartInfo psi = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "WindowsPowerShell\\v1.0\\powershell.exe"));
-            // The same script and arguments as the .cmd files.
+            // -NoProfile, -ExecutionPolicy Bypass, the script and its arguments.
             psi.Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + path + "\"" + args;
             psi.UseShellExecute = false;
             psi.CreateNoWindow = true;

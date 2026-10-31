@@ -6,7 +6,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {sha256} from '../scripts/bsp.mjs';
 import {CAMPAIGN12_PARENT} from '../scripts/package-state-rc4.mjs';
-import {PLAYER_FOLDER,PLAYER_COMMANDS,PLAYER_SCRIPTS,main as playerPackage} from '../scripts/player-package.mjs';
+import {PLAYER_FOLDER,LAUNCHER_EXE,PLAYER_SCRIPTS,main as playerPackage} from '../scripts/player-package.mjs';
 const repo=fileURLToPath(new URL('..',import.meta.url));
 const pkg=process.env.COF_CAMPAIGN12_PACKAGE,previous=process.env.COF_CAMPAIGN11_PACKAGE;
 const ready=!!(pkg&&previous&&fs.existsSync(path.join(pkg,'release.json'))&&fs.existsSync(path.join(previous,'release.json')));
@@ -31,20 +31,19 @@ test('coop-fixes-012 keeps the maps, Simon and the title; new adapter and Load S
  for(const f of PLAYER_SCRIPTS)assert.ok(read(pkg,f).length>0,f);
 });
 
-test('the player folder holds three commands, READ ME and only the files they use',{skip:!ready},()=>{
+test('the player folder holds the launcher, READ ME and only the files it uses',{skip:!ready},()=>{
  const out=fs.mkdtempSync(path.join(os.tmpdir(),'coop-player-'));fs.rmdirSync(out);
  try{
   const summary=playerPackage([pkg,out]),root=path.join(out,PLAYER_FOLDER);
-  assert.deepEqual(fs.readdirSync(root).sort(),[...Object.keys(PLAYER_COMMANDS),'READ ME.txt','files'].sort());
-  for(const [name,text] of Object.entries(PLAYER_COMMANDS)){assert.equal(read(root,name).toString('latin1'),text);const script=/files\\([a-z-]+\.ps1)/.exec(text)[1];assert.ok(fs.existsSync(path.join(root,'files',script)),name);}
+  assert.deepEqual(fs.readdirSync(root).sort(),[LAUNCHER_EXE,'READ ME.txt','files','playermodels'].sort());
   const catalog=JSON.parse(read(root,'files','release.json'));assert.equal(summary.version,catalog.coopFixes.id);
   for(const m of catalog.maps)assert.equal(sha256(read(root,'files','plans',m.map+'.json')),m.planSha256);
   assert.equal(sha256(read(root,'files','native','storycoop_rc4.dll')),catalog.runtimeAdapter.sha256);
   for(const x of catalog.extras.filter(e=>e.file))assert.equal(sha256(read(root,'files',x.file)),x.replaces?x.deltaSha256:x.sha256);
   const all=[];const walk=d=>{for(const e of fs.readdirSync(d,{withFileTypes:true}))e.isDirectory()?walk(path.join(d,e.name)):all.push(path.relative(root,path.join(d,e.name)));};walk(root);
   for(const f of all)assert.doesNotMatch(f,/rollback|source|baseline|state-report|QA\.json|TESTING|CHECKPOINT|SOURCE|\.md$/i,f);
-  assert.equal(all.length,Object.keys(PLAYER_COMMANDS).length+1+summary.files);
-  assert.match(read(root,'READ ME.txt').toString('latin1'),/Install or Update\.cmd[\s\S]*Run Co-op Mod\.cmd[\s\S]*press 1, 2 or 3[\s\S]*Uninstall\.cmd[\s\S]*storycoop_logs/);
+  assert.equal(all.length,3+summary.files);
+  assert.match(read(root,'READ ME.txt').toString('latin1'),/click Install[\s\S]*Run Co-op Mod[\s\S]*Uninstall[\s\S]*storycoop_logs/);
   assert.throws(()=>playerPackage([pkg,out]),/already exists/);
  }finally{fs.rmSync(out,{recursive:true,force:true});}
 });

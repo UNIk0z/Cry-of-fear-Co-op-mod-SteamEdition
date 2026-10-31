@@ -26,10 +26,8 @@
    (If it doesn't start, open the [latest release page](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/latest), scroll down
    to **Assets** and click the **`Cry.of.Fear.Co-op`** ZIP.)
 2. Right-click the ZIP and choose **Extract All**.
-3. With Cry of Fear closed, run **`Install.cmd`** (every player).
-4. To play, run **`Run Co-op Mod.cmd`**. See [Play](#2-play) below.
-
-**`Cry of Fear Co-op.exe`** in the download does the same steps with buttons: Install, Run Co-op Mod, Check for Updates and Uninstall.
+3. With Cry of Fear closed, open **`Cry of Fear Co-op.exe`** and click **Install** (every player). The program isn't signed, so Windows may warn about it: click **More info**, then **Run anyway**.
+4. To play, click **Run Co-op Mod**. See [Play](#2-play) below.
 
 > [!WARNING]
 > **This mod is unfinished,**
@@ -54,7 +52,7 @@ play **Simon's single-player story** together instead.
 | 🧍 **Player models** | Pick Simon, one of his 11 outfits or your own model in the *Player Model* box, which shows a preview. The others see your outfit too. Your own model shows for them when the host has the same file. |
 | 🔓 **Unlock extras** | A host option that opens the Chapter 1 secret room with every unlockable. |
 | 📼 **Saving** | Only the host can save. The host uses a tape recorder and picks one of the 5 slots in the game's save window. Saves are kept on the host's PC. |
-| ✅ **Your game stays original** | The mod only runs when you start it with `Run Co-op Mod.cmd`. Starting Cry of Fear normally gives you the original game. |
+| ✅ **Your game stays original** | The mod only runs when you start it with **Run Co-op Mod** in the launcher. Starting Cry of Fear normally gives you the original game. |
 
 ## What you need
 
@@ -68,23 +66,19 @@ The download has these files:
 
 | File | When to use it |
 |---|---|
-| `Cry of Fear Co-op.exe` | Buttons for Install, Run Co-op Mod, Check for Updates and Uninstall |
-| `Install.cmd` | Once per new version, with the game closed |
-| `Check for Updates.cmd` | To see if a newer version is out (it can download it for you) |
-| `Run Co-op Mod.cmd` | **Every time you play** |
-| `Uninstall.cmd` | To remove the mod |
+| `Cry of Fear Co-op.exe` | The launcher: **Install** once per new version with the game closed, **Run Co-op Mod** every time you play, **Check for Updates** (it also installs a newer version) and **Uninstall** |
 | `READ ME.txt` | The same instructions as this page |
 | `playermodels` folder | To add your own player models (see [Play](#2-play)) |
 
 ### 1. Install (every player)
 
 1. Download the ZIP from the link at the top and unzip it anywhere.
-2. Close Cry of Fear and run **`Install.cmd`**. It finds the game
+2. Close Cry of Fear, open **`Cry of Fear Co-op.exe`** and click **Install**. It finds the game
    through Steam, moves any older version of the mod aside and installs this one.
 
 ### 2. Play
 
-Every player runs **`Run Co-op Mod.cmd`**.
+Every player clicks **Run Co-op Mod** in the launcher.
 
 - **Host:** click *Host Simon's Story*. The game's **Create Server** window
   opens: pick where to start (*Chapter-0-Prologue* up to
@@ -107,7 +101,7 @@ Every player runs **`Run Co-op Mod.cmd`**.
   the next model and **Done** closes the box with the one you see. Your choice is
   kept for the next start. To add your own model, put its `.mdl` file (made for
   the Cry of Fear player skeleton) in the `playermodels` folder next to
-  `Run Co-op Mod.cmd` and start the mod again; it shows "No preview" in the box.
+  `Cry of Fear Co-op.exe` and start the mod again; it shows "No preview" in the box.
   The others see your own model when the host has it too, so the host needs the
   same file in their `playermodels` folder. Players who join download it.
 
@@ -120,7 +114,7 @@ Every player runs **`Run Co-op Mod.cmd`**.
 
 ### 3. Uninstall
 
-Close the game and run **`Uninstall.cmd`**. The mod's files are moved to
+Close the game and click **Uninstall** in the launcher. The mod's files are moved to
 *Cry of Fear - removed co-op files*, next to the game folder. Nothing is
 deleted, and your co-op saves are kept.
 
@@ -156,7 +150,7 @@ Every bug report needs the **log file**. That's how we can see what happened.
   university enemies, the elevator scene after entering the code and the door
   opened from the other side, and the v0.7.2 ladder and revive fixes. The outfits have only been tried alone so far.
 - `Cry of Fear Co-op.exe` is new and has only been tested with fake scripts. A real install, uninstall and
-  update with it have not been run. If it misbehaves, use the `.cmd` files.
+  update with it have not been run.
 
 ## Credits
 
