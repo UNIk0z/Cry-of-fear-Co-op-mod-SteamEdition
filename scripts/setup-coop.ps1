@@ -20,11 +20,13 @@ function Get-Sha([string]$Path) {
     try { return ([BitConverter]::ToString($digest.ComputeHash($stream))).Replace('-','').ToLowerInvariant() } finally { $stream.Dispose(); $digest.Dispose() }
 }
 . (Join-Path $PSScriptRoot 'find-cof.ps1')
+Write-CofStep 2 'Finding Cry of Fear'
 if (-not $GameDirectory) { $GameDirectory=Find-CofGameDirectory }
 if (-not $GameDirectory) { throw 'Cry of Fear was not found in any Steam library. Run again with -GameDirectory "<...>\steamapps\common\Cry of Fear\cryoffear".' }
 $game=[IO.Path]::GetFullPath($GameDirectory).TrimEnd('\')
 if (-not [IO.File]::Exists((Join-Path $game 'cl_dlls\hl.dll')) -or -not [IO.Directory]::Exists((Join-Path $game 'maps'))) { throw "Not a Cry of Fear game folder: $game" }
 if (Get-Process -Name 'cof','cryoffear','hl' -ErrorAction SilentlyContinue) { throw 'Close Cry of Fear first (every copy, including one running in Sandboxie). Nothing changed.' }
+Write-CofStep 8 'Checking the co-op files'
 Write-Output "Cry of Fear: $game"
 Write-CofAddonWarning $game
 # v0.3: a protected game folder needs administrator rights to install into.
@@ -148,6 +150,7 @@ if ($moves.Count) {
     $menuBytes=$null; if ($menuRestore) { $menuBytes=[IO.File]::ReadAllBytes($menuRestore) }
     $manifest=New-Object System.Collections.Generic.List[string]
     foreach ($rel in $moves) {
+        Write-CofStep $(if ($Uninstall) { 20+[int](70*$manifest.Count/$moves.Count) } else { 30+[int](15*$manifest.Count/$moves.Count) }) ('Setting aside co-op files ('+($manifest.Count+1)+' of '+$moves.Count+')')
         $target=Join-Path $aside $rel; [void][IO.Directory]::CreateDirectory((Split-Path $target))
         [IO.File]::Move((Join-Path $game $rel),$target); $manifest.Add($rel)
     }
@@ -158,11 +161,14 @@ if ($moves.Count) {
     Write-Output 'Delete that folder yourself once you are happy (it frees the disk space).'
 }
 foreach ($rel in $titles) { [IO.File]::Move((Join-Path $game ($rel+'.storycoop-original')),(Join-Path $game $rel)); Write-Output "Put the game's own $rel back." }
-if ($Uninstall) { Write-Output 'DONE: the co-op mod is uninstalled. Your co-op saves (storycoop_saves) and logs were kept; "Install.cmd" puts it back.'; return }
+if ($Uninstall) { Write-CofStep 100 'Done'; Write-Output 'DONE: the co-op mod is uninstalled. Your co-op saves (storycoop_saves) and logs were kept; "Install.cmd" puts it back.'; return }
 $installer=Join-Path $PSScriptRoot 'install-story-package.ps1'
+Write-CofStep 45 'Installing the co-op files (a few minutes the first time)'
 Write-Output 'Installing: the co-op maps are built from your own game files (a few minutes the first time). Please wait...'
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer -MapsDirectory (Join-Path $game 'maps') | Where-Object { $_ -notmatch '^(Installed|Already installed and verified)[: ]|^EXPERIMENTAL: |^RC4 experimental adapter|^Preflighting |^Main menu: ' }
+$stepDone=0; $stepTotal=[Math]::Max(1,$expected.Count)
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer -MapsDirectory (Join-Path $game 'maps') | ForEach-Object { if ($_ -match '^(Installed|Already installed and verified)[: ]') { $stepDone=[Math]::Min($stepDone+1,$stepTotal); Write-CofStep (45+[int](45*$stepDone/$stepTotal)) ('Installing co-op files ('+$stepDone+' of '+$stepTotal+')') }; $_ } | Where-Object { $_ -notmatch '^(Installed|Already installed and verified)[: ]|^EXPERIMENTAL: |^RC4 experimental adapter|^Preflighting |^Main menu: ' }
 if ($LASTEXITCODE -ne 0) { throw 'The package installer stopped (see above). Old files were set aside; nothing else changed.' }
+Write-CofStep 92 'Checking the installed files'
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer -MapsDirectory (Join-Path $game 'maps') -VerifyOnly | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Verification failed after install.' }
 $bad=@($expected.Keys | Where-Object { -not [IO.File]::Exists((Join-Path $game $_)) -or (Get-Sha (Join-Path $game $_)) -cne $expected[$_] })
@@ -176,5 +182,6 @@ $bad=@($bad | Where-Object { -not ($otherSha.ContainsKey($_) -and [IO.File]::Exi
 $built=@($catalog.extras | Where-Object { $null -ne $_ -and $null -ne $_.deltaFrom } | ForEach-Object { $_.target.Replace('/','\') })
 $bad=@($bad | Where-Object { -not ($built -contains $_ -and -not [IO.File]::Exists((Join-Path $game $_))) })
 if ($bad.Count) { $bad | ForEach-Object { Write-Output "Not as expected: $_" }; throw 'Verification failed after install.' }
+Write-CofStep 100 'Done'
 if ($originals.Count) { Write-Output "DONE: co-op $version installed and verified ($($expected.Count) files). Saves were not touched; of the game's own files only the menu title and the main menu (cl_dlls\client.dll) are replaced; Uninstall puts the originals back." }
 else { Write-Output "DONE: co-op $version installed and verified ($($expected.Count) files). Saves and the game's own files were not touched: starting Cry of Fear normally shows the game's own menu; ""Run Co-op Mod"" shows the co-op one." }

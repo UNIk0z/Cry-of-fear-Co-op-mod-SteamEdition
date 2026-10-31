@@ -557,10 +557,25 @@ bool in_fatal_zone(const float* o){
   if(inside)return true;}
  return false;
 }
+// A respawn during a revive (Xash3D co-op changelog, checked against the decomp and pinned
+// hl.dll). RevivePlayer (100F18FD) sets pev->fuser3 to 3 for the get-up, and only
+// MultiplayerPlayerDeathThink clears it. The player is still dead during that animation, so
+// the jump key or the respawn timer (player.cpp 4004, and the fall respawn above) can run
+// first, and Spawn never writes fuser3. Left at 3 the weapons do not fire (weapons.cpp:
+// fuser3 <= 0), monsters do not see the player (combat.cpp FVisible, monsters.cpp Look) and the
+// client drops the move keys (vuser4.x copy). A reviver killed during CPR respawns with 2 the
+// same way and lies on the floor. Alive, 3 is never right; 2 is right for a knockdown, so it
+// goes only on the first frame after a death. m_bWaitingToFall +0x50C goes as in RevivePlayer.
+constexpr std::size_t PlayerMode=0x260,PlayerWaitingToFall=0x50c;
+void respawn_mode_clear(Edict* e,void* v,bool wasDead){
+ const float mode=load<float>(v,PlayerMode);if(mode!=3.f&&!(wasDead&&mode==2.f))return;
+ store(v,PlayerMode,0.f);void* p=nullptr;std::size_t n=0;if(player_memory(e,p,n))store<unsigned char>(p,PlayerWaitingToFall,0);
+ char line[130]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] REVIVE player=%d respawned with revive mode %.0f left over: cleared\n",eng<int(__cdecl*)(Edict*)>(71)(e),mode);log(line);
+}
 void fall_frame(Edict* e){
  auto v=vars(e);if(!scoped()||!globals||!v||std::strcmp(classname(e),"player"))return;
  auto& w=fallWatch[e];if(w.serial!=serial(e))w={serial(e),false};
- const bool dead=load<int>(v,0x174)!=0||load<float>(v,0x164)<=0;if(!dead){w.dead=false;fall_back_frame(e);return;}if(w.dead)return;w.dead=true;
+ const bool dead=load<int>(v,0x174)!=0||load<float>(v,0x164)<=0;if(!dead){respawn_mode_clear(e,v,w.dead);w.dead=false;fall_back_frame(e);return;}if(w.dead)return;w.dead=true;
  const float o[3]={load<float>(v,8),load<float>(v,12),load<float>(v,16)};if(!in_fatal_zone(o))return;
  Edict* partner=nullptr;float best=0;
  for(int i=1;i<=load<int>(globals,0x90);++i){auto p=eng<Edict*(__cdecl*)(int)>(72)(i);if(p==e||!player_ready_for_move(p))continue;auto q=vars(p);
@@ -1625,7 +1640,14 @@ bool skip_client_command(Edict* e,const char* command){
 // that is not in the player's own item lists (m_rgpPlayerItems +0x2514, six
 // slots chained by m_pNext +0x164, owner m_pPlayer +0x160; HasNamedPlayerItem
 // 100E2380) is taken off the queue.
-constexpr std::size_t PlayerItemLists=0x2514,PlayerLastItem=0x2534,PlayerNextItem=0x2538,PlayerDeployQueued=0x1ef9,ItemOwner=0x160,ItemNext=0x164;
+// v0.7.2 (same changelog): two more pointers wait for a later Deploy. m_pStoredNightVisionWeapon
+// +0x3F0 is deployed with no check when night vision goes away (100EBD1C, player.cpp 5621) and
+// m_pStoredActionItem +0x253C is read for its classname (6160). Neither is cleared by a drop,
+// RemoveAllItems or Spawn (disassembly), so a drop or a respawn left them on a weapon that is
+// on the floor or freed. player_owns_item compares addresses only, so a freed one is safe to test.
+// A get-up queues a re-deploy with whatever m_pNextItem holds (6556): with that weapon gone it
+// now re-deploys the one in hand, instead of emptying the hand.
+constexpr std::size_t PlayerItemLists=0x2514,PlayerActiveItem=0x252c,PlayerLastItem=0x2534,PlayerNextItem=0x2538,PlayerStoredAction=0x253c,PlayerStoredVision=0x3f0,PlayerDeployQueued=0x1ef9,ItemOwner=0x160,ItemNext=0x164;
 bool player_owns_item(void* p,std::uint32_t item){
  if(!item)return false;
  for(std::size_t s=0;s<6;++s){auto it=load<std::uint32_t>(p,PlayerItemLists+s*4);
@@ -1636,11 +1658,14 @@ std::set<std::pair<Edict*,int>> deployLogged;
 void deploy_guard(Edict* e){
  void* p=nullptr;std::size_t n=0;if(!scoped()||!player_memory(e,p,n))return;
  const auto next=load<std::uint32_t>(p,PlayerNextItem),last=load<std::uint32_t>(p,PlayerLastItem);
- const bool badNext=next&&load<unsigned char>(p,PlayerDeployQueued)&&!player_owns_item(p,next),badLast=last&&!player_owns_item(p,last);
- if(!badNext&&!badLast)return;
- if(badNext)store<std::uint32_t>(p,PlayerNextItem,0);
+ const auto action=load<std::uint32_t>(p,PlayerStoredAction),vision=load<std::uint32_t>(p,PlayerStoredVision);
+ const bool badNext=next&&load<unsigned char>(p,PlayerDeployQueued)&&!player_owns_item(p,next),badLast=last&&!player_owns_item(p,last),badAction=action&&!player_owns_item(p,action),badVision=vision&&!player_owns_item(p,vision);
+ if(!badNext&&!badLast&&!badAction&&!badVision)return;
+ if(badNext){const auto active=load<std::uint32_t>(p,PlayerActiveItem);store<std::uint32_t>(p,PlayerNextItem,player_owns_item(p,active)?active:0u);}
  if(badLast)store<std::uint32_t>(p,PlayerLastItem,0);
- if(deployLogged.insert({e,serial(e)}).second){char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] WEAPON player=%d: a %s weapon was no longer his, taken off the switch\n",eng<int(__cdecl*)(Edict*)>(71)(e),badNext?"queued":"last");log(line);}
+ if(badAction)store<std::uint32_t>(p,PlayerStoredAction,0);
+ if(badVision)store<std::uint32_t>(p,PlayerStoredVision,0);
+ if(deployLogged.insert({e,serial(e)}).second){char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] WEAPON player=%d: a %s weapon was no longer his, taken off the switch\n",eng<int(__cdecl*)(Edict*)>(71)(e),badNext?"queued":badLast?"last":"stored");log(line);}
 }
 // Player collision on means a solid partner (Playtest 3: "when checking the
 // option it must staticly block the players like in counter strike"; more.txt:

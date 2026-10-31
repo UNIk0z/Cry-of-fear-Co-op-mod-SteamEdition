@@ -19,6 +19,7 @@ void* pd(Edict* e){auto it=mem.find(e);return it==mem.end()?nullptr:it->second.d
 void* alloc(Edict* e,int n){mem[e]=std::vector<unsigned char>(n);return mem[e].data();}
 void free_(Edict* e){mem.erase(e);}
 void print(const char* s){lines.emplace_back(s);}
+void setorigin(Edict*,const float*){}
 Edict* find_(Edict* start,const char* key,const char* value){
  const int field=std::strcmp(key,"classname")==0?0:std::strcmp(key,"target")==0?0x1cc:0x1d0;
  for(int i=start?index(start)+1:1;i<32;++i)if(load<int>(&entities[i],0)==0&&std::strcmp(str(load<int>(ev(&entities[i]),field)),value)==0)return &entities[i];
@@ -51,7 +52,7 @@ Edict* lookup(const char* name){Edict* out=nullptr;return ladder_find_override(n
 }
 int main(){
  globals=globalData.data();verified=true;store(globals,0x0c,1);store(globals,0x90,2);store(globals,0x94,32);
- engine[14]=reinterpret_cast<void*>(&find_);engine[22]=reinterpret_cast<void*>(&remove_);engine[23]=reinterpret_cast<void*>(&create);engine[63]=reinterpret_cast<void*>(&alloc);engine[64]=reinterpret_cast<void*>(&pd);engine[65]=reinterpret_cast<void*>(&free_);
+ engine[28]=reinterpret_cast<void*>(&setorigin);engine[14]=reinterpret_cast<void*>(&find_);engine[22]=reinterpret_cast<void*>(&remove_);engine[23]=reinterpret_cast<void*>(&create);engine[63]=reinterpret_cast<void*>(&alloc);engine[64]=reinterpret_cast<void*>(&pd);engine[65]=reinterpret_cast<void*>(&free_);
  engine[66]=reinterpret_cast<void*>(&str);engine[67]=reinterpret_cast<void*>(&intern);engine[68]=reinterpret_cast<void*>(&ev);engine[71]=reinterpret_cast<void*>(&index);engine[72]=reinterpret_cast<void*>(&byindex);engine[81]=reinterpret_cast<void*>(&print);
  original[1]=reinterpret_cast<void*>(&spawn_);original[6]=reinterpret_cast<void*>(&kv);
  for(auto& e:entities)store(&e,0,1);
@@ -87,7 +88,41 @@ int main(){
  // Far ladder C and other lookups are untouched; a key other than targetname is never redirected.
  {Edict* out=nullptr;assert(!ladder_find_override(nullptr,"target","nerdclimb14",out)&&!ladder_find_override(a,"targetname","nerdclimb14",out));}
  (void)c;
+ // v0.7.2. P1 climbs A and P2 presses E: the game repeats the lookup after each entity it
+ // fires, and a copy in a reused low edict stands before A. That next lookup must end, or A's
+ // Use takes the slot from P1, who stays frozen.
+ {climb(a,1,camA);store(ev(camA),8,100.f);store(ev(camA),0xb8,intern("models/ladder_climb.mdl"));ladder_frame();Edict* fired[4]{};int shots=0;
+  for(Edict* t=lookup("nerdclimb14");t&&t!=&entities[0]&&shots<4;){fired[shots++]=t;Edict* out=&entities[0];t=ladder_find_override(t,"targetname","nerdclimb14",out)?out:find_(t,"targetname","nerdclimb14");}
+  assert(shots==1&&fired[0]==copy&&slot(a)==reinterpret_cast<std::uint32_t>(pd(&entities[1])));}
+ // A joiner or a respawn during a climb: the game's spawn set the cutscene wait; only a climb
+ // holds a camera, so it is off before the first PostThink. A scene's camera keeps it.
+ store<unsigned char>(pd(&entities[2]),PlayerCutsceneWait,1);store(pd(&entities[2]),0x5ac,0u);ladder_wait_frame(&entities[2]);
+ assert(load<unsigned char>(pd(&entities[2]),PlayerCutsceneWait)==0&&logged("not held by the cutscene wait"));
+ {auto scene=camera(12,700.f,"models/mdl_camera.mdl");store<unsigned char>(pd(&entities[2]),PlayerCutsceneWait,1);store(pd(&entities[2]),0x5ac,reinterpret_cast<std::uint32_t>(pd(scene)));ladder_wait_frame(&entities[2]);assert(load<unsigned char>(pd(&entities[2]),PlayerCutsceneWait)==1);
+  store(ev(scene),0x254,1);ladder_wait_frame(&entities[2]);assert(load<unsigned char>(pd(&entities[2]),PlayerCutsceneWait)==0);store(pd(&entities[2]),0x5ac,0u);
+  // A scene's end clears FL_FROZEN for everyone: a climber stays frozen.
+  store(ev(&entities[1]),0x1a8,0u);ladder_frame();assert(load<unsigned>(ev(&entities[1]),0x1a8)&LadderFrozen);
+  // A scene replaces the climber's camera while LadderThink runs: the seat stops its think, its
+  // camera leaves the world, godmode goes at once, the rest when the scene is over.
+  store(ev(a),0x104,50.f);store<unsigned char>(pd(a),LadderEnableControl,1);store(ev(&entities[1]),0x1a8,LadderGodmode|LadderNotarget|LadderFrozen);store(ev(scene),0x254,0);
+  store(pd(&entities[1]),0x5ac,reinterpret_cast<std::uint32_t>(pd(scene)));ladder_frame();
+  assert(slot(a)==0&&load<float>(ev(a),0x104)==0.f&&load<unsigned char>(pd(a),LadderEnableControl)==0&&logged("nerdclimb14 climb of player=1 ended from outside"));
+  assert(load<unsigned>(ev(camA),0x1a8)&FlKillMe);assert(!(load<unsigned>(ev(scene),0x1a8)&FlKillMe));
+  assert(load<unsigned>(ev(&entities[1]),0x1a8)==(LadderNotarget|LadderFrozen)&&ladderRelease.count(&entities[1])==1);
+  store(pd(&entities[1]),0x5ac,0u);ladder_frame();assert(load<unsigned>(ev(&entities[1]),0x1a8)==0u&&ladderRelease.empty()&&logged("player=1 has controls back"));}
+ // trigger_camera flag 2048 removes the climber's camera with no control to give back: released.
+ {auto cam=camera(13,300.f,"models/ladder_climb.mdl");climb(b,1,cam);store(ev(b),0x104,50.f);ladder_frame();store(pd(&entities[1]),0x5ac,0u);store(cam,0,1);release(cam);store(ev(&entities[1]),0x1a8,LadderGodmode|LadderNotarget|LadderFrozen);ladder_frame();
+  assert(slot(b)==0&&load<unsigned>(ev(&entities[1]),0x1a8)==0u);}
+ // A climb that LadderThink ended by itself: a scene it fired keeps its freeze and notarget.
+ {auto cam=camera(14,300.f,"models/ladder_climb.mdl");climb(b,1,cam);ladder_frame();store(ev(b),0x104,0.f);store(pd(&entities[1]),0x5ac,0u);store(ev(&entities[1]),0x1a8,LadderNotarget|LadderFrozen);ladder_frame();
+  assert(slot(b)==0&&load<unsigned>(ev(&entities[1]),0x1a8)==(LadderNotarget|LadderFrozen)&&ladderRelease.empty());store(ev(&entities[1]),0x1a8,0u);}
+ // Each climb starts clean, solo too: no leftover from the climb before it.
+ store<unsigned char>(pd(b),LadderEnableControl,1);store<unsigned char>(pd(b),LadderQueuedPrevious,1);store<unsigned char>(pd(b),LadderGotOn,1);
+ assert(lookup("nerdclimb15")==&entities[0]&&!load<unsigned char>(pd(b),LadderEnableControl)&&!load<unsigned char>(pd(b),LadderQueuedPrevious)&&!load<unsigned char>(pd(b),LadderGotOn));
+ // A climber who leaves: seat free, camera gone, and a lookup in the same frame finds the ladder free.
+ {auto cam=camera(15,300.f,"models/ladder_climb.mdl");climb(b,2,cam);store(ev(b),0x104,50.f);ladder_frame();ladder_left(&entities[2]);
+  assert(slot(b)==0&&(load<unsigned>(ev(cam),0x1a8)&FlKillMe)&&ladders[1].seat.climber==0&&lookup("nerdclimb15")==&entities[0]);}
  // Map change clears everything; unscoped maps never set up ladders.
  ladder_map_reset();assert(ladders.empty()&&ladderKeys.empty());store(globals,0x0c,2);player(1);ladder_activate();assert(ladders.empty());
- std::puts("PASS ladder fixtures: every player climbs at once (a copy of a busy manager with its recorded keys), neighbours with stale slots stay free, ended climbs and departed climbers release their slot, no climber beyond the player slots, map reset and unscoped maps untouched");
+ std::puts("PASS ladder fixtures: every player climbs at once (a copy of a busy manager with its recorded keys), the lookup after a copy never reaches the busy original, a climb is no cutscene wait, neighbours with stale slots stay free, ended climbs and departed climbers release their slot, a scene ending a climb gives the player back and removes the camera, each climb starts clean, no climber beyond the player slots, map reset and unscoped maps untouched");
 }

@@ -376,6 +376,22 @@ int main(int argc,char** argv){
   assert(logged({"FALL player=2 died in a fall zone; body moved beside player=1"})&&origin(&entities[2])[2]>=36.f&&origin(&entities[1])[2]==36.f);
   place(&entities[2],0,0,-480);lines.clear();fall_frame(&entities[2]);assert(lines.empty()&&origin(&entities[2])[2]==-480.f);   // once per death
   store(ev(&entities[2]),0x174,0);store(ev(&entities[2]),0x164,90.f);place(&entities[2],-3000,0,36);fallWatch.clear();store(&entities[13],0,1);}
+ // --- v0.7.2: a respawn during a revive leaves no mode behind; a knockdown and a revive in progress keep theirs.
+ {auto v=ev(&entities[2]);fallWatch.clear();store(v,0x174,0);store(v,0x164,90.f);
+  store(v,PlayerMode,3.f);store<unsigned char>(pd(&entities[2]),PlayerWaitingToFall,1);lines.clear();fall_frame(&entities[2]);
+  assert(load<float>(v,PlayerMode)==0.f&&!load<unsigned char>(pd(&entities[2]),PlayerWaitingToFall)&&logged({"REVIVE player=2 respawned with revive mode 3 left over"}));
+  store(v,PlayerMode,2.f);fall_frame(&entities[2]);assert(load<float>(v,PlayerMode)==2.f);
+  store(v,0x174,2);store(v,0x164,0.f);store(v,PlayerMode,3.f);fall_frame(&entities[2]);assert(load<float>(v,PlayerMode)==3.f);
+  store(v,PlayerMode,2.f);store(v,0x174,0);store(v,0x164,90.f);fall_frame(&entities[2]);assert(load<float>(v,PlayerMode)==0.f);fallWatch.clear();}
+ // --- v0.7.2: no pointer waiting for a Deploy may keep a weapon the player no longer has.
+ {std::array<unsigned char,0x200> mine{},gone{};auto p=pd(&entities[2]);const auto own=reinterpret_cast<std::uint32_t>(mine.data()),lost=reinterpret_cast<std::uint32_t>(gone.data());
+  store(mine.data(),ItemOwner,reinterpret_cast<std::uint32_t>(p));store(gone.data(),ItemOwner,0u);store(p,PlayerItemLists,own);store(p,PlayerActiveItem,own);
+  store(p,PlayerNextItem,lost);store<unsigned char>(p,PlayerDeployQueued,1);store(p,PlayerLastItem,lost);store(p,PlayerStoredAction,lost);store(p,PlayerStoredVision,lost);deploy_guard(&entities[2]);
+  assert(load<std::uint32_t>(p,PlayerNextItem)==own&&!load<std::uint32_t>(p,PlayerLastItem)&&!load<std::uint32_t>(p,PlayerStoredAction)&&!load<std::uint32_t>(p,PlayerStoredVision));
+  store(p,PlayerLastItem,own);store(p,PlayerStoredAction,own);store(p,PlayerStoredVision,own);deploy_guard(&entities[2]);
+  assert(load<std::uint32_t>(p,PlayerLastItem)==own&&load<std::uint32_t>(p,PlayerStoredAction)==own&&load<std::uint32_t>(p,PlayerStoredVision)==own);
+  store(p,PlayerActiveItem,0u);store(p,PlayerNextItem,lost);deploy_guard(&entities[2]);assert(!load<std::uint32_t>(p,PlayerNextItem));
+  for(std::size_t o:{PlayerItemLists,PlayerLastItem,PlayerStoredAction,PlayerStoredVision})store(p,o,0u);store<unsigned char>(p,PlayerDeployQueued,0);}
  // --- v0.5: the prologue's ready and final counts wait for the players actually in the game.
  {const int mapBefore=load<int>(globals,0x0c);store(globals,0x0c,intern("cof_campaign_story4"));
   make(14,"game_counter","sc3_ready_count",714);store(ev(&entities[14]),0x164,2.f);make(15,"game_counter","sc4_final_count",715);store(ev(&entities[15]),0x164,2.f);

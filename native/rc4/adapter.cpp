@@ -477,7 +477,7 @@ void __cdecl command_start(const Edict* actor,const void* command,unsigned int s
 }
 // Ladder reservations are refreshed after each player's think as well as at
 // StartFrame, so a second player's Use later in the same frame sees the lock.
-void __cdecl prethink(Edict* e){crumb("prethink",e);objective_share();deploy_guard(e);native<void(__cdecl*)(Edict*)>(23)(e);collision_hold(e);strip_clear_frame(e);idle_stage(e,1);fall_frame(e);scene_teleport_frame(e);model_frame(e);name_frame(e);light_frame(e);camera_frame(e);camera_join(e);checkpoint_player_frame(e);restore(e);quick_notice_frame(e);carry_frame(e);quest_notice_frame(e);arrival_frame(e);equip_frame(e);nightmare_frame(e);morphine_frame(e);limp_frame(e);give_owed_frame(e);rejoin_frame(e);ladder_frame();boat_frame(e);idle_stage(e,2);collision_pre(e);}
+void __cdecl prethink(Edict* e){crumb("prethink",e);objective_share();deploy_guard(e);ladder_wait_frame(e);native<void(__cdecl*)(Edict*)>(23)(e);collision_hold(e);strip_clear_frame(e);idle_stage(e,1);fall_frame(e);scene_teleport_frame(e);model_frame(e);name_frame(e);light_frame(e);camera_frame(e);camera_join(e);checkpoint_player_frame(e);restore(e);quick_notice_frame(e);carry_frame(e);quest_notice_frame(e);arrival_frame(e);equip_frame(e);nightmare_frame(e);morphine_frame(e);limp_frame(e);give_owed_frame(e);rejoin_frame(e);ladder_frame();boat_frame(e);idle_stage(e,2);collision_pre(e);}
 // v0.1: the inventory carry reads every player when a level change is asked
 // for (see carry_level_change), then the engine's own ChangeLevel runs.
 // v0.3: the Drowned's victim lookup (see drowned_index in coop-runtime.hpp).
@@ -490,7 +490,7 @@ void __cdecl server_command_hook(char* text){
 }
 void __cdecl key_value(Edict* e,KeyValue* kv){if(extras_keyvalue_dropped(kv)){kv->handled=1;return;}native<void(__cdecl*)(Edict*,KeyValue*)>(6)(e,kv);evidence_keyvalue(e,kv);ladder_keyvalue(e,kv);door_global_keyvalue(e,kv);state_keyvalue(e,kv);}
 void __cdecl postthink(Edict* e){crumb("postthink",e);collision_restore();idle_stage(e,-1);deploy_guard(e);native<void(__cdecl*)(Edict*)>(24)(e);door_hide_frame(e);idle_stage(e,3);light_frame(e);pose_frame(e);ladder_frame();pp_frame();idle_stage(e,4);}
-void __cdecl disconnect(Edict* e){pauseState.othersOpen=false;carry_departing(e);stuckUsed.erase(e);codeLayouts.erase(note_connection(e));camera_forget(e);boatDrivers.erase(e);checkpoint_disconnect(e);}
+void __cdecl disconnect(Edict* e){pauseState.othersOpen=false;ladder_left(e);carry_departing(e);stuckUsed.erase(e);codeLayouts.erase(note_connection(e));camera_forget(e);boatDrivers.erase(e);checkpoint_disconnect(e);}
 // v0.3 crash report: Use/Touch only leave a breadcrumb, then the game's own.
 void __cdecl dispatch_use(Edict* e,Edict* other){crumb("use",e);native<void(__cdecl*)(Edict*,Edict*)>(3)(e,other);}
 void __cdecl dispatch_touch(Edict* e,Edict* other){crumb("touch",e);if(scoped()){pp_touch(e,other);train_escape_touch(e,other);if(collision_touch_blocked(e,other))return;}native<void(__cdecl*)(Edict*,Edict*)>(4)(e,other);}

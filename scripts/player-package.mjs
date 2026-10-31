@@ -10,6 +10,11 @@ import {fileURLToPath} from 'node:url';
 import {sha256} from './bsp.mjs';
 
 export const PLAYER_FOLDER='Cry of Fear Co-op';
+// Launcher (Katz, 2026-10-30): one themed .exe with the same entries as the
+// .cmd files, built by launcher/build-launcher.ps1. Copied when it is built;
+// the .cmd files stay until Katz approves removing them.
+export const LAUNCHER_EXE='Cry of Fear Co-op.exe';
+const launcherBuild=path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))),'launcher','out',LAUNCHER_EXE);
 export const PLAYER_SCRIPTS=['setup-coop.ps1','install-story-package.ps1','host-story-coop.ps1','join-coop.ps1','find-cof.ps1','update-coop.ps1'];
 const cmd=(script,args='')=>`@echo off\r\ntitle Cry of Fear Co-op\r\npowershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0files\\${script}"${args}\r\nset "cofExit=%errorlevel%"\r\necho.\r\npause\r\nexit /b %cofExit%\r\n`;
 // v0.3 public build (user 2026-10-16): one launcher for both players.
@@ -32,12 +37,17 @@ export const PLAYER_COMMANDS={
  'Run Co-op Mod.cmd':run,
  'Uninstall.cmd':cmd('setup-coop.ps1',' -Uninstall'),
 };
-export function readMe(version){
+export function readMe(version,launcher=false){
  return [
   `CRY OF FEAR CO-OP - Simon's story for 1 to 4 players (${version})`,
   `Co-op mod ${version} developed by Anas Sammak (koolkat).`,
   'Special thanks: Mesilll, Michal Eminov, caixa, Joah230.',
   '',
+  ...(launcher?[
+  '"Cry of Fear Co-op.exe" does these steps with buttons: Install, Run Co-op Mod,',
+  'Check for Updates (it also installs a newer version) and Uninstall. Hosting',
+  'and joining are in the game\'s co-op menu. The .cmd files below still work.',
+  '']:[]),
   'BOTH PLAYERS',
   '  1. Close Cry of Fear.',
   '  2. Run "Install.cmd". It finds the game through Steam, sets aside any',
@@ -141,7 +151,8 @@ export function main(args){
   fs.mkdirSync(path.dirname(path.join(data,rel)),{recursive:true});fs.writeFileSync(path.join(data,rel),bytes,{flag:'wx'});
  }
  for(const [name,text] of Object.entries(PLAYER_COMMANDS))fs.writeFileSync(path.join(root,name),text,{flag:'wx'});
- fs.writeFileSync(path.join(root,'READ ME.txt'),readMe(catalog.coopFixes.id),{flag:'wx'});
+ if(fs.existsSync(launcherBuild))fs.copyFileSync(launcherBuild,path.join(root,LAUNCHER_EXE),fs.constants.COPYFILE_EXCL);
+ fs.writeFileSync(path.join(root,'READ ME.txt'),readMe(catalog.coopFixes.id,fs.existsSync(launcherBuild)),{flag:'wx'});
  // v0.7: custom player models go here (Run Co-op Mod.cmd copies them into the game).
  fs.mkdirSync(path.join(root,'playermodels'));fs.writeFileSync(path.join(root,'playermodels','PUT PLAYER MODELS HERE.txt'),'Put your own player models (.mdl files made for the Cry of Fear player skeleton) in this folder,\r\nthen start "Run Co-op Mod.cmd". Each model shows up in the Player Model box of the co-op menu.\r\nUninstall.cmd leaves this folder alone.\r\n',{flag:'wx'});
  const summary={root,version:catalog.coopFixes.id,files:files.length,catalogSha256:sha256(fs.readFileSync(path.join(candidate,'release.json')))};
