@@ -664,7 +664,8 @@ namespace CofCoop
                     {
                         Dictionary<string, object> asset = a as Dictionary<string, object>;
                         if (asset == null) continue;
-                        if (Str(Get(asset, "name")).EndsWith(".zip", StringComparison.OrdinalIgnoreCase) && Str(Get(asset, "browser_download_url")).StartsWith(DownloadPrefix, StringComparison.Ordinal)) { newerAsset = asset; break; }
+                        // v0.8 (Katz: the update took the Linux ZIP): never the Linux package.
+                        if (Str(Get(asset, "name")).EndsWith(".zip", StringComparison.OrdinalIgnoreCase) && Str(Get(asset, "name")).IndexOf("linux", StringComparison.OrdinalIgnoreCase) < 0 && Str(Get(asset, "browser_download_url")).StartsWith(DownloadPrefix, StringComparison.Ordinal)) { newerAsset = asset; break; }
                     }
                 if (newerAsset == null) { Say("A newer version is out: " + latest + ". Opening its release page..."); OpenPage(releasePage); return; }
                 updateLine.Text = "UPDATE TO " + latest;

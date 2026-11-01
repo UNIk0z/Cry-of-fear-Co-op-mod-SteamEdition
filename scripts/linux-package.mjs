@@ -5,6 +5,8 @@
 // adapter is the same Windows DLL; coop-linux.py builds every file from the
 // player's own game files and checks it against release.json, like Windows.
 //   <OUT>/Cry of Fear Co-op Linux/  coop.sh, READ ME.txt, playermodels/ and files/
+// Packed as a .tar.gz, never a .zip: launchers before v0.8.1 take the first .zip
+// of a release as the Windows update (Katz 2026-11-01).
 // Usage: linux-package.mjs CANDIDATE_PACKAGE NEW_OUTPUT
 import fs from 'node:fs';
 import path from 'node:path';

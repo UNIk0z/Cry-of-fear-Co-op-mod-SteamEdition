@@ -52,7 +52,7 @@ Write-Output ''
 Write-Output "A NEWER VERSION IS OUT: $latest (you have $current)."
 Write-Output ('Release page: '+[string]$release.html_url)
 # Only a .zip attached to this project's own release, served by GitHub.
-$asset=@($release.assets | Where-Object { [string]$_.name -match '\.zip$' -and [string]$_.browser_download_url -like 'https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/*' }) | Select-Object -First 1
+$asset=@($release.assets | Where-Object { [string]$_.name -match '\.zip$' -and [string]$_.name -notmatch 'linux' -and [string]$_.browser_download_url -like 'https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/*' }) | Select-Object -First 1
 if (-not $asset) { Write-Output 'Download it from the release page.'; exit 0 }
 if ($NoDownload) { Write-Output ('Download: '+[string]$asset.browser_download_url); exit 0 }
 $answer=Read-Host ('Download '+[string]$asset.name+' ('+[Math]::Round([double]$asset.size/1MB,1)+' MB) to your Downloads folder now? (Y/N)')
