@@ -15,7 +15,7 @@
 
 ## ⬇️ Download
 
-### **[Click here to download Cry of Fear Co-op v0.7.2](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.7.2/Cry.of.Fear.Co-op.v0.7.2.zip)**
+### **[Click here to download Cry of Fear Co-op v0.8](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.8/Cry.of.Fear.Co-op.v0.8.zip)**
 
 > [!IMPORTANT]
 > **Don't use the green "Code" button or "Download ZIP".** That gives you the
@@ -45,11 +45,11 @@ play **Simon's single-player story** together instead.
 | 🔢 **Shared progress** | Codes, notes and objectives are shared, so any player can enter a keypad code. |
 | 🎬 **Start at any chapter** | Pick the Prologue, any chapter from 1 to 7 or a save. A chapter starts where its title appears, with the weapons Simon has found by then. |
 | 🎒 **Same story rules** | Item puzzles (rope, lighter, saw, fuse, scissors...) work for every player. After the train crash every player loses the bag and has 3 slots, as in the story. The Doctor's shot lowers max health for every player. |
-| 📦 **Items for every player** | The first time you enter a map, ammo, syringes and weapons get one copy for each extra player, placed side by side. Keys and story items are not copied, but the others are told who picked one up. You can carry up to 10 syringes. |
-| 🧩 **Two-half items** | When the two halves of an item are picked up by different players, they go to one player so they can be combined. |
+| 📦 **Items for every player** | Each player sees one of each ammo box, weapon and phone battery on the map and takes their own; it disappears only for them. Everyone gets a key item when one player picks it up, if they have room, and loses it when one player uses it. Notes stay shared. You can carry up to 10 syringes. |
+| 🧩 **Two-half items** | Both halves go to every player with room, like other key items. If halves still end up with different players, they go to one player so they can be combined. |
 | 🗺️ **Maps keep their state** | A map you go back to stays as you left it: taken items, dead enemies, opened doors and solved puzzles. |
 | 🪜 **Ladders for everyone** | Every player can climb the same ladder at the same time. |
-| 🧍 **Player models** | Pick Simon, one of his 11 outfits or your own model in the *Player Model* box, which shows a preview. The others see your outfit too. Your own model shows for them when the host has the same file. |
+| 🧍 **Player models** | Pick Simon, one of his 11 outfits or your own model in the *Player Model* box, which shows a preview. Pressing Done then lets you pick your hands. The others see your outfit too. Your own model shows for them when the host has the same file. |
 | 🔓 **Unlock extras** | A host option that opens the Chapter 1 secret room with every unlockable. |
 | 📼 **Saving** | Only the host can save. The host uses a tape recorder and picks one of the 5 slots in the game's save window. Saves are kept on the host's PC. |
 | ✅ **Your game stays original** | The mod only runs when you start it with **Run Co-op Mod** in the launcher. Starting Cry of Fear normally gives you the original game. |
@@ -146,7 +146,7 @@ Every bug report needs the **log file**. That's how we can see what happened.
 - Three and four players have not been tested yet.
 - Open bugs: a crawler enemy is missing in the subway, and crouching on a save
   station jitters.
-- The v0.7, v0.7.1 and v0.7.2 fixes have not been tried in a co-op session yet, including the
+- The v0.7, v0.7.1, v0.7.2 and v0.8 fixes have not been tried in a co-op session yet, including the
   university enemies, the elevator scene after entering the code and the door
   opened from the other side, and the v0.7.2 ladder and revive fixes. The outfits have only been tried alone so far.
 - `Cry of Fear Co-op.exe` is new and has only been tested with fake scripts. A real install, uninstall and
