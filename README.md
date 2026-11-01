@@ -29,6 +29,8 @@
 3. With Cry of Fear closed, open **`Cry of Fear Co-op.exe`** and click **Install** (every player). The program isn't signed, so Windows may warn about it: click **More info**, then **Run anyway**.
 4. To play, click **Run Co-op Mod**. See [Play](#2-play) below.
 
+**🐧 Linux (Steam Proton):** download **[Cry of Fear Co-op v0.8 Linux](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.8/Cry.of.Fear.Co-op.v0.8.Linux.zip)**, extract it, then with the game closed run `bash coop.sh` in that folder and pick Install, then Run Co-op Mod. It needs Python 3. Linux and Windows players can play together.
+
 > [!WARNING]
 > **This mod is unfinished,**
 > up to four players, and you will run into bugs.
