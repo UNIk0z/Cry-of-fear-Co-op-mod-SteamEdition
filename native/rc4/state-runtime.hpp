@@ -31,7 +31,7 @@ static_assert(sizeof(SaveTable)==24,"SDK ENTITYTABLE ABI (x86)");
 constexpr int StateTokens=0xfff;   // the engine's own token table size
 constexpr std::size_t StateBuffer=24u<<20,StateFileLimit=192u<<20;
 struct StateEntity {int id=0;std::string key,type;int location=0,size=0;};
-struct MapState {std::string map;std::vector<unsigned char> data;std::vector<std::string> tokens;std::vector<StateEntity> entities;std::vector<std::string> removed;std::uint32_t layout=0;};
+struct MapState {std::string map;std::vector<unsigned char> data;std::vector<std::string> tokens;std::vector<StateEntity> entities;std::vector<std::string> removed;std::uint32_t layout=0;std::map<std::string,unsigned> pickups;};
 std::map<std::string,MapState> mapStates;
 struct RuntimeRecord {Edict* e=nullptr;int serial=-1;std::string key;};
 std::vector<RuntimeRecord> loadRuntime;
@@ -97,7 +97,7 @@ bool state_capture(MapState& out,std::string& why){
  if(!original[7]||!globals||!engine[72]||!engine[67]){why="save callback unavailable";return false;}
  const int clients=load<int>(globals,0x90),maxEntities=load<int>(globals,0x94);
  struct Candidate {Edict* e;std::string key,type;bool fixed;};std::vector<Candidate> list;std::set<Edict*> known;
- out={};out.map=map_name();out.layout=stateLayout;
+ out={};out.map=map_name();out.layout=stateLayout;pickup_masks(out.pickups);
  for(std::size_t i=1;i<spawnRecords.size();++i){
   const auto& r=spawnRecords[i];if(!r.e||r.key.empty()||keepKeys.count(r.key))continue;
   const bool present=serial(r.e)==r.serial&&r.type==classname(r.e);if(present)known.insert(r.e);
@@ -228,7 +228,7 @@ struct StateReader {
  std::string str(std::size_t max=255){const auto n=u32();if(!ok||n>max||n>b.size()-at){ok=false;at=b.size();return {};}std::string s(reinterpret_cast<const char*>(b.data()+at),n);at+=n;return s;}
 };
 std::vector<unsigned char> state_encode(const std::map<std::string,MapState>& states,std::uint32_t checkpoint){
- StateWriter w;const char magic[8]={'C','O','F','M','A','P','0','1'};w.b.insert(w.b.end(),magic,magic+8);w.u32(2);w.u32(checkpoint);w.u32(0);w.u32(0);
+ StateWriter w;const char magic[8]={'C','O','F','M','A','P','0','1'};w.b.insert(w.b.end(),magic,magic+8);w.u32(3);w.u32(checkpoint);w.u32(0);w.u32(0);
  w.u32(static_cast<std::uint32_t>(states.size()));
  for(const auto& [source,s]:states){
   w.str(source);w.str(s.map);w.u32(static_cast<std::uint32_t>(s.data.size()));w.b.insert(w.b.end(),s.data.begin(),s.data.end());
@@ -236,13 +236,14 @@ std::vector<unsigned char> state_encode(const std::map<std::string,MapState>& st
   for(std::size_t i=0;i<s.tokens.size();++i)if(!s.tokens[i].empty()){w.u32(static_cast<std::uint32_t>(i));w.str(s.tokens[i]);}
   w.u32(static_cast<std::uint32_t>(s.entities.size()));for(const auto& x:s.entities){w.u32(static_cast<std::uint32_t>(x.id));w.str(x.key);w.str(x.type);w.u32(static_cast<std::uint32_t>(x.location));w.u32(static_cast<std::uint32_t>(x.size));}
   w.u32(static_cast<std::uint32_t>(s.removed.size()));for(const auto& k:s.removed)w.str(k);w.u32(s.layout);
+  w.u32(static_cast<std::uint32_t>(s.pickups.size()));for(const auto& [k,mask]:s.pickups){w.str(k);w.u32(mask);}
  }
  if(w.b.size()>StateFileLimit)return {};
  const auto size=static_cast<std::uint32_t>(w.b.size()),sum=state_crc(w.b.data()+24,w.b.size()-24);std::memcpy(w.b.data()+16,&size,4);std::memcpy(w.b.data()+20,&sum,4);return w.b;
 }
 bool state_decode(const std::vector<unsigned char>& b,std::uint32_t checkpoint,std::map<std::string,MapState>& out){
  if(b.size()<28||b.size()>StateFileLimit||std::memcmp(b.data(),"COFMAP01",8))return false;
- StateReader r{b,8};const auto version=r.u32();if((version!=1&&version!=2)||r.u32()!=checkpoint||r.u32()!=b.size()||r.u32()!=state_crc(b.data()+24,b.size()-24))return false;
+ StateReader r{b,8};const auto version=r.u32();if(version<1||version>3||r.u32()!=checkpoint||r.u32()!=b.size()||r.u32()!=state_crc(b.data()+24,b.size()-24))return false;
  std::map<std::string,MapState> states;const auto count=r.u32();if(count>512)return false;
  for(std::uint32_t m=0;m<count&&r.ok;++m){
   MapState s;const auto source=r.str(64);s.map=r.str(64);const auto n=r.u32();if(!r.ok||n>StateBuffer||n>b.size()-r.at)return false;s.data.assign(b.begin()+r.at,b.begin()+r.at+n);r.at+=n;
@@ -252,7 +253,8 @@ bool state_decode(const std::vector<unsigned char>& b,std::uint32_t checkpoint,s
   for(std::uint32_t i=0;i<entities&&r.ok;++i){StateEntity x;x.id=static_cast<int>(r.u32());x.key=r.str();x.type=r.str(63);x.location=static_cast<int>(r.u32());x.size=static_cast<int>(r.u32());
    if(x.id<0||x.id>8191||!ids.insert(x.id).second||x.location<0||x.size<=0||static_cast<std::size_t>(x.location)+static_cast<std::size_t>(x.size)>s.data.size())return false;
    if(!x.type.empty())s.entities.push_back(std::move(x));}   // classless (written by the first v0.3 builds): kept as served
-  const auto removed=r.u32();if(removed>8192)return false;for(std::uint32_t i=0;i<removed&&r.ok;++i)s.removed.push_back(r.str());if(version==2)s.layout=r.u32();
+  const auto removed=r.u32();if(removed>8192)return false;for(std::uint32_t i=0;i<removed&&r.ok;++i)s.removed.push_back(r.str());if(version>=2)s.layout=r.u32();
+  if(version>=3){const auto kept=r.u32();if(kept>8192)return false;for(std::uint32_t i=0;i<kept&&r.ok;++i){auto k=r.str();s.pickups[k]=r.u32();}}
   if(!r.ok||source.empty()||state_source(s.map)!=source||!states.emplace(source,std::move(s)).second)return false;
  }
  if(!r.ok||r.at!=b.size())return false;out=std::move(states);return true;
@@ -308,5 +310,5 @@ bool state_reoffer(const SpawnRecord& r,const Checkpoint& value){
  }
  return false;
 }
-// v0.6.1: no saved state of this map in this timeline yet (item copies only then).
-bool state_first_visit(){return state_off()||mapStates.find(state_source(map_name()))==mapStates.end();}
+// v0.8: which player slots took which pickup on the last visit of this map; nullptr: never visited.
+const std::map<std::string,unsigned>* state_pickup_masks(){if(state_off())return nullptr;auto it=mapStates.find(state_source(map_name()));return it==mapStates.end()?nullptr:&it->second.pickups;}

@@ -65,7 +65,8 @@ void carry_frame(Edict* e){
   SavedPlayer now;if(!capture_player(e,now))return;   // dead, frozen in a scene...: wait
   carryDone[e]=serial(e);
   auto it=carryBank.find(identity);
-  if(!loadingCheckpoint&&!departedPlayers.count(identity)&&it!=carryBank.end()){
+  if(!loadingCheckpoint&&!departedPlayers.count(identity)&&it!=carryBank.end()&&bag_loss_here()){bag_keep_health(e,it->second);}
+  else if(!loadingCheckpoint&&!departedPlayers.count(identity)&&it!=carryBank.end()){
    SavedPlayer saved=it->second;char line[220]{};
    // v0.6 (playtest 2 clip 24, log 2026-10-24: both players arrived on
    // s4_subway2st1 with "fuse.txt" left over from Chapter 4 and placed them in
@@ -612,53 +613,94 @@ void floor_walls_frame(){
   for(auto e:skip_named(w.wall))if(!std::strcmp(classname(e),"func_wall_toggle")){entity_retire(e);++n;}
   char line[140]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] FLOORWALL %s: %d wall(s) %s removed (partners can follow down)\n",m.c_str(),n,w.wall);log(line);}
 }
-// --- Pickups for every player (v0.6.1) ------------------------------------------------
-// Katz 2026-10-25: item spawns follow the number of players the game is hosted
-// for, laid out side by side so they neither clip nor fall off; weapons too,
-// except the scene weapon (the Glock). On the first visit of a map in this
-// timeline (state_first_visit: a revisit or a loaded save keeps what was taken),
-// every map pickup that is still in place and fires no target gets one copy per
-// extra player slot (maxplayers - 1): ammo_*, weapon_syringe and the weapons
-// lying in the map. Never copied: keys and story items (item_*), the phone, the
-// knife and the Glock. Each copy goes on a 24-unit grid around the original
-// (then 48), only where the spot is empty, has floor within 40 units below and
-// a clear straight line from the original (no copy behind a wall or past a
-// ledge); a spot that fails is skipped. Copies are runtime entities (engine
-// CreateNamedEntity, the DLL's own KeyValue and Spawn), so the map files stay
-// the same for any player count.
-bool state_first_visit();   // state-runtime.hpp
-bool copyable_pickup(const std::string& t){
+// --- A pickup for each player (v0.8, Katz's item 1) ----------------------------------
+// Playtest 3000 (more.txt): "theres like 5 billion of everything everywhere". The v0.6.1
+// copies stood side by side for everyone to see and take, however many played. Now every
+// map pickup (ammo, weapons, the phone battery, tapes...; never notes, and never the key
+// items, see the team cards at the end of this file) is one entity per player slot, on
+// the same spot. Only its owner is sent it (full_pack), can touch it (dispatch_touch) and
+// finds it with E (find_in_sphere, CBasePlayer::PlayerUse), so it disappears for him alone
+// and the other players still take theirs. Alone, a game shows each pickup once. Copies
+// are runtime entities, made from the pickup's own BSP keys; which slots took which pickup
+// is kept per map (MapState.pickups, slotN.cofmap version 3) and the copies are made again
+// on a revisit or a load. A dropped weapon has no owner: whoever comes along can take it.
+constexpr int PickupSlots=4;
+bool holds_card(Edict* e,const std::string& path);   // below
+const std::map<std::string,unsigned>* state_pickup_masks();   // state-runtime.hpp
+bool personal_card(const std::string& card){
+ const auto slash=card.find_last_of('/');const std::string base=slash==std::string::npos?card:card.substr(slash+1);
+ for(const char* c:{"cassettetape.txt","videotape.txt","mobile_battery.txt","taclight.txt"})if(!_stricmp(base.c_str(),c))return true;
+ return false;
+}
+bool team_card(const std::string& card){return card.rfind("inventoryitems/",0)==0&&card.rfind("inventoryitems/weapons/",0)!=0&&!personal_card(card);}
+bool per_player_pickup(const SpawnRecord& r){
+ const std::string& t=r.type;
  if(t.rfind("ammo_",0)==0)return true;
- if(t.rfind("weapon_",0)!=0)return false;
- return t!="weapon_glock"&&t!="weapon_mobile"&&t!="weapon_switchblade"&&t!="weapon_dualweapon"&&t!="weapon_p345";
+ if(t.rfind("weapon_",0)==0)return t!="weapon_mobile"&&t!="weapon_switchblade"&&t!="weapon_dualweapon"&&t!="weapon_p345";
+ if(t=="item_key"){for(const auto& [k,v]:r.keys)if(!_stricmp(k.c_str(),"message"))return personal_card(v);return false;}
+ return t=="item_phonebattery"||t=="item_nightvision"||t=="item_glocktaclight";
 }
-Trace point_trace(const std::array<float,3>& a,const std::array<float,3>& b,Edict* skip){Trace t{};eng<void(__cdecl*)(const float*,const float*,int,int,Edict*,Trace*)>(34)(a.data(),b.data(),1,0,skip,&t);return t;}
-bool copy_spot_clear(const std::array<float,3>& from,const std::array<float,3>& at,Edict* skip){
- const std::array<float,3> up{at[0],at[1],at[2]+8.f},src{from[0],from[1],from[2]+8.f};
- if(eng<int(__cdecl*)(const float*)>(45)(up.data())!=-1)return false;
- const std::array<float,3> past{src[0]+(up[0]-src[0])*1.5f,src[1]+(up[1]-src[1])*1.5f,up[2]};
- const auto line=point_trace(src,past,skip);if(line.allSolid||line.startSolid||line.fraction<1.f)return false;
- const auto floor=point_trace(up,{at[0],at[1],at[2]-40.f},skip);return !floor.allSolid&&floor.fraction<1.f;
+struct PickupCopies {std::array<Edict*,PickupSlots> e{};std::array<int,PickupSlots> serial{};unsigned taken=0;};
+std::map<std::size_t,PickupCopies> pickupCopies;   // by index in spawnRecords
+std::vector<int> pickupOwner,pickupOwnerSerial;    // by edict index; 0: nobody's in particular
+int pickup_owner(int number,Edict* e){
+ if(number<0||static_cast<std::size_t>(number)>=pickupOwner.size()||!pickupOwner[number])return 0;
+ if(pickupOwnerSerial[number]!=load<int>(e,4)){pickupOwner[number]=0;return 0;}
+ return pickupOwner[number];
 }
-bool itemCopiesDone=false;
+bool pickup_hidden(int number,Edict* e,Edict* host){const int o=pickup_owner(number,e);return o&&live(host)&&o!=eng<int(__cdecl*)(Edict*)>(71)(host);}
+bool pickup_blocked(Edict* pickup,Edict* player){
+ if(!globals||!live(pickup)||!live(player))return false;
+ const int slot=eng<int(__cdecl*)(Edict*)>(71)(player);if(slot<1||slot>load<int>(globals,0x90))return false;
+ const int o=pickup_owner(eng<int(__cdecl*)(Edict*)>(71)(pickup),pickup);if(o&&o!=slot)return true;
+ // A key a partner dropped is not for someone who has that key already (a map's own second fuse is).
+ if(std::strcmp(classname(pickup),"item_key"))return false;
+ auto v=vars(pickup);const char* card=v?string_at(load<int>(v,0x1d8)):nullptr;
+ if(!card||!team_card(card)||!holds_card(player,card))return false;
+ const int id=serial(pickup);return std::none_of(spawnRecords.begin(),spawnRecords.end(),[&](const SpawnRecord& r){return r.e==pickup&&r.serial==id;});
+}
+bool pickup_gone(Edict* e,int id){auto v=serial(e)==id?vars(e):nullptr;return !v||(load<unsigned>(v,0x1a8)&FlKillMe)||(load<int>(v,0x10c)==0&&(load<unsigned>(v,0x118)&0x80u));}
+Edict* pickup_spawn(const SpawnRecord& r){
+ auto c=eng<Edict*(__cdecl*)(int)>(23)(eng<int(__cdecl*)(const char*)>(67)(r.type.c_str()));if(!live(c))return nullptr;
+ for(const auto& [k,value]:r.keys){std::string text=value;if(!_stricmp(k.c_str(),"spawnflags"))text=std::to_string(std::atoi(value.c_str())&~2048);KeyValue data{const_cast<char*>(r.type.c_str()),const_cast<char*>(k.c_str()),const_cast<char*>(text.c_str()),0};native<void(__cdecl*)(Edict*,KeyValue*)>(6)(c,&data);}
+ if(native<int(__cdecl*)(Edict*)>(1)(c)!=0){if(live(c)){assist_unlink(c);eng<void(__cdecl*)(Edict*)>(22)(c);}return nullptr;}
+ return c;
+}
+// Which slots no longer have their copy of each pickup; state_capture keeps this.
+void pickup_masks(std::map<std::string,unsigned>& out){
+ for(const auto& [i,c]:pickupCopies){if(i>=spawnRecords.size()||spawnRecords[i].key.empty())continue;unsigned mask=c.taken;
+  for(int k=0;k<PickupSlots;++k)if(c.e[k]&&pickup_gone(c.e[k],c.serial[k]))mask|=1u<<k;
+  out[spawnRecords[i].key]=mask;}
+}
+bool itemCopiesDone=false;float pickupOwnersNext=0;
 void item_copies_frame(){
- if(itemCopiesDone||!scoped()||!globals||!engine[23]||!engine[67]||!engine[34]||!engine[45]||!original[1]||!original[6])return;itemCopiesDone=true;
- const int slots=(std::min)(4,load<int>(globals,0x90)),copies=slots-1;if(copies<1)return;
- if(loadingCheckpoint||!state_first_visit()){log("[STORYCOOP_RC4] ITEMS no copies: this map was visited before or a save is loading\n");return;}
- static const float ring[][2]={{24,0},{-24,0},{0,24},{0,-24},{24,24},{-24,24},{24,-24},{-24,-24},{48,0},{-48,0},{0,48},{0,-48},{48,24},{-48,24},{48,-24},{-48,-24}};
- int made=0,originals=0,skipped=0;
- for(std::size_t i=1;i<spawnRecords.size()&&made<240;++i){
-  const SpawnRecord r=spawnRecords[i];if(!r.e||!r.pickup||r.dm||world_taken(r)||!copyable_pickup(r.type))continue;auto v=vars(r.e);if(!v||load<float>(v,0x168)<=-2.f)continue;
-  ++originals;const std::array<float,3> o{load<float>(v,8),load<float>(v,12),load<float>(v,16)};int placed=0;
-  for(const auto& d:ring){if(placed>=copies)break;const std::array<float,3> at{o[0]+d[0],o[1]+d[1],o[2]};if(!copy_spot_clear(o,at,r.e))continue;
-   auto c=eng<Edict*(__cdecl*)(int)>(23)(eng<int(__cdecl*)(const char*)>(67)(r.type.c_str()));if(!live(c))break;
-   char origin[96]{},angles[64]{},flags[24]{};std::snprintf(origin,sizeof(origin),"%.1f %.1f %.1f",at[0],at[1],at[2]);std::snprintf(angles,sizeof(angles),"%.1f %.1f %.1f",load<float>(v,0x50),load<float>(v,0x54),load<float>(v,0x58));std::snprintf(flags,sizeof(flags),"%d",load<int>(v,0x1a4)&~2048);
-   for(const auto& [k,value]:std::initializer_list<std::pair<const char*,const char*>>{{"origin",origin},{"angles",angles},{"spawnflags",flags}}){KeyValue data{const_cast<char*>(r.type.c_str()),const_cast<char*>(k),const_cast<char*>(value),0};native<void(__cdecl*)(Edict*,KeyValue*)>(6)(c,&data);}
-   if(native<int(__cdecl*)(Edict*)>(1)(c)!=0){if(live(c)){assist_unlink(c);eng<void(__cdecl*)(Edict*)>(22)(c);}break;}
-   ++placed;++made;}
-  if(placed<copies)++skipped;
+ if(!scoped()||!globals||!engine[23]||!engine[67]||!original[1]||!original[6])return;
+ if(itemCopiesDone){
+  // A pickup taken is nobody's any more: the same entity is what a later drop puts on the floor.
+  const float now=load<float>(globals,0);if(now<pickupOwnersNext&&now>=pickupOwnersNext-1.f)return;pickupOwnersNext=now+0.5f;
+  for(const auto& [i,c]:pickupCopies)for(int k=0;k<PickupSlots;++k)if(c.e[k]&&serial(c.e[k])==c.serial[k]&&pickup_gone(c.e[k],c.serial[k])){const int n=eng<int(__cdecl*)(Edict*)>(71)(c.e[k]);if(n>=0&&static_cast<std::size_t>(n)<pickupOwner.size())pickupOwner[n]=0;}
+  return;}
+ itemCopiesDone=true;pickupCopies.clear();
+ const int maxEdicts=load<int>(globals,0x94);pickupOwner.assign(maxEdicts+1,0);pickupOwnerSerial.assign(maxEdicts+1,0);
+ const int slots=(std::min)(PickupSlots,load<int>(globals,0x90));if(slots<2)return;
+ int used=0;for(int i=0;i<maxEdicts;++i)if(live(eng<Edict*(__cdecl*)(int)>(72)(i)))++used;
+ const auto* book=state_pickup_masks();int made=0,pickups=0,finished=0,noRoom=0;
+ for(std::size_t i=1;i<spawnRecords.size();++i){
+  const SpawnRecord& r=spawnRecords[i];if(!r.pickup||r.dm||r.keys.empty()||!per_player_pickup(r))continue;
+  const bool here=r.e&&!pickup_gone(r.e,r.serial);
+  unsigned taken=0;
+  if(book){auto m=book->find(r.key);if(m!=book->end())taken=m->second;else if(!here)taken=0xfu;}
+  else if(!here)taken=0xfu;
+  PickupCopies c;c.taken=taken;bool originalUsed=false;
+  for(int k=0;k<slots;++k){if(taken&(1u<<k))continue;Edict* e=nullptr;
+   if(here&&!originalUsed){e=r.e;originalUsed=true;}
+   else {if(used+made>=maxEdicts-96){++noRoom;continue;}e=pickup_spawn(r);if(!e){++noRoom;continue;}++made;}
+   c.e[k]=e;c.serial[k]=serial(e);const int n=eng<int(__cdecl*)(Edict*)>(71)(e);if(n>=0&&n<=maxEdicts){pickupOwner[n]=k+1;pickupOwnerSerial[n]=serial(e);}
+  }
+  if(here&&!originalUsed){entity_retire(r.e);++finished;}
+  pickupCopies[i]=c;++pickups;
  }
- char line[200]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] ITEMS %d copies of %d pickups for %d player slots (%d pickup(s) without room for every copy)\n",made,originals,slots,skipped);log(line);
+ char line[220]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] ITEMS %d pickup(s) per player for %d slots: %d copies made, %d taken by everyone%s\n",pickups,slots,made,finished,noRoom?" (edict limit: some copies skipped)":"");log(line);
 }
 // --- Everyone waits for everyone after a level change (v0.6) ------------------------------
 // Playtest note: "you could make the host wait for all the other players to finish
@@ -718,12 +760,13 @@ std::vector<std::string> manager_targets(Edict* e,int from);   // below
 // nearest the source landmark, relative to it, is carried to the destination
 // landmark; every arriving player lands on a clear spot there that is outside
 // every trigger leading to another level (searched outward up to 480 units).
-struct Arrival {const char* from;const char* to;const char* landmark;float src[3];float dst[3];};
+struct Arrival {const char* from;const char* to;const char* landmark;float src[3];float dst[3];bool fixed=false;};
 const Arrival Arrivals[]={
  {"apartment3","s4_apartmentsick_e0","landfitta",{-1201,2448,68},{-1201,2448,68}},   // v0.7.1: the elevator scene's trigger_once *10 is at this arrival (multi_hiss_1)
  {"apartment3sick","s4_down","down_li",{315,-402,380},{315,-402,380}},{"apartmentsick","s4_apartment3_e4","landfitta",{-1201,2448,68},{-1201,2448,68}},
  {"apartmentsick","s4_basement_e0","landkuk",{-3245,2496,502},{-3245,2496,502}},{"basement","s4_apartmentsick_e1","landkuk",{-3245,2496,502},{-3245,2496,502}},
- {"buscity","s4_city_e1","landbc",{-507,-1184,-54},{-507,-1184,-54}},{"college1dark","s4_hamn3_e0","2hcl2",{-1351,1705,-1144},{-1351,1705,-632}},
+ {"buscity","s4_city_e1","landbc",{-507,-1184,-54},{-507,-1184,-54}},{"college1dark","s4_hamn3_e0","2hcl2",{374,662,71},{374,662,71},true},   // v0.8 (Katz, item 6): the exit door lands at c_hamn3 374 662 71
+ 
  {"down","s4_apartment3sick_e0","down_li",{315,-402,380},{315,-402,380}},{"park3","s4_roofs2_e1","swheh15",{2043,357,745},{2043,357,745}},
  {"roofs2","s4_roofs_e0","rlm1",{2044,-1435,122},{2044,-1435,122}}};
 struct PendingArrival {const Arrival* a=nullptr;std::array<float,3> offset{0,0,37};std::set<std::pair<Edict*,int>> placed;float until=0;bool armed=false;std::vector<std::array<float,6>> exits;};
@@ -732,7 +775,7 @@ std::string map_base(const std::string& m){std::string b=m.rfind("s4_",0)==0?m.s
 void arrival_level_change(const char* map){
  pendingArrival={};if(!map||!globals)return;const std::string from=map_base(map_name());
  for(const auto& a:Arrivals)if(from==a.from&&!_stricmp(map,a.to)){
-  pendingArrival.a=&a;float best=-1;
+  pendingArrival.a=&a;float best=-1;if(a.fixed){pendingArrival.offset={0,0,0};return;}
   for(auto e:connected_players()){auto v=vars(e);if(!v||!view_alive(e))continue;std::array<float,3> d{};float dd=0;for(int k=0;k<3;++k){d[k]=load<float>(v,8+k*4)-a.src[k];dd+=d[k]*d[k];}
    if(dd<600.f*600.f&&(best<0||dd<best)){best=dd;pendingArrival.offset=d;}}
   return;}
@@ -785,7 +828,7 @@ void arrival_frame(Edict* e){
  if(loadWait.armed)return;   // v0.7.1: everyone is in before a scene at the arrival can start
  const float now=load<float>(globals,0);if(!p.armed){p.armed=true;p.until=now+60.f;p.exits=exit_volumes();}if(now>p.until){p={};return;}
  if(!view_alive(e)||!client_ready(e)||!carry_settled(e)||p.placed.count({e,serial(e)}))return;p.placed.insert({e,serial(e)});
- const std::array<float,3> spot{p.a->dst[0]+p.offset[0],p.a->dst[1]+p.offset[1],p.a->dst[2]+p.offset[2]},mark{p.a->dst[0],p.a->dst[1],p.a->dst[2]+37.f};
+ const std::array<float,3> spot{p.a->dst[0]+p.offset[0],p.a->dst[1]+p.offset[1],p.a->dst[2]+p.offset[2]},mark{p.a->dst[0],p.a->dst[1],p.a->dst[2]+(p.a->fixed?0.f:37.f)};
  std::array<float,3> at{};const bool moved=(arrival_landing(spot,e,p.exits,at)||arrival_landing(mark,e,p.exits,at))&&teleport_to(e,at,load<float>(vars(e),0x54));
  char line[200]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] ARRIVAL player=%d from %s: %s (landmark %s, %d exit trigger(s) avoided)\n",eng<int(__cdecl*)(Edict*)>(71)(e),p.a->from,moved?"placed as in single player":"no clear spot there, stays at the map start",p.a->landmark,static_cast<int>(p.exits.size()));log(line);
  if(p.placed.size()==1)arrival_fire(spot,e);
@@ -879,7 +922,11 @@ void train_escape_touch(Edict* trigger,Edict* other){
 void train_escape_frame(){
  if(!trainEscape.who)return;const auto t=trainEscape;trainEscape.who=nullptr;if(!live(t.who)||serial(t.who)!=t.serial)return;
  int moved=0,failed=0;
- for(auto o:connected_players()){if(o==t.who||!view_alive(o))continue;auto a=vars(t.who),b=vars(o);float d=0;for(int k=0;k<3;++k){const float x=load<float>(a,8+k*4)-load<float>(b,8+k*4);d+=x*x;}if(d<160.f*160.f)continue;move_beside_ground(o,t.who)?++moved:++failed;}
+ // v0.8 (Playtest 3000 clip 14 "doesnt teleport to me", log: "TRAIN player=1 reached safety: 0 partner(s) moved"):
+ // the partner still in the carriage was under 160 units away. Only a player already standing on
+ // the world near the one who got out stays; everyone else, and whoever stands on the train, is moved.
+ for(auto o:connected_players()){if(o==t.who||!view_alive(o))continue;auto a=vars(t.who),b=vars(o);float d=0;for(int k=0;k<3;++k){const float x=load<float>(a,8+k*4)-load<float>(b,8+k*4);d+=x*x;}
+  auto ground=load<Edict*>(b,0x1a0);const bool onWorld=ground&&eng<int(__cdecl*)(Edict*)>(71)(ground)==0;if(onWorld&&d<160.f*160.f)continue;move_beside_ground(o,t.who)?++moved:++failed;}
  char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] TRAIN player=%d reached safety: %d partner(s) moved beside them, %d without a free spot\n",eng<int(__cdecl*)(Edict*)>(71)(t.who),moved,failed);log(line);
 }
 // --- A death in a boss fight is a game over (v0.5.7) -----------------------------------
@@ -904,18 +951,41 @@ bool boss_alive(){
   if(live(b)&&v&&load<int>(v,0x174)==0&&load<float>(v,0x164)>0&&!(load<unsigned>(v,0x118)&0x80u))return true;}}
  return false;
 }
+// v0.8 (Katz's item 10: "must show game over and restart from save"): the text and a fade to
+// black get 2.5 s on screen before the restart (the change came in the same frame, so nobody saw
+// it). A grab still restarts at once: its kill frame is the DeathNotice crash above. And when a boss
+// bar starts (every boss has one: cof_bosshealthbar) the fight is saved by itself as soon as
+// nobody is held by its scene (boss_save_frame): hidden slot 6, checkpoint_autosave, so a
+// game over restarts at the start of the fight with what everyone had then.
+struct BossSave {bool due=false,done=false;float until=0,next=0;} bossSave;float bossOverAt=-1;
+bool checkpoint_autosave();   // checkpoint-runtime.hpp
+void boss_bar_lookup(Edict* start,const char* key,const char*,Edict* found){
+ if(start||bossSave.done||bossSave.due||!scoped()||!globals||!key||std::strcmp(key,"targetname")||!live(found)||std::strcmp(classname(found),"cof_bosshealthbar"))return;
+ bossSave.due=true;bossSave.until=load<float>(globals,0)+30.f;
+}
+void boss_save_frame(){
+ if(!bossSave.due||!scoped()||!globals||bossOver)return;const float now=load<float>(globals,0);
+ if(now>bossSave.until){bossSave.due=false;log("[STORYCOOP] AUTOSAVE boss fight: nobody was free for 30 s, not saved\n");return;}
+ const auto players=connected_players();if(players.empty())return;
+ for(auto e:players){auto v=vars(e);if(!v||!client_ready(e)||!view_alive(e)||camera_view(e)||lease_camera(e)||(load<unsigned>(v,0x1a8)&FlFrozen))return;}
+ if(now<bossSave.next)return;bossSave.next=now+2.f;
+ if(checkpoint_autosave()){bossSave.due=false;bossSave.done=true;}
+}
 void boss_frame(){
- if(bossOver||!scoped()||!globals||!engine[6])return;
+ if(!scoped()||!globals||!engine[6])return;const float now=load<float>(globals,0);
+ if(bossOver){if(bossOverAt>=0&&now>=bossOverAt){bossOverAt=-1;forcedGameOver=true;std::string map=map_name();change_level(map.data(),nullptr);}return;}
  Edict* grab=find_next(nullptr,"classname","third_person_interaction");const bool grabbing=grab&&live(grab);
  if(!grabbing){
   bool down=false;for(auto e:connected_players()){auto v=vars(e);if(v&&client_ready(e)&&(load<int>(v,0x174)!=0||load<float>(v,0x164)<=0))down=true;}
   if(!down||!boss_alive())return;
  }
- bossOver=true;forcedGameOver=true;
+ bossOver=true;
  static const unsigned char red[4]={220,40,40,255};
  for(auto e:connected_players())hud_text(e,4,-1.f,0.4f,red,4.f,"A player died in the boss fight.\nGame over: restarting.",0.1f);
  char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] BOSS %s on %s: game over for everyone, the map restarts\n",grabbing?"grab started":"player died",map_name());log(line);
- std::string map=map_name();change_level(map.data(),nullptr);
+ if(grabbing){forcedGameOver=true;std::string map=map_name();change_level(map.data(),nullptr);return;}
+ bossOverAt=now+2.5f;
+ for(auto e:connected_players()){auto v=vars(e);if(!v)continue;helper_use_pairs("env_fade",{{"spawnflags","12"},{"duration","2"},{"holdtime","5"},{"renderamt","255"},{"rendercolor","0 0 0"}},e);if(view_alive(e))store(v,0x1a8,load<unsigned>(v,0x1a8)|FlGodmode|FlFrozen|FlNotarget);}
 }
 // --- Solo prologue (v0.5, Katz: "in prologue after readying up the player stays
 // inside a black box") ----------------------------------------------------------------
@@ -1145,7 +1215,7 @@ void half_read(){
  char line[120]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] COMBINE %u two-half item(s) known from inventoryitems\n",static_cast<unsigned>(halfCards.size()));log(line);
 }
 // A full inventory makes cof_giveitems drop an item_key on the floor instead: never hand over then.
-bool free_slot(Edict* e){void* p=nullptr;std::size_t n=0;if(!player_memory(e,p,n))return false;for(std::size_t i=0;i<6;++i){const char* s=string_at(load<int>(p,0x2200+i*4));if(!s||!*s)return true;}return false;}
+bool free_slot(Edict* e){void* p=nullptr;std::size_t n=0;if(!player_memory(e,p,n))return false;const std::size_t slots=load<unsigned char>(p,ThreeSlotsOffset)?3:6;for(std::size_t i=0;i<slots;++i){const char* s=string_at(load<int>(p,0x2200+i*4));if(!s||!*s)return true;}return false;}
 bool holds_card(Edict* e,const std::string& path){void* p=nullptr;std::size_t n=0;if(!player_memory(e,p,n))return false;for(std::size_t i=0;i<6;++i){const char* s=string_at(load<int>(p,0x2200+i*4));if(s&&!_stricmp(s,path.c_str()))return true;}return false;}
 void half_frame(){
  if(!scoped()||!globals)return;const float now=load<float>(globals,0);if(now<halfNext&&now>=halfNext-1.f)return;halfNext=now+0.5f;
@@ -1415,6 +1485,19 @@ float skip_jump(float now){
    for(auto e:skip_named(name)){void* cp=nullptr;if(!std::strcmp(classname(e),"trigger_camera")&&camera_memory(e,cp))end=(std::max)(end,load<float>(p,MmStart)+load<float>(p,MmDelays+i*4)+load<float>(cp,CameraWait));}}}
  return end<0?100000.f:(std::max)(0.f,end-now)+0.05f;
 }
+// v0.8 (Katz's item 9; Playtest 3000 clip 15 "voicelines are gone now but the subtitles are still
+// there", clip 13: "DOCTOR: Yes, he suffered..." over "Cutscene skipped"): the fast-forward fired
+// the scene's subtitle_linechange targets in order and the client held the last line for 4 s. While
+// a skip runs, the subtitle entities' lookup of subtitle_main (decomp CoF_SubtitleChange.cpp,
+// Subtitle_Multiple.cpp) finds nothing, so nothing prints; lists that are running stop thinking, and
+// whatever line was showing is replaced by an empty one (MsgFunc_ProFont draws nothing then).
+float subtitleMuteUntil=-1;
+bool subtitle_muted(const char* key,const char* value){return subtitleMuteUntil>=0&&key&&value&&globals&&!std::strcmp(key,"classname")&&!std::strcmp(value,"subtitle_main")&&load<float>(globals,0)<subtitleMuteUntil;}
+void subtitle_clear(){
+ Edict* m=nullptr;for(int n=0;n<256;++n){m=find_next(m,"classname","subtitle_multiple");if(!m)break;if(auto v=vars(m))store(v,0x104,0.f);}
+ if(proFontMessage<=0||!engine[46]||!engine[47]||!engine[48]||!engine[54])return;
+ for(auto p:connected_players()){eng<void(__cdecl*)(int,int,const float*,Edict*)>(46)(1,proFontMessage,nullptr,p);eng<void(__cdecl*)(int)>(48)(0);eng<void(__cdecl*)(const char*)>(54)("");eng<void(__cdecl*)()>(47)();}
+}
 void skip_stop_sounds(){
  if(!engine[29]||!engine[30])return;int stopped=0;
  for(const auto& name:skipScene.names)for(auto e:skip_named(name)){
@@ -1425,12 +1508,20 @@ void skip_stop_sounds(){
   for(auto p:connected_players())eng<void(__cdecl*)(Edict*,int,const char*,float,float,int,int)>(29)(p,6,sample,0.f,0.f,32,100);
   ++stopped;}
  int zooms=0;
+ // v0.8 (Katz's item 9, "cameras still zoom in"; every log says "0 zoom(s) returned"): pp_activate gives each
+ // cof_camerazoom a private name and a game_counter its authored one, so the search below never found it.
+ // Worse, the fast-forward counted that counter, and the next pp_frame STARTED the zoom after the skip, to
+ // run its whole return time in play (clip 4). A zoom of the skipped scene now never starts, and one running returns.
+ for(auto& pp:postProcesses){
+  if(serial(pp.counter)!=pp.counterSerial||serial(pp.actor)!=pp.actorSerial||std::strcmp(classname(pp.actor),"cof_camerazoom")||!skipScene.names.count(pp.name))continue;
+  pp.last=load<float>(vars(pp.counter),0x168);crumb("skip zoom",pp.actor);native<void(__cdecl*)(Edict*)>(2)(pp.actor);if(auto zv=vars(pp.actor))store(zv,0x104,0.f);++zooms;}
  for(const auto& name:skipScene.names)for(auto e:skip_named(name))if(!std::strcmp(classname(e),"cof_camerazoom")){crumb("skip zoom",e);native<void(__cdecl*)(Edict*)>(2)(e);++zooms;}
  if(stopped||zooms){char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] SKIP %d scene sound(s) stopped, %d zoom(s) returned\n",stopped,zooms);skip_log(line);}
+ subtitle_clear();
 }
 // The fast-forward: managers first (in the order found), then what they started, until nothing new runs.
 void skip_now(Edict* activatorFallback){
- const float now=load<float>(globals,0),jump=skip_jump(now);std::set<std::pair<Edict*,int>> done,relays;int fired=0,cameras=0,rounds=0;
+ const float now=load<float>(globals,0),jump=skip_jump(now);std::set<std::pair<Edict*,int>> done,relays;int fired=0,cameras=0,rounds=0;subtitleMuteUntil=now+0.3f;
  {Edict* d=nullptr;for(int n=0;n<512;++n){d=find_next(d,"classname","DelayedUse");if(!d)break;relays.insert({d,serial(d)});}}   // not ours
  for(;rounds<6;++rounds){
   std::vector<Edict*> todo;
@@ -1723,7 +1814,6 @@ void door_hide_frame(Edict* e){
 // player's HUD reset or init an empty ProFont clears it (MsgFunc_ProFont copies
 // the empty text and nothing is drawn); a new ProFont before then makes it
 // unneeded.
-extern int proFontMessage;
 std::unordered_map<Edict*,std::pair<int,float>> stripClears;
 void strip_clear_arm(Edict* e){if(globals&&live(e))stripClears[e]={serial(e),load<float>(globals,0)+1.5f};}
 void strip_clear_sent(int dest,Edict* e){if(dest==0||dest==2)stripClears.clear();else if(e)stripClears.erase(e);}
@@ -1747,34 +1837,218 @@ void stayout_fades_frame(){
  if(n){char line[140]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] FADES %d stay-out fade(s) limited to the player who triggers them\n",n);log(line);}
 }
 bool fall_reveal(Edict* e){return helper_use_pairs("env_fade",{{"spawnflags","5"},{"duration","0.6"},{"holdtime","0"},{"renderamt","255"},{"rendercolor","0 0 0"}},e);}
-// Quest items stay one per team (Katz 2026-10-29: "one per team however it
-// atleast should say that a player picked up the quest item"; Playtest 3 clip
-// 15: "there was no fuse on the floor ... i thought caixa picked it up"). When
-// an inventory card that is not a weapon (fuse, key, keycard, rope, tape...)
-// shows up in a player's six inventory slots (+0x2200) after his inventory was
-// brought over on this map, every other player gets the game's pickup line
-// (ProFont, yellow): "<name> picked up the <item>". A card he already had on
-// this map (a fall respawn gives it back) is not announced again.
-struct QuestSeen {int serial=-1;bool armed=false;std::set<std::string> cards;};
-std::unordered_map<Edict*,QuestSeen> questSeen;
-std::string quest_label(std::string card){
- const auto dot=card.rfind('.');if(dot!=std::string::npos)card.resize(dot);
- for(auto& c:card){if(c=='_')c=' ';else c=static_cast<char>(std::tolower(static_cast<unsigned char>(c)));}return card;
+// --- Key items belong to the team (v0.8, Katz's item 2) ---------------------------------
+// A card that is not a weapon and not a personal consumable (keys, fuses, rope, tools...)
+// that shows up in one player's inventory is given to every other player through the game's own
+// cof_giveitems (spawnflag 1), which prints the single-player "You got the <item>" (decomp hud_msg.cpp
+// 1463) for each of them. A player with no free slot simply does not get it: nothing is dropped
+// and nothing is offered again. A player who dies or joins later gets what the others hold
+// once he is back. When a player no longer has such a card (he used it: the native InventoryUse,
+// a button's UnlockDoor, a yes/no, a combine) it is taken from every other player too, except after
+// his own "inventorydrop": the key then lies on the floor and the others keep theirs. Inventory given
+// back by a level change or a load (restore_player) never counts as a pickup.
+// Counted, not just seen: fuses from two maps are two cards of the same name, spent one at a time.
+using CardCounts=std::map<std::string,int>;
+struct TeamCards {std::map<std::pair<Edict*,int>,CardCounts> known;std::map<std::string,std::set<std::string>> declined;std::set<std::pair<Edict*,int>> dropping;float next=0;};
+TeamCards teamCards;
+CardCounts team_cards_of(Edict* e){CardCounts out;void* p=nullptr;std::size_t n=0;if(!player_memory(e,p,n))return out;for(std::size_t i=0;i<6;++i){const char* c=string_at(load<int>(p,0x2200+i*4));if(c&&*c&&team_card(c))++out[c];}return out;}
+int card_count(const CardCounts& counts,const std::string& card){auto it=counts.find(card);return it==counts.end()?0:it->second;}
+void team_cards_rebase(Edict* e){if(live(e))teamCards.known[{e,serial(e)}]=team_cards_of(e);}
+void team_cards_command(Edict* e,const char* command){if(command&&!std::strcmp(command,"inventorydrop")&&live(e))teamCards.dropping.insert({e,serial(e)});}
+// Up to as many of this card as "want", while there is room.
+void team_give(Edict* to,const std::string& card,int want){
+ const auto identity=player_identity(to);auto& declined=teamCards.declined[identity];if(declined.count(card))return;
+ const int index=eng<int(__cdecl*)(Edict*)>(71)(to);
+ for(int guard=0;guard<6&&card_count(team_cards_of(to),card)<want;++guard){char line[200]{};
+  if(!free_slot(to)){declined.insert(card);std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] KEYITEM %.60s: player=%d has no free slot, not given\n",card.c_str(),index);log(line);break;}
+  const bool ok=helper_use_pairs("cof_giveitems",{{"message",card},{"spawnflags","1"}},to);
+  std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] KEYITEM %.60s %s player=%d\n",card.c_str(),ok?"also given to":"could not be given to",index);log(line);if(!ok)break;}
+ team_cards_rebase(to);
 }
-void quest_notice_frame(Edict* e){
- if(!scoped()||!globals||!live(e)||std::strcmp(classname(e),"player"))return;
- auto& q=questSeen[e];if(q.serial!=serial(e))q={serial(e),false,{}};
- if(!client_ready(e)||!carry_settled(e))return;
- const auto cards=item_cards(e);
- if(!q.armed){q.armed=true;for(const auto& c:cards)if(!c.empty())q.cards.insert(c);return;}
- for(const auto& c:cards){
-  if(c.empty()||c.rfind("weapon_",0)==0||!q.cards.insert(c).second)continue;
-  std::string who;if(engine[106]&&engine[107]){auto buffer=eng<char*(__cdecl*)(Edict*)>(106)(e);const char* n=buffer?eng<char*(__cdecl*)(char*,char*)>(107)(buffer,const_cast<char*>("name")):nullptr;who=n&&*n?n:"";}
-  if(who.empty())who="Player "+std::to_string(eng<int(__cdecl*)(Edict*)>(71)(e));
-  const std::string text=who+" picked up the "+quest_label(c);int told=0;
-  if(proFontMessage>0&&engine[46]&&engine[47]&&engine[48]&&engine[54])for(auto o:connected_players()){if(o==e||!client_ready(o))continue;
-   eng<void(__cdecl*)(int,int,const float*,Edict*)>(46)(1,proFontMessage,nullptr,o);eng<void(__cdecl*)(int)>(48)(0);eng<void(__cdecl*)(const char*)>(54)(text.c_str());eng<void(__cdecl*)()>(47)();++told;}
-  char line[200]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] QUEST player=%d picked up %.60s (%d partner(s) told)\n",eng<int(__cdecl*)(Edict*)>(71)(e),c.c_str(),told);log(line);
+bool team_settled(Edict* e){return client_ready(e)&&carry_settled(e)&&view_alive(e)&&!departedPlayers.count(player_identity(e))&&!(bagLoss.active&&!bagLoss.wiped.count({e,serial(e)}));}
+void team_cards_frame(){
+ if(!scoped()||!globals)return;const float time=load<float>(globals,0);if(time<teamCards.next&&time>=teamCards.next-1.f)return;teamCards.next=time+0.1f;
+ const auto players=connected_players();
+ for(auto e:players){
+  const std::pair<Edict*,int> key{e,serial(e)};
+  if(!view_alive(e)){teamCards.known.erase(key);continue;}
+  if(!team_settled(e))continue;
+  const auto cards=team_cards_of(e);const auto it=teamCards.known.find(key);const bool dropped=teamCards.dropping.erase(key)!=0;
+  if(it==teamCards.known.end()){teamCards.known[key]=cards;for(auto o:players)if(o!=e&&team_settled(o))for(const auto& [c,n]:team_cards_of(o))team_give(e,c,n);continue;}
+  const CardCounts before=it->second;it->second=cards;const int index=eng<int(__cdecl*)(Edict*)>(71)(e);
+  std::set<std::string> names;for(const auto& [c,n]:before)names.insert(c);for(const auto& [c,n]:cards)names.insert(c);
+  for(const auto& c:names){const int was=card_count(before,c),is=card_count(cards,c);if(was==is)continue;char line[200]{};
+   if(is>was){teamCards.declined[player_identity(e)].erase(c);for(auto o:players)if(o!=e&&team_settled(o))team_give(o,c,is);continue;}
+   if(dropped){teamCards.declined[player_identity(e)].insert(c);std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] KEYITEM %.60s dropped by player=%d; the others keep theirs\n",c.c_str(),index);log(line);continue;}
+   int taken=0;for(auto o:players){if(o==e)continue;for(int guard=0;guard<6&&card_count(team_cards_of(o),c)>is;++guard){if(!helper_use("cof_clearitems","message",c,o))break;++taken;}team_cards_rebase(o);}
+   for(auto& [identity,set]:teamCards.declined)set.erase(c);
+   std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] KEYITEM %.60s used by player=%d: taken from %d other player(s)\n",c.c_str(),index,taken);log(line);
+  }
  }
 }
-void coop_map_changed(){collision_restore();wardrobeDone=false;questSeen.clear();deployLogged.clear();doorHides.clear();stripClears.clear();fadesDone=false;doorPressUsed.clear();itemCopiesDone=false;forcedVisible.clear();bossOver=false;fallBacks.clear();doorGlobals.clear();doorLocks.clear();trainEscape={};floorWallsDone=false;quickNotices.clear();fallWatch.clear();equipWants.clear();nightmareLogged=false;morphineWatch.clear();prologueSkip={};partyLimitLogged=-1;joinWait={};skipScene={};skipAfter={};skipJump.clear();skipLines=0;evidence_reset();drowned_reset();give_reset();stuckUsed.clear();nightmareRegroup={};nameStates.clear();lastPlaces.clear();sceneSeen.clear();sceneFollowers.clear();idleProbes.clear();doorMusicLines=0;sceneMoveLines=0;}
+// A weapon's card with no such weapon (Playtest 3000 more.txt: "caixa had some gun icons in his
+// inventory but they did not work they were just pictures"; log: cards=[weapon_m16.txt,
+// weapon_m16.txt,weapon_tmp.txt] after the crash) is taken out of the slot after two looks a second
+// apart, as is a second card of a weapon held once. The weapon's class comes from the card
+// (weapon_pickaxe.txt is a weapon_sledgehammer).
+std::map<std::string,std::string> cardClasses;
+const std::string& card_class(const std::string& card){
+ auto it=cardClasses.find(card);if(it!=cardClasses.end())return it->second;
+ std::string value;const auto dir=game_dir_path();if(!dir.empty()){std::ifstream f(dir/card);std::string text((std::istreambuf_iterator<char>(f)),std::istreambuf_iterator<char>());if(text.size()<=65536)value=half_value(text,"classname");}
+ return cardClasses[card]=value;
+}
+struct StaleCards {int serial=-1;float next=0;std::array<int,6> count{};};
+std::unordered_map<Edict*,StaleCards> staleCards;
+void stale_cards_frame(Edict* e){
+ void* p=nullptr;std::size_t n=0;auto v=vars(e);if(!scoped()||!globals||!v||!player_memory(e,p,n)||!carry_settled(e)||!view_alive(e)||(load<unsigned>(v,0x1a8)&FlFrozen))return;
+ auto& s=staleCards[e];if(s.serial!=serial(e))s={serial(e)};const float now=load<float>(globals,0);if(now<s.next&&now>=s.next-2.f)return;s.next=now+1.f;
+ std::vector<std::pair<Edict*,void*>> list;if(!weapon_list(e,list))return;std::set<std::string> owned;for(const auto& w:list)owned.insert(classname(w.first));
+ std::set<std::string> seen;
+ for(std::size_t i=0;i<6;++i){const char* c=string_at(load<int>(p,0x2200+i*4));if(!c||!weapon_card(c)){s.count[i]=0;continue;}
+  const std::string card=c;const std::string& type=card_class(card);if(type.empty()){s.count[i]=0;continue;}
+  if(owned.count(type)&&seen.insert(card).second){s.count[i]=0;continue;}
+  if(++s.count[i]<2)continue;s.count[i]=0;inventory_slot_clear(e,p,i);
+  char line[200]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] CARD player=%d slot %d: %.60s has no weapon behind it, removed\n",eng<int(__cdecl*)(Edict*)>(71)(e),static_cast<int>(i+1),card.c_str());log(line);}
+}
+bool inventory_quiet_for(Edict* e){return restoreQuiet>0||(scoped()&&!carry_settled(e));}
+// --- Everyone goes where the story goes (v0.8, Katz's items 11 and 13) -----------------------
+// Playtest 3000 clip 7 "that trigger should probably tp the other players to you", clip 6, clip 8
+// "other players are in a black box here", clip 13: s4_subway2st1 arriving from s4_subwaysick2:
+// trigger_once *40 -> multigrejer -> cof_teleport 2teleportion moves only its activator to the station
+// (card "Chapter 5"). The partner stayed in the dark corridor between the two exits, and walking into
+// *37 went back to s4_subwaysick2_e1, whose *82 came back: the loop in the host log
+// (s4_subway2st1_e2 <-> s4_subwaysick2_e1, until a load or "stuck"). CCofTeleport::Use (decomp effects.cpp)
+// moves pActivator only. Every story cof_teleport fired by name (never the converted doors' sc4_/sc_
+// ones, and never a teleport behind a trigger_multiple, a passage each player walks himself) now
+// brings the other players beside whoever it moved; a dead player's body goes too, and a player
+// still loading is brought there when he is ready (story_late_frame).
+struct StoryTeleport {std::string name,dest;int frames=0;};
+std::vector<StoryTeleport> storyTeleports;
+struct StoryAnchor {Edict* who=nullptr;int serial=-1;float at=-100;} storyAnchor;
+std::set<std::pair<Edict*,int>> storyLateDone;std::unordered_map<Edict*,float> arrivalGrace;
+// Sawer's death (Playtest 3000 clip 5 "after sawer death just stuck in a black box"): teleportusus puts
+// the players in a shaft on the func_wall_toggle "walle", which falls away under them at 16.9 s into
+// the exit trigger; the shaft has no light and no other way out. Whatever became of the wall, the exit
+// runs a second after the scene.
+struct BossExit {const char* map;const char* teleport;const char* exit;};
+constexpr BossExit BossExits[]={{"apartmentsick","teleportusus","changekuk"}};
+std::string bossExitName;float bossExitAt=-1;
+void story_teleport_lookup(Edict* start,const char* key,const char* value,Edict* found){
+ if(start||!scoped()||!globals||!key||!value||std::strcmp(key,"targetname")||!live(found)||std::strcmp(classname(found),"cof_teleport"))return;
+ if(!std::strncmp(value,"sc4_",4)||!std::strncmp(value,"sc3_",4)||!std::strncmp(value,"sc_",3))return;
+ {Edict* t=nullptr;for(int n=0;n<16;++n){t=find_next(t,"target",value);if(!t)break;if(!std::strcmp(classname(t),"trigger_multiple"))return;}}
+ auto v=vars(found);const char* dest=v?string_at(load<int>(v,0x1cc)):nullptr;if(!dest||!*dest||storyTeleports.size()>=8)return;
+ storyTeleports.push_back({value,dest,0});
+ for(const auto& b:BossExits)if(map_base(map_name())==b.map&&!std::strcmp(value,b.teleport)){bossExitName=b.exit;bossExitAt=load<float>(globals,0)+25.f;}
+}
+void story_body_move(Edict* o,Edict* leader){
+ auto a=vars(leader),q=vars(o);if(!a||!q)return;std::array<float,3> at{};if(!find_landing({load<float>(a,8),load<float>(a,12),load<float>(a,16)},o,at))return;
+ for(int k=0;k<3;++k)store(q,0x20+k*4,0.f);eng<void(__cdecl*)(Edict*,const float*)>(28)(o,at.data());
+}
+int story_gather(Edict* leader,float atLeast,int& failed){
+ int moved=0;const float now=load<float>(globals,0);auto a=vars(leader);if(!a)return 0;
+ for(auto o:connected_players()){auto q=vars(o);if(o==leader||!q||!client_ready(o))continue;float d=0;for(int k=0;k<3;++k){const float x=load<float>(a,8+k*4)-load<float>(q,8+k*4);d+=x*x;}if(d<atLeast*atLeast)continue;
+  if(!view_alive(o)){story_body_move(o,leader);continue;}
+  if(move_beside(o,leader)){auto& l=lastPlaces[o];auto n=vars(o);l.serial=serial(o);l.x=load<float>(n,8);l.y=load<float>(n,12);l.z=load<float>(n,16);l.known=true;l.ignoreUntil=now+1.f;++moved;}else ++failed;}
+ return moved;
+}
+void story_teleport_frame(){
+ if(!globals)return;
+ if(bossExitAt>=0&&scoped()&&load<float>(globals,0)>=bossExitAt){bossExitAt=-1;Edict* x=find_next(nullptr,"targetname",bossExitName.c_str());const auto players=connected_players();
+  if(x&&live(x)&&!players.empty()&&original[3]){char line[140]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] BOSS scene over: the way out %.40s runs\n",bossExitName.c_str());log(line);native<void(__cdecl*)(Edict*,Edict*)>(3)(x,players.front());}}
+ if(storyTeleports.empty()||!scoped())return;
+ for(auto it=storyTeleports.begin();it!=storyTeleports.end();){
+  Edict* dest=find_next(nullptr,"targetname",it->dest.c_str());auto dv=dest?vars(dest):nullptr;if(!dv){it=storyTeleports.erase(it);continue;}
+  Edict* leader=nullptr;float best=0;
+  for(auto e:connected_players()){auto v=vars(e);if(!v||!view_alive(e))continue;float d=0;for(int k=0;k<3;++k){const float x=load<float>(v,8+k*4)-(load<float>(dv,8+k*4)+(k==2?37.f:0.f));d+=x*x;}if(d<128.f*128.f&&(!leader||d<best)){leader=e;best=d;}}
+  if(!leader){if(++it->frames>=3)it=storyTeleports.erase(it);else ++it;continue;}
+  int failed=0;const int moved=story_gather(leader,160.f,failed);storyAnchor={leader,serial(leader),load<float>(globals,0)};
+  char line[200]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] STORYTELEPORT %.40s moved player=%d; partners moved=%d failed=%d\n",it->name.c_str(),eng<int(__cdecl*)(Edict*)>(71)(leader),moved,failed);log(line);
+  it=storyTeleports.erase(it);
+ }
+}
+// Katz 2026-11-01: the loop is "s4_subwaysick2_e0 to s4_subway2st1_e2 at -236 -1588 -143", where 2teleportion
+// lands the first player (2teleportion_ld -237 -1589 -208, +37, +28 to the eye). All four co-op spawns of that
+// alias stand in trigger_once *40, 16 units from exit *37; the second player stayed in that dark corridor, and
+// after one bounce *40 was already used, so nobody could reach the station any more: only *37, whose map's
+// *82 led straight back. Whoever is in that corridor with *40 gone is now sent on by the map's own teleport.
+struct HubArrival {const char* map;const char* gate;const char* teleport;float box[6];};
+constexpr HubArrival HubArrivals[]={{"s4_subway2st1_e2","multigrejer","2teleportion",{-625.f,940.f,-1135.f,-410.f,1190.f,-990.f}}};
+bool hub_arrival(Edict* e){
+ auto v=vars(e);if(!v||!view_alive(e)||loadingCheckpoint)return false;
+ for(const auto& h:HubArrivals){if(std::strcmp(map_name(),h.map)||find_next(nullptr,"target",h.gate))continue;
+  bool inside=true;for(int k=0;k<3;++k){const float x=load<float>(v,8+k*4);if(x<h.box[k]||x>h.box[3+k])inside=false;}if(!inside)continue;
+  Edict* t=find_next(nullptr,"targetname",h.teleport);if(!t||!original[3])continue;
+  native<void(__cdecl*)(Edict*,Edict*)>(3)(t,e);
+  char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] STORYTELEPORT player=%d was left in the corridor of %s: sent on by %s\n",eng<int(__cdecl*)(Edict*)>(71)(e),h.map,h.teleport);log(line);return true;}
+ return false;
+}
+// Prethink, once per player and map when his HUD is ready and his inventory is back.
+void story_late_frame(Edict* e){
+ if(!scoped()||!globals||!live(e)||!client_ready(e)||!carry_settled(e)||!storyLateDone.insert({e,serial(e)}).second)return;
+ const float now=load<float>(globals,0);arrivalGrace[e]=now+3.f;
+ if(e==storyAnchor.who)return;
+ if(!live(storyAnchor.who)||serial(storyAnchor.who)!=storyAnchor.serial||now-storyAnchor.at>120.f||!view_alive(storyAnchor.who)){if(hub_arrival(e))storyAnchor={e,serial(e),now};return;}
+ if(!view_alive(e))return;
+ auto a=vars(storyAnchor.who),b=vars(e);float d=0;for(int k=0;k<3;++k){const float x=load<float>(a,8+k*4)-load<float>(b,8+k*4);d+=x*x;}if(d<256.f*256.f)return;
+ const bool moved=move_beside(e,storyAnchor.who);char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] STORYTELEPORT player=%d arrived late: %s\n",eng<int(__cdecl*)(Edict*)>(71)(e),moved?"moved beside the player the story moved":"no free spot");log(line);
+}
+// Trigger touches during the load wait start nothing (a scene or a teleport waits for everyone); a
+// trigger that leads to another level does nothing for a player's first 3 s on the map, so a key held
+// through the loading screen cannot walk him straight back (clip 13's loop; Arrivals handles the rest).
+std::unordered_map<Edict*,std::pair<int,bool>> exitTriggers;
+bool trigger_is_exit(Edict* t){
+ auto it=exitTriggers.find(t);if(it!=exitTriggers.end()&&it->second.first==serial(t))return it->second.second;
+ auto v=vars(t);const char* target=v?string_at(load<int>(v,0x1cc)):nullptr;std::set<std::string> seen;
+ const bool exit=!std::strcmp(classname(t),"trigger_changelevel")||(target&&*target&&exit_reaches(target,0,seen));exitTriggers[t]={serial(t),exit};return exit;
+}
+bool arrival_touch_blocked(Edict* trigger,Edict* other){
+ if(!globals||!live(other)||!live(trigger)||std::strcmp(classname(other),"player"))return false;
+ const char* type=classname(trigger);if(std::strncmp(type,"trigger_",8)||!std::strcmp(type,"trigger_hurt"))return false;
+ if(loadWait.armed)return true;
+ // Not settled yet counts from the map's start, so a player whose inventory never comes back still has the exits after 20 s.
+ const float now=load<float>(globals,0);auto g=arrivalGrace.find(other);if(now>=(g!=arrivalGrace.end()?g->second:checkpointMapTime+20.f))return false;
+ return trigger_is_exit(trigger);
+}
+// --- When a scene ends (v0.8, Katz's items 9 and 11) -------------------------------------------
+// "After every cutscene all players must teleport to where the triggering player is": a scene's
+// activator is its multi_manager's m_hActivator (EHANDLE +0x184/+0x188), else the last player a trigger
+// touched. When no camera holds anybody any more (0.3 s, so the scene's own exit teleport lands
+// first), every other living player not within 200 units is moved beside him. And the view zoom
+// (cof_camerazoom: the fov in vuser2.x, the CameraZoom message) is put back for everyone: a zoom's own
+// return runs on a timer of its own and a skip or a fan-out could leave it behind (clip 4).
+struct SceneWatch {bool on=false;Edict* who=nullptr;int whoSerial=-1;float endedAt=-1;};
+SceneWatch sceneWatch;
+void scene_zoom_reset(){
+ for(auto e:connected_players()){auto v=vars(e);if(!v||load<float>(v,0x274)==90.f)continue;store(v,0x274,90.f);
+  if(cameraZoomMessage>0&&engine[53]){eng<void(__cdecl*)(int,int,const float*,Edict*)>(46)(1,cameraZoomMessage,nullptr,e);eng<void(__cdecl*)(float)>(53)(666.f);eng<void(__cdecl*)(int)>(48)(0);eng<void(__cdecl*)(int)>(48)(0);eng<void(__cdecl*)()>(47)();}}
+}
+void scene_watch_who(){
+ for(const auto& m:skipScene.managers){void* p=serial(m.e)==m.serial?manager_memory(m.e):nullptr;if(!p)continue;auto a=load<Edict*>(p,0x184);if(a&&live(a)&&serial(a)==load<int>(p,0x188)&&!std::strcmp(classname(a),"player")){sceneWatch.who=a;sceneWatch.whoSerial=serial(a);return;}}
+ if(!sceneWatch.who&&live(lastToucher)&&serial(lastToucher)==lastToucherSerial&&load<float>(globals,0)-lastTouchTime<2.f){sceneWatch.who=lastToucher;sceneWatch.whoSerial=lastToucherSerial;}
+}
+void scene_watch_frame(){
+ if(!scoped()||!globals)return;const float now=load<float>(globals,0);
+ bool held=model_camera_find()!=nullptr;for(auto e:connected_players())if(lease_camera(e))held=true;
+ if(held){if(!sceneWatch.on){sceneWatch={};sceneWatch.on=true;}sceneWatch.endedAt=-1;if(!sceneWatch.who)scene_watch_who();return;}
+ if(!sceneWatch.on)return;
+ if(sceneWatch.endedAt<0){sceneWatch.endedAt=now;scene_zoom_reset();if(bossExitAt>=0&&bossExitAt>now+1.f)bossExitAt=now+1.f;return;}
+ if(now-sceneWatch.endedAt<0.3f)return;
+ const auto w=sceneWatch;sceneWatch={};if(!w.who||!live(w.who)||serial(w.who)!=w.whoSerial||!view_alive(w.who))return;
+ int failed=0;const int moved=story_gather(w.who,200.f,failed);
+ if(moved||failed){char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] SCENE over: partners moved=%d failed=%d beside player=%d\n",moved,failed,eng<int(__cdecl*)(Edict*)>(71)(w.who));log(line);}
+}
+// --- Wheelchair speed (v0.8, Katz's item 14) ------------------------------------------------------
+// Playtest 3000 clip 17 "zoooom" is the host's own view (ping 0) in the wheelchair on s4_ending4b, so
+// no network or prediction is involved. Each push adds 80.5 (CWheelchair::HandleAnimEvent) on top of
+// what is there, and the native cap cof_wheelchair_maxspeed (220, fuser1) is applied only every 0.1 s
+// and at a key press; the clip's HUD shows 287. The cap now holds every frame.
+bool wheelchairCutLogged=false;
+void wheelchair_frame(){
+ if(!scoped()||!live(wheelchairOn.mode))return;
+ Edict* c=nullptr;for(int n=0;n<8;++n){c=find_next(c,"classname","wheelchair");if(!c)break;auto v=vars(c);if(!v)continue;
+  const float cap=load<float>(v,0x258)>0?load<float>(v,0x258):220.f;float s=0;for(int k=0;k<3;++k){const float x=load<float>(v,0x20+k*4);s+=x*x;}s=std::sqrt(s);if(s<=cap)continue;
+  for(int k=0;k<3;++k)store(v,0x20+k*4,load<float>(v,0x20+k*4)*cap/s);
+  if(!wheelchairCutLogged){wheelchairCutLogged=true;char line[120]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] WHEELCHAIR speed %.0f held to its cap %.0f\n",s,cap);log(line);}}
+}
+void coop_map_changed(){collision_restore();wardrobeDone=false;teamCards.known.clear();teamCards.dropping.clear();teamCards.next=0;staleCards.clear();storyTeleports.clear();storyAnchor={};storyLateDone.clear();arrivalGrace.clear();exitTriggers.clear();bossExitAt=-1;bossSave={};bossOverAt=-1;sceneWatch={};wheelchairCutLogged=false;subtitleMuteUntil=-1;pickupCopies.clear();pickupOwner.clear();pickupOwnerSerial.clear();deployLogged.clear();doorHides.clear();stripClears.clear();fadesDone=false;doorPressUsed.clear();itemCopiesDone=false;pickupOwnersNext=0;forcedVisible.clear();bossOver=false;fallBacks.clear();doorGlobals.clear();doorLocks.clear();trainEscape={};floorWallsDone=false;quickNotices.clear();fallWatch.clear();equipWants.clear();nightmareLogged=false;morphineWatch.clear();prologueSkip={};partyLimitLogged=-1;joinWait={};skipScene={};skipAfter={};skipJump.clear();skipLines=0;evidence_reset();drowned_reset();give_reset();stuckUsed.clear();nightmareRegroup={};nameStates.clear();lastPlaces.clear();sceneSeen.clear();sceneFollowers.clear();idleProbes.clear();doorMusicLines=0;sceneMoveLines=0;}

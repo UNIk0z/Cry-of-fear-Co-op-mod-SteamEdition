@@ -341,7 +341,8 @@ void rejoin_frame(Edict* e){
  if(departed!=departedPlayers.end()){
   const SavedPlayer saved=departed->second;departedPlayers.erase(departed);
   char line[200]{};
-  if(restore_player(e,saved,saved.hasPose,true))std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] REJOIN player=%d inventory restored (weapons=%u)%s\n",index,static_cast<unsigned>(saved.weapons.size()),saved.hasPose?", back where they left":"");
+  if(bag_loss_here()){bag_keep_health(e,saved);std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] REJOIN player=%d nothing back on the map of the lost bag\n",index);}
+  else if(restore_player(e,saved,saved.hasPose,true))std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] REJOIN player=%d inventory restored (weapons=%u)%s\n",index,static_cast<unsigned>(saved.weapons.size()),saved.hasPose?", back where they left":"");
   else std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] REJOIN player=%d restore incomplete: %.120s\n",index,checkpointFailure.c_str());
   rejoin_log(line);
  }
@@ -482,6 +483,6 @@ void net_tune(Edict* e){
  // the partner move in one of every 2-3 host frames (NET_CADENCE). Partner:
  // cl_cmdrate 100 (capped by their frame rate: one packet per frame). The
  // host's own commands go over loopback every frame (CL_MAIN.C CL_SendCmd).
- eng<void(__cdecl*)(Edict*,const char*,...)>(41)(e,"%s",host?"cl_updaterate 100\nex_interp 0.01\n":"rate 100000\ncl_updaterate 100\ncl_cmdrate 100\nex_interp 0.06\n");
+ eng<void(__cdecl*)(Edict*,const char*,...)>(41)(e,"%s",host?"cl_updaterate 100\nex_interp 0.01\nsc_report\n":"rate 100000\ncl_updaterate 100\ncl_cmdrate 100\nex_interp 0.06\nsc_report\n");
  char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] NET tuned player=%d cl_updaterate=100 ex_interp=%s\n",index,host?"0.01":"0.06 rate=100000 cl_cmdrate=100");log(line);
 }

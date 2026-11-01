@@ -61,6 +61,10 @@ int cameraToggles=0;std::vector<std::string> fired;
 void use_(Edict* h,Edict* actor){
  if(!std::strcmp(classname(h),"trigger_camera")){store(ev(h),0x248,load<int>(ev(h),0x248)?0:1);++cameraToggles;return;}   // v0.4 skip: native toggle
  if(!std::strcmp(classname(h),"multi_manager")){fired.push_back(std::string("use ")+targetname(h));return;}   // v0.5 prologue skip
+ if(!std::strcmp(classname(h),"cof_teleport")&&std::strcmp(targetname(h),"")){fired.push_back(std::string("teleport ")+targetname(h));return;}   // v0.8: a map's own teleport
+ // v0.8: the game's own card give (first free of six slots) and card clear.
+ if(!std::strcmp(classname(h),"cof_giveitems")){const auto card=helpers[h]["message"];for(int i=0;i<6;++i)if(!load<int>(pd(actor),0x2200+i*4)){store(pd(actor),0x2200+i*4,intern(card.c_str()));return;}fired.push_back("FLOOR "+card);return;}
+ if(!std::strcmp(classname(h),"cof_clearitems")){const auto card=helpers[h]["message"];for(int i=0;i<6;++i)if(card==str(load<int>(pd(actor),0x2200+i*4))){store(pd(actor),0x2200+i*4,0);break;}return;}
  assert(!std::strcmp(classname(h),"cof_teleport")&&helpers[h]["target"]=="sc4_coop_landing");
  auto marker=find_next(nullptr,"targetname","sc4_coop_landing");assert(marker&&!std::strcmp(classname(marker),"info_teleport_destination"));
  store(ev(actor),8,load<float>(ev(marker),8));store(ev(actor),12,load<float>(ev(marker),12));store(ev(actor),16,load<float>(ev(marker),16)+37.f);store(ev(actor),0x54,load<float>(ev(marker),0x54));++teleports;
@@ -439,5 +443,74 @@ int main(int argc,char** argv){
  {creditsMessage=99;wire.clear();message_begin(1,99,nullptr,&entities[1]);for(int i=1;i<=12;++i)write_byte(1);message_end();
   assert(wire[10]=="byte 0"&&wire[9]=="byte 1"&&wire[11]=="byte 1");
   wire.clear();message_begin(1,98,nullptr,&entities[1]);for(int i=1;i<=12;++i)write_byte(1);message_end();assert(wire[10]=="byte 1");creditsMessage=0;}
+ // --- v0.8: what comes back on a map load is silent; the player's own pickup is not.
+ {inventoryMessage=55;auto send=[&]{wire.clear();message_begin(1,55,nullptr,&entities[1]);write_byte(3);write_byte(0);write_string("inventoryitems/fuse.txt");write_byte(0);write_byte(0);write_byte(0);message_end();return wire;};
+  carryDone.clear();auto w=send();assert(w[5]=="byte 1");   // inventory not back yet
+  carryDone[&entities[1]]=serial(&entities[1]);w=send();assert(w[5]=="byte 0");
+  ++restoreQuiet;w=send();assert(w[5]=="byte 1");--restoreQuiet;carryDone.clear();inventoryMessage=0;}
+ // --- v0.8: a pickup for each player slot, shown to and taken by that player alone.
+ {assert(personal_card("inventoryitems/cassettetape.txt")&&personal_card("inventoryitems/Videotape.txt")&&!personal_card("inventoryitems/fuse.txt"));
+  assert(team_card("inventoryitems/fuse.txt")&&!team_card("inventoryitems/cassettetape.txt")&&!team_card("inventoryitems/weapons/weapon_m16.txt"));
+  store(globalData.data(),0x90,2);store(globalData.data(),0x94,200);nextFree=20;player(1);player(2);
+  world_spawned(&entities[0],true,0);
+  auto pickup=[&](int i,const char* type,float x,int id){make(i,type,"",id);place(&entities[i],x,0,36);store(ev(&entities[i]),0x10c,1);char o[40]{};std::snprintf(o,sizeof(o),"%.0f 0 36",x);KeyValue a{const_cast<char*>(type),const_cast<char*>("origin"),o,0};pickup_keyvalue(&entities[i],&a);KeyValue b{const_cast<char*>(type),const_cast<char*>("classname"),const_cast<char*>(type),0};pickup_keyvalue(&entities[i],&b);world_spawned(&entities[i],false,0,std::string(type)+"#k");};
+  pickup(3,"ammo_glock",100,801);pickup(4,"weapon_mobile",200,802);
+  assert(spawnRecords[1].keys.size()==1&&spawnRecords[1].keys[0].first=="origin");   // classname comes from the entity itself
+  itemCopiesDone=false;item_copies_frame();
+  auto copy=pickupCopies.at(1).e[1];assert(pickupCopies.at(1).e[0]==&entities[3]&&copy&&copy!=&entities[3]&&!pickupCopies.count(2));   // the phone stays one
+  assert(helpers[copy]["origin"]=="100 0 36");
+  const int on=index(copy);
+  assert(pickup_hidden(3,&entities[3],&entities[2])&&!pickup_hidden(3,&entities[3],&entities[1]));
+  assert(pickup_hidden(on,copy,&entities[1])&&!pickup_hidden(on,copy,&entities[2])&&!pickup_hidden(4,&entities[4],&entities[1]));
+  assert(pickup_blocked(&entities[3],&entities[2])&&!pickup_blocked(&entities[3],&entities[1])&&pickup_blocked(copy,&entities[1])&&!pickup_blocked(copy,&entities[2]));
+  // Slot 2 takes his: gone for him alone, and the next visit makes only slot 1's.
+  store(ev(copy),0x10c,0);store(ev(copy),0x118,0x80u);std::map<std::string,unsigned> masks;pickup_masks(masks);assert(masks.at("ammo_glock#k")==2u);
+  mapStates[state_source(map_name())].pickups=masks;
+  store(ev(copy),0x118,0u);store(copy,0,1);   // a new visit: the map again, the copy gone
+  nextFree=20;itemCopiesDone=false;item_copies_frame();assert(pickupCopies.at(1).e[0]==&entities[3]&&!pickupCopies.at(1).e[1]&&pickup_hidden(3,&entities[3],&entities[2]));
+  // Slot 1 took it on an earlier visit too: nothing of it is left.
+  mapStates[state_source(map_name())].pickups["ammo_glock#k"]=3u;nextFree=20;itemCopiesDone=false;item_copies_frame();assert(!pickupCopies.at(1).e[0]&&!pickupCopies.at(1).e[1]&&(load<unsigned>(ev(&entities[3]),0x1a8)&FlKillMe));
+  mapStates.clear();store(globalData.data(),0x90,2);store(globalData.data(),0x94,32);
+ // --- v0.8: a story teleport takes the others along; a door's and a passage's do not.
+ {const int mapBefore=load<int>(globals,0x0c);store(globals,0x0c,intern("s4_subway2st1_e2"));player(1);player(2);nextFree=20;teleports=0;lines.clear();lastPlaces.clear();cameraLeases.clear();store(globalData.data(),0,200.f);
+  make(12,"cof_teleport","2teleportion",910);store(ev(&entities[12]),0x1cc,intern("land_here"));make(13,"info_teleport_destination","land_here",911);place(&entities[13],100,100,0);
+  make(14,"cof_teleport","sc4_cd_5_move",912);store(ev(&entities[14]),0x1cc,intern("land_here"));
+  place(&entities[1],100,100,37);place(&entities[2],-497,1135,37);
+  story_teleport_lookup(nullptr,"targetname","sc4_cd_5_move",&entities[14]);assert(storyTeleports.empty());   // a converted door moves its own user
+  story_teleport_lookup(nullptr,"targetname","2teleportion",&entities[12]);assert(storyTeleports.size()==1);
+  story_teleport_frame();assert(storyTeleports.empty()&&teleports==1&&std::fabs(origin(&entities[2])[0]-100.f)<300.f&&storyAnchor.who==&entities[1]&&logged({"STORYTELEPORT 2teleportion moved player=1; partners moved=1"}));
+  // Katz's loop: back in the corridor with the one-shot trigger used, the map's own teleport sends him on; on the way in he never bounces.
+  const bool loadingBefore=loadingCheckpoint;loadingCheckpoint=false;storyAnchor={};storyLateDone.clear();fired.clear();carryDone[&entities[2]]=serial(&entities[2]);place(&entities[2],-497,1135,-1064);
+  story_late_frame(&entities[2]);assert((fired==std::vector<std::string>{"teleport 2teleportion"})&&storyAnchor.who==&entities[2]);
+  storyAnchor={};storyLateDone.clear();fired.clear();place(&entities[2],-200,-1500,-170);story_late_frame(&entities[2]);assert(fired.empty());   // elsewhere on the map: nothing
+  storyAnchor={};storyLateDone.clear();fired.clear();place(&entities[2],-497,1135,-1064);make(15,"trigger_once","multigrejer",913);story_late_frame(&entities[2]);assert(fired.empty());   // the trigger is still there: it does it itself (the fixture finds "target" by name)
+  loadingCheckpoint=loadingBefore;arrivalGrace.clear();assert(!arrival_touch_blocked(&entities[12],&entities[12]));
+  for(int i=12;i<=15;++i){entities[i]={};store(&entities[i],0,1);}carryDone.clear();storyLateDone.clear();storyAnchor={};fired.clear();store(globals,0x0c,mapBefore);}
+ // --- v0.8: key items go to the whole team, and go away when used.
+  player(1);player(2);nextFree=20;teamCards={};teamCards.declined.clear();carryDone[&entities[1]]=serial(&entities[1]);carryDone[&entities[2]]=serial(&entities[2]);departedPlayers.clear();
+  const auto fuse=std::string("inventoryitems/fuse.txt");
+  auto put=[&](Edict* e,int slot,const std::string& c){store(pd(e),0x2200+slot*4,intern(c.c_str()));};
+  auto tick=[&]{teamCards.next=0;nextFree=20;team_cards_frame();};
+  tick();assert(holds_card(&entities[1],fuse)==false);
+  put(&entities[1],0,fuse);tick();assert(holds_card(&entities[2],fuse)&&logged({"KEYITEM","also given to player=2"}));
+  // Used by one: taken from the other as well, no floor item, no echo.
+  store(pd(&entities[1]),0x2200,0);tick();assert(!holds_card(&entities[2],fuse)&&logged({"used by player=1: taken from 1"}));tick();assert(!holds_card(&entities[1],fuse));
+  // A full inventory: nothing given, nothing dropped, not offered again.
+  for(int i=0;i<6;++i)put(&entities[2],i,"inventoryitems/weapons/weapon_x"+std::to_string(i)+".txt");fired.clear();
+  put(&entities[1],0,fuse);tick();assert(!holds_card(&entities[2],fuse)&&fired.empty()&&logged({"no free slot"}));
+  store(pd(&entities[2]),0x2200,0);tick();assert(!holds_card(&entities[2],fuse));
+  // A drop leaves the partner's alone.
+  auto rope=std::string("inventoryitems/rope.txt");put(&entities[1],1,rope);tick();assert(holds_card(&entities[2],rope));
+  team_cards_command(&entities[1],"inventorydrop");store(pd(&entities[1]),0x2204,0);tick();assert(holds_card(&entities[2],rope)&&logged({"dropped by player=1"}));
+  // Same card, on the floor: not for the one who holds it.
+  make(12,"item_key","",900);store(ev(&entities[12]),0x1d8,intern(rope.c_str()));assert(pickup_blocked(&entities[12],&entities[2])&&!pickup_blocked(&entities[12],&entities[1]));
+  for(int i=0;i<6;++i){store(pd(&entities[1]),0x2200+i*4,0);store(pd(&entities[2]),0x2200+i*4,0);}teamCards={};carryDone.clear();
+  // Two fuses are two: each player has two, and one spent leaves each with one.
+  {carryDone[&entities[1]]=serial(&entities[1]);carryDone[&entities[2]]=serial(&entities[2]);tick();put(&entities[1],0,fuse);put(&entities[1],1,fuse);tick();assert(card_count(team_cards_of(&entities[2]),fuse)==2);
+   store(pd(&entities[1]),0x2200,0);tick();assert(card_count(team_cards_of(&entities[2]),fuse)==1);
+   for(int i=0;i<6;++i){store(pd(&entities[1]),0x2200+i*4,0);store(pd(&entities[2]),0x2200+i*4,0);}teamCards={};carryDone.clear();}
+  // A personal card is nobody else's.
+  auto tape=std::string("inventoryitems/cassettetape.txt");carryDone[&entities[1]]=serial(&entities[1]);carryDone[&entities[2]]=serial(&entities[2]);tick();put(&entities[1],0,tape);tick();assert(!holds_card(&entities[2],tape));
+  for(int i=0;i<6;++i)store(pd(&entities[1]),0x2200+i*4,0);teamCards={};carryDone.clear();nextFree=20;}
  std::puts("PASS world/campaign checkpoint fixtures: saves at any RC2/RC4 recorder (BSP-indexed), per-player poses, removed pickups and key-unlocked doors restored after load with authored-target/hidden/story-toggled exclusions, safe TraceHull landings (occupied, wall, water), tape reminder set on restore, boat partner gathered at the dock only, stuck command and nightmare photo regroup. NOT Cry of Fear gameplay verification.");
 }

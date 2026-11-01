@@ -143,6 +143,8 @@ int main(int argc,char** argv){
   spawn_map("s4_test_e2",false);lines.clear();state_activate();
   assert(!logged({"load-time entities kept as served"})&&load<float>(ev(&entities[20]),0x164)==55.f);
   {std::map<std::string,MapState> back;assert(state_decode(state_encode(mapStates,7u),7u,back)&&back.at("s4_test").layout==mapStates.at("s4_test").layout&&back.at("s4_test").layout!=0);}
+  // v0.8: which slots took which pickup travels with the map (slotN.cofmap version 3).
+  {auto with=mapStates;with.at("s4_test").pickups["ammo_glock|x#0"]=2u;std::map<std::string,MapState> back;assert(state_decode(state_encode(with,7u),7u,back)&&back.at("s4_test").pickups.at("ammo_glock|x#0")==2u);}
   mapStates=keep;}
  // --- Game over: the dying map's state is not kept (the restart is fresh or the save).
  gameOverMap="s4_test_e0";state_level_change("s4_test_e0");lines.clear();const auto before=mapStates.at("s4_test").data;state_deactivate();assert(logged({"not kept: game over"})&&mapStates.at("s4_test").data==before);gameOverMap.clear();

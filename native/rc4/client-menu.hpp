@@ -302,7 +302,13 @@ std::vector<std::string> local_player_models(){
  }
  return out;
 }
-struct ModelBox {Edict* who=nullptr;int serial=-1;std::string current,picture;} modelBox;
+// v0.8 (Katz's item 8: hand model customization in the same style): closing the model page with
+// Done opens the hands page, the same panel: "Same as the player model", plain Simon or an outfit
+// (the client's clothes state paints the first-person sleeves, model_clothes). Kept in
+// cryoffear/storycoop_hands.txt beside the model's file.
+struct ModelBox {Edict* who=nullptr;int serial=-1;std::string current,picture,hands;bool handsPage=false;} modelBox;
+std::vector<std::string> local_hands(){std::vector<std::string> out{"auto","simon"};const auto dir=game_dir_path();if(dir.empty())return out;for(const auto& o:ModelOutfits){const std::string m=o.model;std::error_code e2;if(std::filesystem::is_regular_file(dir/"models"/"player"/m/(m+".mdl"),e2))out.push_back(m);}return out;}
+std::string hands_saved(){const auto dir=game_dir_path();std::string name;if(!dir.empty()){std::ifstream f(dir/L"storycoop_hands.txt",std::ios::binary);if(f)f>>name;}for(auto& c:name)c=static_cast<char>(std::tolower(static_cast<unsigned char>(c)));return name=="auto"||name=="simon"||model_outfit(name)?name:"auto";}
 constexpr std::uint32_t ModelBoxPicture=0x10147380;constexpr std::size_t ModelBoxPictureBytes=47;
 const char* const ModelBoxPictureShipped="gfx/vgui/puzzle/computer/computer_loggedon.tga";
 bool model_box_set_picture(const std::string& path){
@@ -319,10 +325,12 @@ std::string model_box_saved(const std::vector<std::string>& models){
 }
 void model_box_show(Edict* e,const std::vector<std::string>& models){
  if(computerMessage<=0||!live(e))return;
- const auto at=std::find(models.begin(),models.end(),modelBox.current);const int outfit=model_outfit(modelBox.current);
- const std::string picture=modelBox.current=="simon"?"gfx/vgui/sc_mb0.tga":outfit?"gfx/vgui/sc_mb"+std::to_string(outfit)+".tga":"gfx/vgui/sc_mbx.tga";
+ const std::string& shown=modelBox.handsPage?modelBox.hands:modelBox.current;const auto at=std::find(models.begin(),models.end(),shown);
+ const std::string look=shown=="auto"?modelBox.current:shown;const int outfit=model_outfit(look);
+ const std::string picture=look=="simon"?"gfx/vgui/sc_mb0.tga":outfit?"gfx/vgui/sc_mb"+std::to_string(outfit)+".tga":"gfx/vgui/sc_mbx.tga";
  if(!model_box_set_picture(picture))return;
- const std::string text="\n"+model_label(modelBox.current)+"\n\nModel "+std::to_string(at-models.begin()+1)+" of "+std::to_string(models.size())+"\n\nNext: next model\nDone: keep this one";
+ const std::string text=modelBox.handsPage?"\nHands: "+(shown=="auto"?std::string("same as the model"):model_label(shown))+"\n\nHands "+std::to_string(at-models.begin()+1)+" of "+std::to_string(models.size())+"\n\nNext: next hands\nDone: keep these"
+  :"\n"+model_label(modelBox.current)+"\n\nModel "+std::to_string(at-models.begin()+1)+" of "+std::to_string(models.size())+"\n\nNext: next model\nDone: keep it, then the hands";
  eng<void(__cdecl*)(int,int,const float*,Edict*)>(46)(1,computerMessage,nullptr,e);
  for(int v:{1,0,0,1})eng<void(__cdecl*)(int)>(48)(v);   // logged on, wrong user, wrong password, silent
  eng<void(__cdecl*)(const char*)>(54)(text.c_str());eng<void(__cdecl*)()>(47)();
@@ -330,7 +338,7 @@ void model_box_show(Edict* e,const std::vector<std::string>& models){
 void model_box_choose(const std::string& name){
  modelBox.current=name;const auto dir=game_dir_path();bool saved=false;
  if(!dir.empty()){std::ofstream f(dir/L"storycoop_model.txt",std::ios::binary|std::ios::trunc);if(f){f<<name;saved=static_cast<bool>(f);}}
- if(engine[39])eng<void(__cdecl*)(const char*)>(39)(("setinfo sc_model \""+name+"\"\n").c_str());
+ if(engine[39])eng<void(__cdecl*)(const char*)>(39)(("setinfo sc_model \""+name+"\"\n").c_str());   // only a fallback since v0.8: sc_report is what counts
  // The client's loaded outfit textures (hands, story Simon) come again from the new one: what the game's own wardrobe clears (decomp ClothesMenu_guess.cpp).
  for(const std::uint32_t va:{0x104D26C5u,0x104D26D1u,0x104D26C6u,0x104D26D2u})if(clientImage&&va-0x10000000u<clientImageSize)clientImage[va-0x10000000u]=0;
  char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MODEL chosen: %s%s\n",name.c_str(),saved?"":" (could not be saved for the next start)");log(line);
@@ -345,12 +353,24 @@ bool model_box_command(Edict* e,const char* command){
   char line[120]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MODEL box open: %u model(s), current %s\n",static_cast<unsigned>(models.size()),modelBox.current.c_str());log(line);return true;
  }
  if(!modelBox.who||e!=modelBox.who||serial(e)!=modelBox.serial)return false;
- if(!std::strcmp(command,"stopcomputer")){model_box_close("[STORYCOOP_RC4] MODEL box closed\n");return true;}
+ if(!std::strcmp(command,"stopcomputer")){
+  if(modelBox.handsPage){model_box_close("[STORYCOOP_RC4] MODEL box closed\n");return true;}
+  modelBox.handsPage=true;modelBox.hands=hands_saved();model_box_show(e,local_hands());return true;}
  if(std::strcmp(command,"computercheck"))return false;
+ if(modelBox.handsPage){
+  const auto list=local_hands();const auto at=std::find(list.begin(),list.end(),modelBox.hands);modelBox.hands=list[((at==list.end()?list.size()-1:static_cast<std::size_t>(at-list.begin()))+1)%list.size()];
+  const auto dir=game_dir_path();if(!dir.empty()){std::ofstream f(dir/L"storycoop_hands.txt",std::ios::binary|std::ios::trunc);if(f)f<<modelBox.hands;}
+  for(const std::uint32_t va:{0x104D26C5u,0x104D26D1u,0x104D26C6u,0x104D26D2u})if(clientImage&&va-0x10000000u<clientImageSize)clientImage[va-0x10000000u]=0;
+  char line[120]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MODEL hands chosen: %s\n",modelBox.hands.c_str());log(line);model_box_show(e,list);return true;}
  const auto models=local_player_models();const auto found=std::find(models.begin(),models.end(),modelBox.current);
  model_box_choose(models[((found==models.end()?models.size()-1:static_cast<std::size_t>(found-models.begin()))+1)%models.size()]);
  model_box_show(e,models);
  return true;
+}
+// "sc_report", stuffed by the server of the game this player is in: runs in this player's own game, whoever hosts.
+void __cdecl model_report_send(){
+ const auto dir=game_dir_path();std::string model;if(!dir.empty()){std::ifstream f(dir/L"storycoop_model.txt",std::ios::binary);if(f)f>>model;}for(auto& c:model)c=static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+ if(!model_name_ok(model))model="simon";const std::string text="cmd sc_mdl "+model+" "+hands_saved()+"\n";if(engine[39])eng<void(__cdecl*)(const char*)>(39)(text.c_str());
 }
 // --- Up to ten syringes in co-op (v0.6.1) ---------------------------------------------
 // Katz 2026-10-25: "players should be able to hold more than one morphine/syringe
@@ -360,12 +380,22 @@ bool model_box_command(Edict* e,const char* command){
 // rules are multiplayer: "mov eax,1" at 10120359. Its immediate byte becomes 10
 // (one byte of the verified backend, the same checked patch the client and
 // GameUI changes use; nothing else in that function changes).
+std::vector<ClientPatch> ammo_limit_patches(){
+ std::vector<ClientPatch> list{{0x10120304,{0x74,0x76},{0xEB,0x76},false}};
+ for(const std::uint32_t va:{0x10043467u,0x10045657u,0x10050BB7u,0x1005A397u,0x1005D927u,0x10063B57u,0x10065E87u,0x1007E0C7u,0x100836D7u})list.push_back({va,{0x74,0x53},{0xEB,0x53},false});
+ list.push_back({0x1006CB36,{0x74,0x1F},{0xEB,0x1F},false});
+ return list;
+}
 bool syringeLimitTried=false;
 void syringe_limit_patch(){
  if(syringeLimitTried||!backend||!verified)return;syringeLimitTried=true;
  auto base=reinterpret_cast<unsigned char*>(backend);auto nt=reinterpret_cast<const IMAGE_NT_HEADERS32*>(base+reinterpret_cast<const IMAGE_DOS_HEADER*>(base)->e_lfanew);
- std::string why;const int r=patch_apply({{0x10120359,{0xB8,0x01,0x00,0x00,0x00},{0xB8,0x0A,0x00,0x00,0x00},false}},base,nt->OptionalHeader.SizeOfImage,reinterpret_cast<std::uint32_t>(backend),why);
- log(r==1?"[STORYCOOP_RC4] SYRINGE co-op limit raised to 10 (as in single player)\n":r==2?"[STORYCOOP_RC4] SYRINGE limit already 10\n":("[STORYCOOP_RC4] SYRINGE limit not changed: "+why+"\n").c_str());
+ // v0.8 (Katz's item 5; more.txt: "why not also make the ammo like in singleplayer"): the same for all
+ // ammo. CBasePlayerItem::iMaxAmmo1 (101202F0) gives 3 clips in multiplayer, and each ammo box's AddAmmo
+ // (decomp CoF_M16.cpp 914...) gives the player 3 clips in multiplayer, the single-player carry otherwise.
+ // Each IsMultiplayer branch's "je single_player" becomes "jmp". The bytes are checked as for the rest.
+ std::string why;const int r=patch_apply(ammo_limit_patches(),base,nt->OptionalHeader.SizeOfImage,reinterpret_cast<std::uint32_t>(backend),why);
+ log(r==1?"[STORYCOOP_RC4] AMMO limits as in single player (syringes 10)\n":r==2?"[STORYCOOP_RC4] AMMO limits already as in single player\n":("[STORYCOOP_RC4] AMMO limits not changed: "+why+"\n").c_str());
 }
 void client_menu_patch(){
  if(clientMenuTried)return;clientMenuTried=true;

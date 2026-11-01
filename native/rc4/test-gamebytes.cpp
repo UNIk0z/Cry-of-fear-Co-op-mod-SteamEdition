@@ -34,6 +34,7 @@ int main(int argc,char** argv){
  // The picture name the model box changes per model must be there too.
  apply("model box picture",{{ModelBoxPicture,client_text(ModelBoxPictureShipped,ModelBoxPictureBytes),client_text("gfx/vgui/sc_mb0.tga",ModelBoxPictureBytes),false}},client);
  auto ui=mapped(game/"cl_dlls"/"GameUI.dll");apply("gameui_patches",gameui_patches(),ui);
- std::puts("PASS patch lists: every patch fits the real client.dll and GameUI.dll");
+ auto server=mapped(game/"cl_dlls"/"hl.dll");apply("ammo_limit_patches",ammo_limit_patches(),server);
+ std::puts("PASS patch lists: every patch fits the real client.dll, GameUI.dll and hl.dll");
  return 0;
 }

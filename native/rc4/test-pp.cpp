@@ -36,6 +36,7 @@ int spawn_(Edict*){return 0;}
 void use(Edict* used,Edict* other){uses.emplace_back(used,other);}
 void make(int i,const char* type,const char* name){auto e=&entities[i];*e={};store(e,0,0);store(e,4,100+i);store(ev(e),0,intern(type));store(ev(e),0x1d0,intern(name));}
 void fixture_reset(){pp_reset();uses.clear();lines.clear();nextFree=12;for(auto& e:entities){e={};store(&e,0,1);}make(1,"player","");make(2,"player","");}
+void no_sound(Edict*,int,const char*,float,float,int,int){}void no_ambient(Edict*,float*,const char*,float,float,int,int){}int thinks=0;void count_think(Edict*){++thinks;}
 Edict* counter_named(const char* name){for(int i=12;i<24;++i)if(load<int>(&entities[i],0)==0&&std::strcmp(str(load<int>(ev(&entities[i]),0x1d0)),name)==0)return &entities[i];return nullptr;}
 }
 int main(){
@@ -70,6 +71,15 @@ int main(){
   store(globals,0,10.f);store(r,0xf0,4.f);store(r,0xdc,0);store(ev(c),0x168,2.f);pp_frame();
   for(int i=1;i<=2;++i){auto p=pd(&entities[i]);assert(load<int>(p,0x27f0)==0&&load<float>(p,0x2804)==14.f&&load<float>(p,0x2808)==11.f&&load<int>(p,0x27dc)==800);}
   bool logged=false;for(const auto& l:lines)logged=logged||l.find("RAIN 800 drops/s for 2 player(s)")!=std::string::npos;assert(logged);store(globals,0,0.f);}
+ // v0.8: the effect has a private name, so a skip reaches it through the fan-out: a zoom of the skipped scene
+ // never starts, a running one returns once and its later return is cancelled; another scene's zoom is left alone.
+ fixture_reset();make(4,"cof_camerazoom","zoomin1");make(5,"cof_camerazoom","other");pp_activate();
+ {engine[29]=reinterpret_cast<void*>(&no_sound);engine[30]=reinterpret_cast<void*>(&no_ambient);original[2]=reinterpret_cast<void*>(&count_think);
+  auto z=counter_named("zoomin1"),o=counter_named("other");store(ev(&entities[4]),0x104,99.f);skipScene={};skipScene.names.insert("zoomin1");
+  store(ev(z),0x168,1.f);store(ev(o),0x168,1.f);thinks=0;skip_stop_sounds();pp_frame();
+  assert(thinks==1&&load<float>(ev(&entities[4]),0x104)==0.f&&uses.size()==2&&uses[0].first==&entities[5]&&uses[1].first==&entities[5]);
+  skipScene={};uses.clear();store(ev(z),0x168,2.f);pp_frame();assert(uses.size()==2&&uses[0].first==&entities[4]);   // fired again later, in play: it runs
+  engine[29]=nullptr;engine[30]=nullptr;original[2]=nullptr;}
  // Unscoped maps are left completely untouched.
  fixture_reset();store(globals,0x0c,2);make(3,"cof_blur","blurrr");pp_activate();assert(postProcesses.empty()&&std::string(targetname(&entities[3]))=="blurrr");
  std::puts("PASS post-process fan-out fixtures: authored name handed to a native counter, effect used once per connected player per fire, repeated/off fires counted, unnamed/unrelated effects and unscoped maps untouched, disconnected players skipped");

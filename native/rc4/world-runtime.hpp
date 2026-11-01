@@ -11,8 +11,10 @@ bool helper_use_pairs(const char* type,const std::vector<std::pair<std::string,s
 // position in this list is therefore the BSP entity index of the served map.
 // key: the v0.3 map-state identity, read before the native Spawn (state-runtime.hpp).
 // dm: spawnflags 2048, an entity v0.4 and older never had (see deathmatch_open).
-struct SpawnRecord {Edict* e=nullptr;int serial=-1;std::string type,key;bool pickup=false,locked=false,dm=false;};
+struct SpawnRecord {Edict* e=nullptr;int serial=-1;std::string type,key;bool pickup=false,locked=false,dm=false;std::vector<std::pair<std::string,std::string>> keys;};
 std::vector<SpawnRecord> spawnRecords;
+// v0.8: a pickup's BSP keys, so its copy for another player slot is made exactly as the map makes it.
+std::unordered_map<Edict*,std::vector<std::pair<std::string,std::string>>> pickupKeys;
 // --- Entities the engine dropped in co-op (v0.5) ---------------------------------
 // Playtest logs (v0.4): every item lock on a button failed (lighter, saw, spade,
 // screwdriver, fuse, rope, ladder) although the player stood within the native
@@ -57,6 +59,7 @@ std::set<std::string> toggledDoors;
 // Pickups without an authored pickup target. A pickup that fires a target is
 // left in place on load: picking it up again replays its story event.
 bool pickup_class(const std::string& t){return (t.rfind("item_",0)==0&&t!="item_padlock")||t.rfind("weapon_",0)==0||t.rfind("ammo_",0)==0;}
+void pickup_keyvalue(Edict* e,const KeyValue* kv){if(kv&&kv->classname&&kv->key&&kv->value&&_stricmp(kv->key,"classname")&&pickup_class(kv->classname))pickupKeys[e].push_back({kv->key,kv->value});}
 // inter_door private 0x1B0 allocation, lockedby at +0x190 (keydoor-runtime).
 int door_locked(Edict* door){
  auto it=allocations.find(door);
@@ -64,8 +67,9 @@ int door_locked(Edict* door){
  return load<int>(it->second.memory,0x190)!=0?1:0;
 }
 void world_spawned(Edict* e,bool world,int result,const std::string& key={},bool dm=false){
- if(world){spawnRecords.clear();toggledDoors.clear();}
+ if(world){spawnRecords.clear();toggledDoors.clear();pickupKeys.clear();}
  SpawnRecord r;r.dm=dm&&!world;if(r.dm&&result==0)++dmSpawned;
+ if(auto k=pickupKeys.find(e);k!=pickupKeys.end()){r.keys=std::move(k->second);pickupKeys.erase(k);}
  if(result==0&&live(e)){
   r.e=e;r.serial=serial(e);r.type=classname(e);r.key=key;auto p=vars(e);
   r.pickup=p&&pickup_class(r.type)&&!load<int>(p,0x1cc)&&!(load<unsigned>(p,0x118)&0x80u);

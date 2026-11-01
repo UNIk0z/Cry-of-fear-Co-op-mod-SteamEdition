@@ -274,7 +274,7 @@ int main(int argc,char** argv_){
  // coop-fixes-007 smoother movers: each client once per campaign map.
  engine[41]=reinterpret_cast<void*>(&stuff_);engine[115]=reinterpret_cast<void*>(&listen);reset_players();netTuned.clear();
  net_tune(e);net_tune(e);net_tune(other);
- assert(stuffed.size()==2&&stuffed[0]=="1:cl_updaterate 100\nex_interp 0.01\n"&&stuffed[1]=="2:rate 100000\ncl_updaterate 100\ncl_cmdrate 100\nex_interp 0.06\n"&&logged("NET tuned player=1"));
+ assert(stuffed.size()==2&&stuffed[0]=="1:cl_updaterate 100\nex_interp 0.01\nsc_report\n"&&stuffed[1]=="2:rate 100000\ncl_updaterate 100\ncl_cmdrate 100\nex_interp 0.06\nsc_report\n"&&logged("NET tuned player=1"));
  netTuned.clear();store(globals,0x0c,10);net_tune(e);assert(stuffed.size()==2);store(globals,0x0c,1);engine[41]=nullptr;
  std::puts("PASS story runtime: co-op dual wield command (slot guard, dead/other maps refused), weapon-hand pose and attack while dual wielding (no anim lock held, native animations kept), dual-wield save holds the weapon hand, shared ending flags across map changes and saves, per-player story wound/night vision kept once per map, checkpoint schema 4 and schema 3 compatibility; 007: credits spaced per player, rejoin restore and missed fan-out replay, client interpolation tuning");
 }

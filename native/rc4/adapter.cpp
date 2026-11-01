@@ -19,6 +19,7 @@
 #include <cstdarg>
 #include <cwchar>
 #include <cctype>
+#include <iterator>
 
 static_assert(sizeof(void*)==4,"CoF requires an x86 adapter");
 extern "C" {
@@ -29,7 +30,7 @@ namespace {struct InitializeExports{InitializeExports(){for(auto& entry:rc4_expo
 namespace rc4 {
 namespace {
 Engine engine{},forwardEngine{};Table original{};void* globals=nullptr;
-HMODULE backend=nullptr;bool verified=false;int clothesMessage=0,addNote=0,noteDoc=0,textMessage=0,resetHud=0,initHud=0,proFontMessage=0,healthCapMessage=0,cofLogoMessage=0,qslotUpdateMessage=0,computerMessage=0,creditsMessage=0,unlocksMessage=0,concussMessage=0;
+HMODULE backend=nullptr;bool verified=false;int clothesMessage=0,addNote=0,noteDoc=0,textMessage=0,resetHud=0,initHud=0,proFontMessage=0,healthCapMessage=0,cofLogoMessage=0,qslotUpdateMessage=0,computerMessage=0,creditsMessage=0,unlocksMessage=0,concussMessage=0,cameraZoomMessage=0,inventoryMessage=0;
 Journal journal;
 void checkpoint_reset();
 void keypad_reset();
@@ -124,6 +125,7 @@ void vehicle_evidence(Edict* e,const char* phase,int host,int packed){
  // These offsets were read from this exact backend's entvars save metadata.
  std::snprintf(s,sizeof(s),"[STORYCOOP_RC4] VEHICLE_STATE phase=%s entity=%d host=%d packed=%d name=%s model=%s modelindex=%d origin=%.1f,%.1f,%.1f speed=%.1f effects=%x rendermode=%d renderamt=%.1f flags=%x group=%x time=%.2f\n",phase,eng<int(__cdecl*)(Edict*)>(71)(e),host,packed,targetname(e),string_at(load<int>(p,0xb8)),load<int>(p,0xb4),load<float>(p,8),load<float>(p,12),load<float>(p,16),load<float>(p,0x1fc),load<unsigned>(p,0x118),load<int>(p,0x14c),load<float>(p,0x150),load<unsigned>(p,0x1a8),load<unsigned>(p,0x244),load<float>(globals,0));log(s);
 }
+bool pickup_hidden(int number,Edict* e,Edict* host);bool pickup_blocked(Edict* pickup,Edict* player);   // coop-runtime.hpp (v0.8)
 bool collision_off();   // coop-runtime.hpp (v0.5 host setup)
 bool player_force_visible(Edict* e,Edict* host);void player_forced_log(Edict* e,Edict* host,bool shown);   // coop-runtime.hpp (v0.6)
 int __cdecl full_pack(void* state,int number,Edict* e,Edict* host,int flags,int player,unsigned char* set){
@@ -133,6 +135,7 @@ int __cdecl full_pack(void* state,int number,Edict* e,Edict* host,int flags,int 
  // (P2 crash 2026-10-15, client.dll+5f5c8). Native AddToFullPack copies
  // entvars effects (edict+198) to entity_state+3C; EF_NODRAW=0x80 is added there.
  // v0.2: staged actors are hidden by the maps themselves (coop-runtime.hpp).
+ if(!player&&pickup_hidden(number,e,host))return 0;   // v0.8: another player's copy of a pickup
  const bool hide=player&&hide_player_from(e,host);
  // v0.1 (user: "the train appears at the bottom left"): the title train waits
  // at the station until multiintro1 starts it (coop-fixes-003 timing, as in
@@ -224,7 +227,7 @@ void* __cdecl allocate(Edict* e,std::int32_t bytes){
  if(scoped()&&p&&bytes>0){auto& a=allocations[e];a={p,static_cast<std::size_t>(bytes),serial(e)};a.born=globals?load<float>(globals,0):0;a.stamp=++stamps;}return p;
 }
 void __cdecl release(Edict* e){camera_forget(e);allocations.erase(e);eng<void(__cdecl*)(Edict*)>(65)(e);}
-int __cdecl register_message(const char* name,int bytes){int id=eng<int(__cdecl*)(const char*,int)>(75)(name,bytes);if(name&&std::strcmp(name,"Clothes")==0)clothesMessage=id;if(name&&std::strcmp(name,"ViewEntity")==0)cameraViewMessage=id;if(name&&std::strcmp(name,"ModelAttach")==0)cameraAttachMessage=id;if(name&&std::strcmp(name,"ResetHUD")==0)resetHud=id;if(name&&std::strcmp(name,"ScoreInfo")==0)scoreInfoMessage=id;if(name&&std::strcmp(name,"InitHUD")==0)initHud=id;if(name&&std::strcmp(name,"AddNote")==0&&bytes==-1)addNote=id;if(name&&std::strcmp(name,"NoteDoc")==0&&bytes==-1)noteDoc=id;if(name&&std::strcmp(name,"TextMsg")==0&&bytes==-1)textMessage=id;if(name&&std::strcmp(name,"SaveLoad")==0&&bytes==-1)saveLoadMessage=id;if(name&&std::strcmp(name,"ScreenFade")==0)screenFadeMessage=id;if(name&&std::strcmp(name,"ProFont")==0)proFontMessage=id;if(name&&std::strcmp(name,"HealthCap")==0&&bytes==1)healthCapMessage=id;if(name&&std::strcmp(name,"CoFLogo")==0&&bytes==1)cofLogoMessage=id;if(name&&std::strcmp(name,"Computer")==0)computerMessage=id;if(name&&std::strcmp(name,"QSlotUpdate")==0&&bytes==2)qslotUpdateMessage=id;if(name&&std::strcmp(name,"Credits")==0&&bytes==-1)creditsMessage=id;if(name&&std::strcmp(name,"Unlocks")==0)unlocksMessage=id;if(name&&std::strcmp(name,"Concuss")==0)concussMessage=id;return id;}
+int __cdecl register_message(const char* name,int bytes){int id=eng<int(__cdecl*)(const char*,int)>(75)(name,bytes);if(name&&std::strcmp(name,"Clothes")==0)clothesMessage=id;if(name&&std::strcmp(name,"ViewEntity")==0)cameraViewMessage=id;if(name&&std::strcmp(name,"ModelAttach")==0)cameraAttachMessage=id;if(name&&std::strcmp(name,"ResetHUD")==0)resetHud=id;if(name&&std::strcmp(name,"ScoreInfo")==0)scoreInfoMessage=id;if(name&&std::strcmp(name,"InitHUD")==0)initHud=id;if(name&&std::strcmp(name,"AddNote")==0&&bytes==-1)addNote=id;if(name&&std::strcmp(name,"NoteDoc")==0&&bytes==-1)noteDoc=id;if(name&&std::strcmp(name,"TextMsg")==0&&bytes==-1)textMessage=id;if(name&&std::strcmp(name,"SaveLoad")==0&&bytes==-1)saveLoadMessage=id;if(name&&std::strcmp(name,"ScreenFade")==0)screenFadeMessage=id;if(name&&std::strcmp(name,"ProFont")==0)proFontMessage=id;if(name&&std::strcmp(name,"HealthCap")==0&&bytes==1)healthCapMessage=id;if(name&&std::strcmp(name,"CoFLogo")==0&&bytes==1)cofLogoMessage=id;if(name&&std::strcmp(name,"Computer")==0)computerMessage=id;if(name&&std::strcmp(name,"QSlotUpdate")==0&&bytes==2)qslotUpdateMessage=id;if(name&&std::strcmp(name,"Credits")==0&&bytes==-1)creditsMessage=id;if(name&&std::strcmp(name,"Unlocks")==0)unlocksMessage=id;if(name&&std::strcmp(name,"Concuss")==0)concussMessage=id;if(name&&std::strcmp(name,"CameraZoom")==0)cameraZoomMessage=id;if(name&&std::strcmp(name,"Inventory")==0)inventoryMessage=id;return id;}
 #include "note-layout.hpp"
 // --- Story text for every player (coop-fixes-004) ---------------------------
 // Subtitles (subtitle_main think 1005FC20, driven by subtitle_linechange
@@ -273,7 +276,23 @@ int credits_byte(int value){
  if(!creditsLogged){creditsLogged=true;log("[STORYCOOP_RC4] CREDITS stats screen: single-player layout with each player's own stats\n");}
  return 0;
 }
+// v0.8 (item 12; Playtest 3000 clip 12 "text shows up every levelchange"): every card
+// given back on a map load printed "You got the X" (decomp hud_msg.cpp 1463) because the
+// Inventory message's silent byte was 0. Bytes in order: slot, clear, three slots, silent,
+// taclight (decomp player.cpp InventoryMessage). A player who is still being given his
+// inventory back gets it silent, and the game's "Picked up..." lines are blanked for him.
+bool inventory_quiet_for(Edict* e);   // coop-runtime.hpp
+int restoreQuiet=0;
+struct InventoryQuiet {bool inventory=false,text=false;int bytes=0;} inventoryQuiet;
+void inventory_quiet_begin(int dest,int type,Edict* e){
+ inventoryQuiet={};if(dest!=1||!scoped()||!live(e))return;
+ const bool inv=inventoryMessage>0&&type==inventoryMessage,pro=proFontMessage>0&&type==proFontMessage;
+ if((inv||pro)&&inventory_quiet_for(e)){inventoryQuiet.inventory=inv;inventoryQuiet.text=pro;}
+}
+int inventory_quiet_byte(int value){if(!inventoryQuiet.inventory)return value;return inventoryQuiet.bytes++==3?1:value;}
+const char* inventory_quiet_text(const char* s){return inventoryQuiet.text&&s&&(!std::strncmp(s,"Picked up",9)||!std::strncmp(s,"You got",7))?"":s;}
 void __cdecl message_begin(int dest,int type,const float* origin,Edict* e){
+ inventory_quiet_begin(dest,type,e);
  creditsBytes=scoped()&&creditsMessage>0&&type==creditsMessage?0:-1;
  unlocksActive=verified&&unlocksMessage>0&&type==unlocksMessage;
  if(recorder_begin(dest,type,origin,e)){packet={};return;}
@@ -288,13 +307,13 @@ void __cdecl message_begin(int dest,int type,const float* origin,Edict* e){
  if(packet.active){noteWire={};noteWire.active=true;noteWire.dest=dest;noteWire.type=type;noteWire.recipient=e;noteWire.hasOrigin=origin!=nullptr;if(origin)std::copy(origin,origin+3,noteWire.origin.begin());return;}
  eng<void(__cdecl*)(int,int,const float*,Edict*)>(46)(dest,type,origin,e);
 }
-void __cdecl write_byte(int value){value=credits_byte(value);if(logo_write(value)||score_write(48,value))return;mirror_op(48,value,0,nullptr);if(recorder_write(48,value,0,nullptr))return;if(packet.active){switch(packet.bytes++){case 0:packet.slot=value;break;case 1:packet.meta.codeFlag=value;break;case 2:packet.meta.codeType=value;break;default:packet.valid=false;}}
+void __cdecl write_byte(int value){value=credits_byte(value);value=inventory_quiet_byte(value);if(logo_write(value)||score_write(48,value))return;mirror_op(48,value,0,nullptr);if(recorder_write(48,value,0,nullptr))return;if(packet.active){switch(packet.bytes++){case 0:packet.slot=value;break;case 1:packet.meta.codeFlag=value;break;case 2:packet.meta.codeType=value;break;default:packet.valid=false;}}
  if(!note_buffer(48,value))eng<void(__cdecl*)(int)>(48)(value);
 }
 void __cdecl write_short(int value){if(score_write(50,value))return;mirror_op(50,value,0,nullptr);if(recorder_write(50,value,0,nullptr))return;if(packet.active){if(packet.shorts++)packet.valid=false;packet.meta.codeValue=value;}
  if(!note_buffer(50,value))eng<void(__cdecl*)(int)>(50)(value);
 }
-void __cdecl write_string(const char* s){mirror_op(54,0,0,s);if(recorder_write(54,0,0,s))return;if(packet.active){if(packet.strings>=NoteFields.size()||!s)packet.valid=false;else{auto f=NoteFields[packet.strings];std::size_t n=0;while(n<f.capacity&&s[n])++n;if(n==f.capacity)packet.valid=false;else std::memcpy(packet.note.data()+f.offset,s,n+1);}++packet.strings;}
+void __cdecl write_string(const char* s){s=inventory_quiet_text(s);mirror_op(54,0,0,s);if(recorder_write(54,0,0,s))return;if(packet.active){if(packet.strings>=NoteFields.size()||!s)packet.valid=false;else{auto f=NoteFields[packet.strings];std::size_t n=0;while(n<f.capacity&&s[n])++n;if(n==f.capacity)packet.valid=false;else std::memcpy(packet.note.data()+f.offset,s,n+1);}++packet.strings;}
  std::string corrected;
  if(reader.active&&s){
   if(reader.strings==0){std::size_t length=0;while(length<32&&s[length])++length;if(length<32)reader.page.assign(s,length);else reader.active=false;}
@@ -322,12 +341,21 @@ void __cdecl write_angle(float n){mirror_op(52,0,n,nullptr);if(!recorder_write(5
 void __cdecl write_coord(float n){mirror_op(53,0,n,nullptr);if(!recorder_write(53,0,n,nullptr)&&!note_buffer(53,0,n))eng<void(__cdecl*)(float)>(53)(n);}
 void __cdecl write_entity(int n){mirror_op(55,n,0,nullptr);if(!recorder_write(55,n,0,nullptr)&&!note_buffer(55,n))eng<void(__cdecl*)(int)>(55)(n);}
 std::int32_t __cdecl random_long(std::int32_t low,std::int32_t high){auto generated=eng<std::int32_t(__cdecl*)(std::int32_t,std::int32_t)>(90)(low,high),result=generated;puzzle_random_long_override(low,high,generated,result);return result;}
-Edict* __cdecl find(Edict* start,const char* key,const char* value){Edict* out=nullptr;if(!start&&key&&value&&std::strcmp(key,"classname")==0&&std::strcmp(value,"player")==0)firstPlayerLookup=true;if(puzzle_find_override(start,key,value,out))return out;if(acting_override(start,key,value,out))return out;if(ladder_find_override(start,key,value,out))return out;out=eng<Edict*(__cdecl*)(Edict*,const char*,const char*)>(14)(start,key,value);fanout_lookup(start,key,value,out);bag_lookup(start,key,value,out);give_lookup(start,key,value,out);regroup_lookup(start,key,value,out);evidence_lookup(start,key,value);door_lock_lookup(start,key,value,out);return out;}
+bool subtitle_muted(const char* key,const char* value);void story_teleport_lookup(Edict*,const char*,const char*,Edict*);void boss_bar_lookup(Edict*,const char*,const char*,Edict*);   // coop-runtime.hpp
+Edict* __cdecl find(Edict* start,const char* key,const char* value){Edict* out=nullptr;if(subtitle_muted(key,value))return nullptr;if(!start&&key&&value&&std::strcmp(key,"classname")==0&&std::strcmp(value,"player")==0)firstPlayerLookup=true;if(puzzle_find_override(start,key,value,out))return out;if(acting_override(start,key,value,out))return out;if(ladder_find_override(start,key,value,out))return out;out=eng<Edict*(__cdecl*)(Edict*,const char*,const char*)>(14)(start,key,value);fanout_lookup(start,key,value,out);bag_lookup(start,key,value,out);give_lookup(start,key,value,out);regroup_lookup(start,key,value,out);evidence_lookup(start,key,value);door_lock_lookup(start,key,value,out);story_teleport_lookup(start,key,value,out);boss_bar_lookup(start,key,value,out);return out;}
+// v0.8: E (CBasePlayer::PlayerUse, FindEntityInSphere) does not see a pickup that is not this player's.
+Edict* pickupActor=nullptr;
+Edict* __cdecl find_in_sphere(Edict* start,const float* origin,float radius){
+ auto next=eng<Edict*(__cdecl*)(Edict*,const float*,float)>(16);Edict* e=next(start,origin,radius);
+ if(pickupActor)while(e&&pickup_blocked(e,pickupActor))e=next(e,origin,radius);
+ return e;
+}
 void __cdecl emit_sound(Edict* e,int channel,const char* sample,float volume,float attenuation,int flags,int pitch){
  if(sample&&(std::strcmp(sample,"items/padl_turn.wav")==0||std::strcmp(sample,"items/padl_unlock.wav")==0)){
   if(auto actor=puzzle_sound_actor(e))e=actor;
  }
  evidence_sound(e,sample);
+ if(sample&&!std::strcmp(sample,"weapons/item_get.wav")&&live(e)&&!std::strcmp(classname(e),"player")&&inventory_quiet_for(e))return;
  // Forward the original event once: retain asset/channel/volume/timing. No
  // client-command-generated second sound or synthetic success response.
  eng<void(__cdecl*)(Edict*,int,const char*,float,float,int,int)>(29)(e,channel,sample,volume,attenuation,flags,pitch);
@@ -377,8 +405,8 @@ void everyone(bool capture){if(!globals)return;for(int i=1;i<=load<int>(globals,
 #include "state-runtime.hpp"
 #include "client-menu.hpp"
 void frame_evidence();
-void __cdecl start_frame(){crumb("start_frame");++netFrame;collision_restore();gameui_patch();firstPlayerLookup=false;pause_poll();menu_credit_frame();give_flush();three_slots_frame();chapter_frame();join_wait_frame();regroup_frame();checkpoint_start_frame();keypad_frame();story_frame();logo_frame();score_sync();keydoor_frame();ladder_frame();pp_frame();half_frame();skip_frame();party_counters_frame();prologue_skip_frame();boss_frame();train_escape_frame();floor_walls_frame();stayout_fades_frame();wardrobe_frame();join_connect_frame();load_wait_frame();door_lock_frame();item_copies_frame();frame_evidence();}
-void __cdecl game_init(){crash_install();reset();native<void(__cdecl*)()>(0)();if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_checkpoint_load",&checkpoint_load_command);if(engine[56])eng<void(__cdecl*)(cvar_t*)>(56)(&collisionCvar);if(engine[56])eng<void(__cdecl*)(cvar_t*)>(56)(&extrasCvar);if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_checkpoint_prepare",&checkpoint_prepare_command);if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_door_music",&door_music_command);log("[STORYCOOP_RC4] GameInit forwarded; checkpoint command registered\n");}
+void __cdecl start_frame(){crumb("start_frame");++netFrame;collision_restore();gameui_patch();firstPlayerLookup=false;pause_poll();menu_credit_frame();give_flush();three_slots_frame();chapter_frame();join_wait_frame();regroup_frame();checkpoint_start_frame();keypad_frame();story_frame();logo_frame();score_sync();keydoor_frame();ladder_frame();pp_frame();half_frame();skip_frame();party_counters_frame();prologue_skip_frame();boss_frame();train_escape_frame();floor_walls_frame();stayout_fades_frame();wardrobe_frame();join_connect_frame();load_wait_frame();door_lock_frame();item_copies_frame();team_cards_frame();story_teleport_frame();scene_watch_frame();boss_save_frame();wheelchair_frame();frame_evidence();}
+void __cdecl game_init(){crash_install();reset();native<void(__cdecl*)()>(0)();if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_checkpoint_load",&checkpoint_load_command);if(engine[56])eng<void(__cdecl*)(cvar_t*)>(56)(&collisionCvar);if(engine[56])eng<void(__cdecl*)(cvar_t*)>(56)(&extrasCvar);if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_checkpoint_prepare",&checkpoint_prepare_command);if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_door_music",&door_music_command);if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_report",&model_report_send);log("[STORYCOOP_RC4] GameInit forwarded; checkpoint command registered\n");}
 // v0.3 audit: the main menu map (c_game_menu1) ends every game. Only the mod's
 // New Game/Load entries and cof_campaign_story4 reset the session, so a game
 // started another way in the same process (the tester went c_game_menu1 ->
@@ -421,7 +449,7 @@ void __cdecl think(Edict* e){crumb("think",e);firstPlayerLookup=false;if(!scoped
 void __cdecl put(Edict* e){crumb("putinserver",e);native<void(__cdecl*)(Edict*)>(18)(e);void* p=nullptr;std::size_t n=0;if(scoped()&&player_memory(e,p,n))puzzle_on_player_initialized(e,p,n);}
 void __cdecl client_command(Edict* e){
  crumb("command",e);
- const char* early=eng<const char*(__cdecl*)(int)>(83)(0);menu_command(early);stuck_command(e,early);if(model_box_command(e,early)||join_box_command(e,early)||skip_client_command(e,early))return;
+ const char* early=eng<const char*(__cdecl*)(int)>(83)(0);menu_command(early);stuck_command(e,early);if(model_box_command(e,early)||join_box_command(e,early)||skip_client_command(e,early)||model_report_command(e,early))return;
  // Every story co-op map, the passive opening included: no police flashlight.
  if(campaign_map()&&early&&!std::strcmp(early,"flashlight")){if(!light_command(e,early)&&!openingLightLogged){openingLightLogged=true;log("[STORYCOOP_RC4] LIGHT police flashlight refused (F key); other lights allowed\n");}return;}
  if(!scoped()){native<void(__cdecl*)(Edict*)>(19)(e);return;}
@@ -440,7 +468,7 @@ void __cdecl client_command(Edict* e){
  if(itemCommand&&!std::strcmp(command,"inventoryuse"))actingPlayer=e;
  if(command&&!std::strcmp(command,"boilercheck")&&barPlayer!=e){barPlayer=e;barPlayerSerial=serial(e);char line[100]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] PUZZLEBAR player=%d turns the bars\n",eng<int(__cdecl*)(Edict*)>(71)(e));log(line);}
  const std::string quickArg=itemName=="quicksel"?[]{const char* a=eng<const char*(__cdecl*)(int)>(83)(1);return std::string(a?a:"").substr(0,4);}():std::string();
- native<void(__cdecl*)(Edict*)>(19)(e);actingPlayer=nullptr;
+ team_cards_command(e,command);pickupActor=e;native<void(__cdecl*)(Edict*)>(19)(e);pickupActor=nullptr;actingPlayer=nullptr;
  quick_dual_command(e,itemName.c_str(),quickArg);
  if(itemCommand)evidence_item_end(e,itemName.c_str(),itemSlot.c_str(),cardsBefore);
  if(decision==PuzzleDecision::ForwardOwned)puzzle_after_client_command();
@@ -477,7 +505,7 @@ void __cdecl command_start(const Edict* actor,const void* command,unsigned int s
 }
 // Ladder reservations are refreshed after each player's think as well as at
 // StartFrame, so a second player's Use later in the same frame sees the lock.
-void __cdecl prethink(Edict* e){crumb("prethink",e);objective_share();deploy_guard(e);ladder_wait_frame(e);native<void(__cdecl*)(Edict*)>(23)(e);collision_hold(e);strip_clear_frame(e);idle_stage(e,1);fall_frame(e);scene_teleport_frame(e);model_frame(e);name_frame(e);light_frame(e);camera_frame(e);camera_join(e);checkpoint_player_frame(e);restore(e);quick_notice_frame(e);carry_frame(e);quest_notice_frame(e);arrival_frame(e);equip_frame(e);nightmare_frame(e);morphine_frame(e);limp_frame(e);give_owed_frame(e);rejoin_frame(e);ladder_frame();boat_frame(e);idle_stage(e,2);collision_pre(e);}
+void __cdecl prethink(Edict* e){crumb("prethink",e);objective_share();deploy_guard(e);ladder_wait_frame(e);pickupActor=e;native<void(__cdecl*)(Edict*)>(23)(e);pickupActor=nullptr;collision_hold(e);strip_clear_frame(e);idle_stage(e,1);fall_frame(e);scene_teleport_frame(e);model_frame(e);name_frame(e);light_frame(e);camera_frame(e);camera_join(e);checkpoint_player_frame(e);restore(e);quick_notice_frame(e);carry_frame(e);stale_cards_frame(e);arrival_frame(e);story_late_frame(e);equip_frame(e);nightmare_frame(e);morphine_frame(e);limp_frame(e);give_owed_frame(e);rejoin_frame(e);ladder_frame();boat_frame(e);idle_stage(e,2);collision_pre(e);}
 // v0.1: the inventory carry reads every player when a level change is asked
 // for (see carry_level_change), then the engine's own ChangeLevel runs.
 // v0.3: the Drowned's victim lookup (see drowned_index in coop-runtime.hpp).
@@ -488,12 +516,12 @@ void __cdecl server_command_hook(char* text){
  if(text&&scoped()){const char* s=text;while(*s==' '||*s=='\t')++s;if(!_strnicmp(s,"changelevel",11)&&(s[11]==' '||s[11]=='\t')){s+=11;while(*s==' '||*s=='\t')++s;char map[40]{};int n=0;while(*s&&*s!=' '&&*s!=';'&&*s!='\n'&&*s!='\r'&&n<39)map[n++]=*s++;state_level_change(map);}}
  eng<void(__cdecl*)(char*)>(39)(text);
 }
-void __cdecl key_value(Edict* e,KeyValue* kv){if(extras_keyvalue_dropped(kv)){kv->handled=1;return;}native<void(__cdecl*)(Edict*,KeyValue*)>(6)(e,kv);evidence_keyvalue(e,kv);ladder_keyvalue(e,kv);door_global_keyvalue(e,kv);state_keyvalue(e,kv);}
-void __cdecl postthink(Edict* e){crumb("postthink",e);collision_restore();idle_stage(e,-1);deploy_guard(e);native<void(__cdecl*)(Edict*)>(24)(e);door_hide_frame(e);idle_stage(e,3);light_frame(e);pose_frame(e);ladder_frame();pp_frame();idle_stage(e,4);}
+void __cdecl key_value(Edict* e,KeyValue* kv){if(extras_keyvalue_dropped(kv)){kv->handled=1;return;}native<void(__cdecl*)(Edict*,KeyValue*)>(6)(e,kv);pickup_keyvalue(e,kv);evidence_keyvalue(e,kv);ladder_keyvalue(e,kv);door_global_keyvalue(e,kv);state_keyvalue(e,kv);}
+void __cdecl postthink(Edict* e){crumb("postthink",e);collision_restore();idle_stage(e,-1);deploy_guard(e);pickupActor=e;native<void(__cdecl*)(Edict*)>(24)(e);pickupActor=nullptr;door_hide_frame(e);idle_stage(e,3);light_frame(e);pose_frame(e);ladder_frame();pp_frame();idle_stage(e,4);}
 void __cdecl disconnect(Edict* e){pauseState.othersOpen=false;ladder_left(e);carry_departing(e);stuckUsed.erase(e);codeLayouts.erase(note_connection(e));camera_forget(e);boatDrivers.erase(e);checkpoint_disconnect(e);}
 // v0.3 crash report: Use/Touch only leave a breadcrumb, then the game's own.
-void __cdecl dispatch_use(Edict* e,Edict* other){crumb("use",e);native<void(__cdecl*)(Edict*,Edict*)>(3)(e,other);}
-void __cdecl dispatch_touch(Edict* e,Edict* other){crumb("touch",e);if(scoped()){pp_touch(e,other);train_escape_touch(e,other);if(collision_touch_blocked(e,other))return;}native<void(__cdecl*)(Edict*,Edict*)>(4)(e,other);}
+void __cdecl dispatch_use(Edict* e,Edict* other){crumb("use",e);if(scoped()&&pickup_blocked(e,other))return;native<void(__cdecl*)(Edict*,Edict*)>(3)(e,other);}
+void __cdecl dispatch_touch(Edict* e,Edict* other){crumb("touch",e);if(scoped()){if(pickup_blocked(e,other)||arrival_touch_blocked(e,other))return;pp_touch(e,other);train_escape_touch(e,other);if(collision_touch_blocked(e,other))return;}native<void(__cdecl*)(Edict*,Edict*)>(4)(e,other);}
 void wrap(Table& t){
  original=t;
  t[0]=reinterpret_cast<void*>(&game_init);t[1]=reinterpret_cast<void*>(&spawn);t[2]=reinterpret_cast<void*>(&think);
@@ -512,7 +540,7 @@ extern "C" void __stdcall GiveFnptrsToDll(void* table,void* globals){
  if(!load_backend())return;
  client_menu_patch();menu_hold_start();
  forwardEngine=engine;
- forwardEngine[14]=reinterpret_cast<void*>(&find);forwardEngine[63]=reinterpret_cast<void*>(&allocate);
+ forwardEngine[14]=reinterpret_cast<void*>(&find);forwardEngine[16]=reinterpret_cast<void*>(&find_in_sphere);forwardEngine[63]=reinterpret_cast<void*>(&allocate);
  forwardEngine[65]=reinterpret_cast<void*>(&release);forwardEngine[75]=reinterpret_cast<void*>(&register_message);
  forwardEngine[78]=reinterpret_cast<void*>(&from_name);forwardEngine[79]=reinterpret_cast<void*>(&name_for);
  forwardEngine[46]=reinterpret_cast<void*>(&message_begin);forwardEngine[47]=reinterpret_cast<void*>(&message_end);

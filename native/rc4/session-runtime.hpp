@@ -76,7 +76,15 @@ bool default_player_model(int named){
  if(!named)return true;const char* m=string_at(named);
  return m&&std::strlen(m)==7&&_strnicmp(m,"police",6)==0&&m[6]>='1'&&m[6]<='4';
 }
-struct ModelState{float next=0;int attempts=0;unsigned logged=0;std::string want;int clothes=0;float clothesNext=0;};
+struct ModelState{float next=0;int attempts=0;unsigned logged=0;std::string want,hands;int clothes=0;float clothesNext=0;};
+// v0.8 (Katz's item 7; both logs of Playtest 3000: "Info string length exceeded" at every setinfo, host
+// "MODEL player=1 is simon" all session long): the player's userinfo is full, and the engine drops the
+// key on the way to refusing the new value, so a chosen model could vanish. Each game now says what it
+// wants as a client command: the server stuffs "sc_report" once per map (net_tune), that game's own adapter
+// runs it and answers "cmd sc_mdl <model> <hands>" (model_report_send, client-menu.hpp).
+struct ModelReport {std::string model,hands;};
+std::map<int,ModelReport> modelReports;
+bool model_report_command(Edict* e,const char* command);
 // v0.7: Simon's outfits, in the order of the client's clothes state 1..11. Each is a
 // player model built at install (scripts/simon-model.mjs), so every PC has them.
 struct ModelOutfit {const char* model;const char* label;};
@@ -126,12 +134,21 @@ void model_line(ModelState& s,unsigned what,const char* format,int index,const c
 // clothes state, as the game's wardrobe sets it (decomp player.cpp, gmsgClothes). Sent
 // again now and then, because the game sends its own state after a spawn.
 void model_clothes(Edict* e,ModelState& s,const std::string& want,float now){
- const int state=model_outfit(want);
+ // v0.8 (Katz's item 8): the hands are chosen on their own; "auto" follows the player model.
+ const int state=s.hands.empty()||s.hands=="auto"?model_outfit(want):model_outfit(s.hands);
  if(clothesMessage<=0||!engine[51]||!client_ready(e)||(!state&&!s.clothes)||now<s.clothesNext)return;
  s.clothes=state;s.clothesNext=now+5.f;
  eng<void(__cdecl*)(int,int,const float*,Edict*)>(46)(1,clothesMessage,nullptr,e);
  eng<void(__cdecl*)(int)>(51)(0);for(int v:{state?1:0,state,0})eng<void(__cdecl*)(int)>(48)(v);
  eng<void(__cdecl*)()>(47)();
+}
+bool model_report_command(Edict* e,const char* command){
+ if(!command||std::strcmp(command,"sc_mdl")||!live(e))return false;
+ auto arg=[](int i){const char* a=eng<const char*(__cdecl*)(int)>(83)(i);return std::string(a?a:"");};
+ const std::string model=arg(1),hands=arg(2);const int index=eng<int(__cdecl*)(Edict*)>(71)(e);if(index<1||index>32)return true;
+ if(!model_name_ok(model)||!(hands=="auto"||hands=="simon"||model_outfit(hands)))return true;
+ auto& r=modelReports[index];if(r.model!=model||r.hands!=hands){char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MODEL player=%d reports model %.32s, hands %.32s\n",index,model.c_str(),hands.c_str());log(line);}
+ r={model,hands};return true;
 }
 void model_frame(Edict* e){
  if(!model_map()||!globals||!live(e)||!engine[106]||!engine[107]||!engine[109]||std::strcmp(classname(e),"player"))return;
@@ -139,6 +156,7 @@ void model_frame(Edict* e){
  auto& s=modelStates[index];const float now=load<float>(globals,0);if(now<s.next)return;s.next=now+1.f;
  std::string want="simon";
  {auto info=eng<char*(__cdecl*)(Edict*)>(106)(e);const char* asked=info?eng<char*(__cdecl*)(char*,char*)>(107)(info,const_cast<char*>("sc_model")):nullptr;std::string a=asked?asked:"";
+  {auto r=modelReports.find(index);if(r!=modelReports.end()){a=r->second.model;s.hands=r->second.hands;}}
   for(auto& c:a)c=static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
   if(!a.empty()&&a!="simon"){if(model_name_ok(a)&&host_has_model(a))want=a;
    else if(!(s.logged&16u)){s.logged|=16u;char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MODEL player=%d asked for %.32s: not on the host's PC, shown as Simon\n",index,a.c_str());log(line);
@@ -358,12 +376,23 @@ void bag_lookup(Edict* start,const char* key,const char* value,Edict* found){
  auto v=vars(found);const unsigned flags=v?load<unsigned>(v,0x1a4):0;if((flags&5u)!=5u||(flags&2u))return;   // clear + three slots, activator only
  if(!bagLoss.active||bagLoss.map!=map_name()){bagLoss={true,map_name(),{}};char line[140]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] BAG %s fired: every player loses the bag on this map\n",targetname(found));log(line);}
 }
+// One inventory slot emptied on the server and in that player's game (decomp InventoryMessage: slot, clear, card, three slots, silent, taclight).
+void inventory_slot_clear(Edict* e,void* p,std::size_t i){
+ store<int>(p,0x2200+i*4,0);if(inventoryMessage<=0||!engine[46]||!engine[47]||!engine[48]||!engine[54])return;
+ eng<void(__cdecl*)(int,int,const float*,Edict*)>(46)(1,inventoryMessage,nullptr,e);eng<void(__cdecl*)(int)>(48)(static_cast<int>(i+1));eng<void(__cdecl*)(int)>(48)(0);eng<void(__cdecl*)(const char*)>(54)("");eng<void(__cdecl*)(int)>(48)(load<unsigned char>(p,ThreeSlotsOffset)?1:0);eng<void(__cdecl*)(int)>(48)(1);eng<void(__cdecl*)(int)>(48)(0);eng<void(__cdecl*)()>(47)();
+}
+// v0.8 (Katz's item 4): on the map where the bag is lost nothing carried comes back first, so nothing
+// overflows the three slots onto the floor; only health stays.
+bool bag_loss_here(){return bagLoss.active&&bagLoss.map==map_name();}
+void bag_keep_health(Edict* e,const SavedPlayer& saved){auto v=vars(e);if(v&&saved.health>0)store(v,0x164,saved.health);}
 void three_slots_frame(){
  if(!globals||!verified)return;
  if(bagLoss.active&&bagLoss.map!=map_name())bagLoss={};
  if(bagLoss.active)for(auto e:connected_players()){
   if(!client_ready(e)||!carry_settled(e)||!bagLoss.wiped.insert({e,serial(e)}).second)continue;
-  const bool ok=helper_use_pairs("cof_clearitems",{{"spawnflags","5"}},e);bag_wiped(e);
+  const bool ok=helper_use_pairs("cof_clearitems",{{"spawnflags","5"}},e);
+  {void* wp=nullptr;std::size_t wn=0;if(player_memory(e,wp,wn))for(std::size_t i=0;i<6;++i)if(load<int>(wp,0x2200+i*4))inventory_slot_clear(e,wp,i);}
+  bag_wiped(e);
   char line[120]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] BAG player=%d %s\n",eng<int(__cdecl*)(Edict*)>(71)(e),ok?"inventory cleared (bag lost)":"clear FAILED");log(line);}
  for(auto e:connected_players())three_slots_apply(e);
 }
@@ -543,7 +572,7 @@ void __cdecl stuff_command(Edict* e,const char* format,...){
 // (CmdStart) and then every 5 s without a fade-in, so it is always there.
 // v0.1 (user): the build is named v0.1 (v0.2 since 2026-10-16), and Special Thanks lists Mesilll,
 // Michal Eminov and caixa in that order (it misspelled "Michael" before). v0.6 (Katz 2026-10-25): joah added; v0.7 (Katz): written Joah230.
-constexpr const char* MenuCredit="Co-op mod v0.7.2 developed by Anas Sammak (koolkat)\nSpecial thanks: Mesilll, Michal Eminov, caixa, Joah230";
+constexpr const char* MenuCredit="Co-op mod v0.8 developed by Anas Sammak (koolkat)\nSpecial thanks: Mesilll, Michal Eminov, caixa, Joah230";
 struct MenuCreditState{int serial=-1;float next=0,active=-1;bool logged=false,shown=false;};
 MenuCreditState menuCredit;
 void menu_credit_reset(){const bool logged=menuCredit.logged;menuCredit={};menuCredit.logged=logged;}

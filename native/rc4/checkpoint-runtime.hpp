@@ -195,7 +195,14 @@ bool weapon_card(const std::string& n){return n.rfind("inventoryitems/weapons/",
 // clearExtras=false (coop-fixes-013 map-change carry): weapons the new map
 // already gave are kept; only missing ones are given.
 void equip_want(Edict* e,const SavedPlayer& saved);   // coop-runtime.hpp: keeps trying the held weapon / dual wield
+void team_cards_rebase(Edict* e);   // coop-runtime.hpp
+extern int restoreQuiet;
+bool restore_player_loud(Edict* e,const SavedPlayer& saved,bool land,bool atPose,bool clearExtras);
 bool restore_player(Edict* e,const SavedPlayer& saved,bool land=true,bool atPose=false,bool clearExtras=true){
+ // v0.8 (item 12): what comes back on a map load or a save load prints nothing and is no pickup.
+ ++restoreQuiet;const bool ok=restore_player_loud(e,saved,land,atPose,clearExtras);--restoreQuiet;team_cards_rebase(e);return ok;
+}
+bool restore_player_loud(Edict* e,const SavedPlayer& saved,bool land,bool atPose,bool clearExtras){
  const int slot=eng<int(__cdecl*)(Edict*)>(71)(e);
  // c_start aliases: authored per-slot markers. Elsewhere: the player's own
  // saved standing point, or the nearest safe spot around it (TraceHull).
@@ -222,11 +229,16 @@ bool restore_player(Edict* e,const SavedPlayer& saved,bool land=true,bool atPose
   if(clearExtras)for(const auto& w:current.weapons)if(std::none_of(saved.weapons.begin(),saved.weapons.end(),[&](const SavedWeapon& s){return s.name==w.name;}))if(!helper_use("cof_clearitems","message",w.name,e)){hard+=" clear:"+w.name;}
   if(clearExtras)for(const auto& name:current.inventory)if(!name.empty()&&!weapon_card(name)&&std::find(saved.inventory.begin(),saved.inventory.end(),name)==saved.inventory.end())soft+=" extra-item:"+name;
   SavedPlayer after;if(!capture_player(e,after)){hard+=" after-clear:"+checkpointFailure;return;}
-  for(const auto& w:saved.weapons)if(std::none_of(after.weapons.begin(),after.weapons.end(),[&](const SavedWeapon& s){return s.name==w.name;}))if(!helper_use("cof_giveitems","message",w.name,e))hard+=" give:"+w.name;
+  // v0.8 (Katz's item 4: "weapons still drop below the players"): cof_giveitems with a full inventory says
+  // "Inventory full" and hands the weapon out anyway (decomp effects.cpp 6580), and it lands at the feet:
+  // five carried weapons against the three slots after the crash. What does not fit stays behind.
+  std::set<std::string> noRoom;void* room=nullptr;std::size_t roomBytes=0;
+  auto full=[&](){if(!player_memory(e,room,roomBytes))return false;const std::size_t slots=load<unsigned char>(room,0x1e9c)?3:6;for(std::size_t i=0;i<slots;++i){const char* c=string_at(load<int>(room,0x2200+i*4));if(!c||!*c)return false;}return true;};
+  for(const auto& w:saved.weapons)if(std::none_of(after.weapons.begin(),after.weapons.end(),[&](const SavedWeapon& s){return s.name==w.name;})){if(full()){noRoom.insert(w.name);soft+=" no-room:"+w.name;continue;}if(!helper_use("cof_giveitems","message",w.name,e))hard+=" give:"+w.name;}
   SavedPlayer armed;if(!capture_player(e,armed)){hard+=" after-weapons:"+checkpointFailure;return;}
-  for(const auto& name:saved.inventory)if(name.rfind("inventoryitems/",0)==0&&!weapon_card(name)&&std::find(armed.inventory.begin(),armed.inventory.end(),name)==armed.inventory.end())if(!helper_use_pairs("cof_giveitems",{{"message",name},{"spawnflags","1"}},e))soft+=" give-item:"+name;
+  for(const auto& name:saved.inventory)if(name.rfind("inventoryitems/",0)==0&&!weapon_card(name)&&std::find(armed.inventory.begin(),armed.inventory.end(),name)==armed.inventory.end()){if(full()){soft+=" no-room:"+name;continue;}if(!helper_use_pairs("cof_giveitems",{{"message",name},{"spawnflags","1"}},e))soft+=" give-item:"+name;}
   std::vector<std::pair<Edict*,void*>> list;if(!weapon_list(e,list)){hard+=" weapon-list";return;}
-  for(const auto& w:saved.weapons){auto it=std::find_if(list.begin(),list.end(),[&](const auto& item){return w.name==classname(item.first);});if(it==list.end()){hard+=" absent:"+w.name;continue;}if(load<int>(it->second,0x1dc)!=w.ammoIndex){hard+=" ammo-index:"+w.name;continue;}store(it->second,0x1e4,w.clip);}
+  for(const auto& w:saved.weapons){if(noRoom.count(w.name))continue;auto it=std::find_if(list.begin(),list.end(),[&](const auto& item){return w.name==classname(item.first);});if(it==list.end()){hard+=" absent:"+w.name;continue;}if(load<int>(it->second,0x1dc)!=w.ammoIndex){hard+=" ammo-index:"+w.name;continue;}store(it->second,0x1e4,w.clip);}
   void* p=nullptr;std::size_t n=0;if(!player_memory(e,p,n)){hard+=" memory";return;}auto ev=vars(e);store(ev,0x164,saved.health);store(p,0x21f0,saved.stamina);std::memcpy(static_cast<unsigned char*>(p)+0x2540,saved.ammo.data(),sizeof(saved.ammo));std::memcpy(static_cast<unsigned char*>(p)+0x22c8,saved.items.data(),sizeof(saved.items));store(p,0x1ef4,saved.tapes);store(p,0x22a8,saved.battery);store<unsigned char>(p,0x226c,saved.usedSyringe?1:0);
   // User report: after Continue the first recorder Use only printed the
   // first-encounter line and saved nothing. CTapeRecorder::TapeUse (1007C987)
@@ -240,9 +252,9 @@ bool restore_player(Edict* e,const SavedPlayer& saved,bool land=true,bool atPose
   if(!saved.equipped.empty()&&!helper_use("cof_weaponswitch","message",saved.equipped,e))soft+=" switch:"+saved.equipped;
   {SavedPlayer slots;if(capture_player(e,slots)){void* qp=nullptr;std::size_t qn=0;if(player_memory(e,qp,qn)){quick_restore(qp,saved,slots);quick_notice_want(e);}}}
   SavedPlayer check;if(!capture_player(e,check)){hard+=" readback:"+checkpointFailure;return;}
-  if(clearExtras&&check.weapons.size()!=saved.weapons.size())hard+=" weapons";if(check.phoneMessage!=saved.phoneMessage||check.phoneDisabled!=saved.phoneDisabled)soft+=" phone";if(check.health!=saved.health)hard+=" health";if(check.stamina!=saved.stamina)hard+=" stamina";if(check.ammo!=saved.ammo)hard+=" reserve";if(check.items!=saved.items)hard+=" counters";
+  if(clearExtras&&noRoom.empty()&&check.weapons.size()!=saved.weapons.size())hard+=" weapons";if(check.phoneMessage!=saved.phoneMessage||check.phoneDisabled!=saved.phoneDisabled)soft+=" phone";if(check.health!=saved.health)hard+=" health";if(check.stamina!=saved.stamina)hard+=" stamina";if(check.ammo!=saved.ammo)hard+=" reserve";if(check.items!=saved.items)hard+=" counters";
   if(check.tapes!=saved.tapes)hard+=" tapes";if(check.healthCap!=saved.healthCap||check.nightVision!=saved.nightVision)soft+=" story";if(check.battery!=saved.battery)hard+=" battery";if(check.usedSyringe!=saved.usedSyringe)hard+=" syringe";
-  for(const auto& w:saved.weapons)if(std::none_of(check.weapons.begin(),check.weapons.end(),[&](const auto& q){return q.name==w.name&&q.clip==w.clip&&q.ammoIndex==w.ammoIndex;}))hard+=" clip:"+w.name;
+  for(const auto& w:saved.weapons)if(!noRoom.count(w.name)&&std::none_of(check.weapons.begin(),check.weapons.end(),[&](const auto& q){return q.name==w.name&&q.clip==w.clip&&q.ammoIndex==w.ammoIndex;}))hard+=" clip:"+w.name;
   if(check.equipped!=saved.equipped||!saved.dualA.empty())equip_want(e,saved);
   if(check.equipped!=saved.equipped)soft+=" equipped (retrying)";
   for(std::size_t k=0;k<3;++k)if(check.quick[k].weapon!=saved.quick[k].weapon)soft+=" quick"+std::to_string(k+1);
@@ -264,13 +276,21 @@ bool restore_player(Edict* e,const SavedPlayer& saved,bool land=true,bool atPose
 // and hears the recorder's save sound once, on their own client ("play": the
 // game's save/save_sequence.wav, which CTapeRecorder 100EF227 plays from the
 // saving player). A cancelled or failed save plays nothing.
-void checkpoint_saved_notice(int slot){
- char text[96]{};std::snprintf(text,sizeof(text),"Game saved in slot %d\non the host's PC.\n",slot);
- for(auto e:connected_players()){if(engine[80])eng<void(__cdecl*)(Edict*,int,const char*)>(80)(e,1,text);if(engine[41])eng<void(__cdecl*)(Edict*,const char*,...)>(41)(e,"%s","play save/save_sequence.wav\n");}
+// v0.8 (Katz's item 3: the save sound played twice): since v0.7 the save window runs the native
+// CBasePlayer::PreSave, whose own EMIT_SOUND (CHAN_VOICE, ATTN_NORM, decomp player.cpp 12903) comes on
+// top of this "play". After a window save only a player too far away to hear the host's sound gets the
+// "play"; the old key list has no native sound, so there everybody does.
+bool autosaveQuiet=false;bool saveSoundNative=false;
+void checkpoint_saved_notice(int slot,Edict* actor){
+ if(autosaveQuiet)return;
+ char text[96]{};std::snprintf(text,sizeof(text),"Game saved in slot %d\non the host's PC.\n",slot);auto a=vars(actor);
+ for(auto e:connected_players()){if(engine[80])eng<void(__cdecl*)(Edict*,int,const char*)>(80)(e,1,text);
+  if(saveSoundNative&&a){auto v=vars(e);float d=0;if(v)for(int k=0;k<3;++k){const float x=load<float>(a,8+k*4)-load<float>(v,8+k*4);d+=x*x;}if(e==actor||d<1000.f*1000.f)continue;}
+  if(engine[41])eng<void(__cdecl*)(Edict*,const char*,...)>(41)(e,"%s","play save/save_sequence.wav\n");}
 }
 // coop-fixes-013: a refused save is also shown on the saver's screen (the
 // user saw nothing happen at a recorder); the full reason stays in the log.
-void save_failed(Edict* actor,const char* full,const char* shown){checkpoint_notice(actor,full);if(live(actor)&&engine[80]){std::string text=std::string("Could not save:\n")+shown+"\n";eng<void(__cdecl*)(Edict*,int,const char*)>(80)(actor,1,text.c_str());}}
+void save_failed(Edict* actor,const char* full,const char* shown){checkpoint_notice(actor,full);if(!autosaveQuiet&&live(actor)&&engine[80]){std::string text=std::string("Could not save:\n")+shown+"\n";eng<void(__cdecl*)(Edict*,int,const char*)>(80)(actor,1,text.c_str());}}
 const SavedPlayer* carry_record(Edict* e);
 void checkpoint_save(Edict* actor){
  Edict* host=globals&&engine[72]?eng<Edict*(__cdecl*)(int)>(72)(1):nullptr;
@@ -317,7 +337,17 @@ void checkpoint_save(Edict* actor){
  // failed checkpoint commit leaves the previous pair (kept as .bak) matching.
  {std::string why;if(!dir.empty()&&!state_save_slot(dir,checkpointSlot,value,why)){const std::string full="[STORYCOOP] Checkpoint NOT saved: map state "+why+"; the previous save is kept.\n";save_failed(actor,full.c_str(),"the map state could not be written");return;}}
  if(dir.empty()||!commit_checkpoint(dir,checkpointSlot,value)){save_failed(actor,"[STORYCOOP] Checkpoint NOT saved: validation or atomic disk commit failed.\n","the save file could not be written");return;}
- playerBank=std::move(next);sessionSave={checkpointSlot,value.map};char text[160]{};std::snprintf(text,sizeof(text),"[STORYCOOP] Checkpoint slot%d COMMITTED map=%s recorder=%d (%u player records); restart restore still requires gameplay verification.\n",checkpointSlot,value.map.c_str(),value.recorder,static_cast<unsigned>(playerBank.size()));log(text);checkpoint_saved_notice(checkpointSlot);
+ playerBank=std::move(next);sessionSave={checkpointSlot,value.map};char text[160]{};std::snprintf(text,sizeof(text),"[STORYCOOP] Checkpoint slot%d COMMITTED map=%s recorder=%d (%u player records); restart restore still requires gameplay verification.\n",checkpointSlot,value.map.c_str(),value.recorder,static_cast<unsigned>(playerBank.size()));log(text);checkpoint_saved_notice(checkpointSlot,actor);
+}
+// v0.8 (item 10): the start of a boss fight is kept in a sixth slot no menu lists; a game over loads it.
+constexpr int AutosaveSlot=6;
+bool checkpoint_autosave(){
+ Edict* host=globals&&engine[72]?eng<Edict*(__cdecl*)(int)>(72)(1):nullptr;if(!checkpoint_host(host)||!view_alive(host))return false;
+ const int slot=checkpointSlot,recorder=requestedRecorder;checkpointSlot=AutosaveSlot;requestedRecorder=1;autosaveQuiet=true;
+ checkpoint_save(host);
+ autosaveQuiet=false;checkpointSlot=slot;requestedRecorder=recorder;
+ const bool saved=sessionSave.slot==AutosaveSlot&&sessionSave.map==map_name();
+ char line[120]{};std::snprintf(line,sizeof(line),"[STORYCOOP] AUTOSAVE boss fight on %s: %s\n",map_name(),saved?"saved":"not saved yet");log(line);return saved;
 }
 int argument_number(int i){const char* s=eng<const char*(__cdecl*)(int)>(83)(i);if(!s||!*s)return -1;int n=0;for(;*s;++s){if(*s<'0'||*s>'9'||n>100000)return -1;n=n*10+(*s-'0');}return n;}
 bool checkpoint_command(Edict* actor,const char* command){
@@ -524,7 +554,7 @@ bool save_window_command(Edict* e,const char* command){
  saveChoice={};saveChoice.actor=e;saveChoice.serial=serial(e);saveChoice.recorder=saveWindow.recorder;saveWindow={};
  save_choice_commit(b[0]-'0');
  // Saved now: the native PreSave below sets FL_NOTARGET, which a capture one frame later refuses.
- if(recorderRequest==e){recorderRequest=nullptr;checkpoint_save(e);}
+ if(recorderRequest==e){recorderRequest=nullptr;saveSoundNative=true;checkpoint_save(e);saveSoundNative=false;}
  return false;   // the native PreSave runs its sequence as well
 }
 bool recorder_begin(int destination,int type,const float*,Edict* actor){

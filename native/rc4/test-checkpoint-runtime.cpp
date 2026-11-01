@@ -102,6 +102,9 @@ int main(int argc,char** argv){
  // where it went and each hears the recorder's save sound once, on their own client.
  assert(soundCount==0&&(savedTold==std::vector<Edict*>{&edicts[1],&edicts[2]})&&printedText=="Game saved in slot 1\non the host's PC.\n");
  assert((played==std::vector<std::pair<Edict*,std::string>>{{&edicts[1],"play save/save_sequence.wav\n"},{&edicts[2],"play save/save_sequence.wav\n"}}));played.clear();
+ // v0.8: after a save-window save the native PreSave already played it: nobody near the host gets it again, a player too far away to hear it does.
+ {const float x=load<float>(ev(&edicts[2]),8);saveSoundNative=true;store(ev(&edicts[2]),8,load<float>(ev(&edicts[1]),8)+100.f);checkpoint_saved_notice(1,&edicts[1]);assert(played.empty());
+  store(ev(&edicts[2]),8,load<float>(ev(&edicts[1]),8)+2000.f);checkpoint_saved_notice(1,&edicts[1]);assert((played==std::vector<std::pair<Edict*,std::string>>{{&edicts[2],"play save/save_sequence.wav\n"}}));played.clear();store(ev(&edicts[2]),8,x);saveSoundNative=false;savedTold.clear();}
  Checkpoint saved;bool backup=false;assert(read_checkpoint(checkpoint_directory(),1,saved,backup)&&saved.players.size()==2&&saved.owner=="profile:host");std::reverse(saved.players.begin(),saved.players.end());assert(commit_checkpoint(checkpoint_directory(),1,saved));
  assert(saved.recorder==419);
  for(int i:{1,2,62}){store(ev(&edicts[i]),8,1735.85f);store(ev(&edicts[i]),12,-3429.36f);}

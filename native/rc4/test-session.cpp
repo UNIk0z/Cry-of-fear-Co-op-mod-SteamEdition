@@ -141,7 +141,7 @@ int main(int argc,char** argv_){
  store(globals,0x0c,3);store(globals,0,20.f);menu_credit_frame();assert(messageBegins==0);
  menu_credit_active(&entities[2]);menu_credit_frame();assert(messageBegins==0);   // only the menu's own client
  menu_credit_active(&entities[1]);store(globals,0,20.4f);menu_credit_frame();assert(messageBegins==0);
- store(globals,0,20.6f);menu_credit_frame();assert(messageBegins==1&&messageText=="Co-op mod v0.7.2 developed by Anas Sammak (koolkat)\nSpecial thanks: Mesilll, Michal Eminov, caixa, Joah230"&&logged("MENU credit shown bottom-left"));
+ store(globals,0,20.6f);menu_credit_frame();assert(messageBegins==1&&messageText=="Co-op mod v0.8 developed by Anas Sammak (koolkat)\nSpecial thanks: Mesilll, Michal Eminov, caixa, Joah230"&&logged("MENU credit shown bottom-left"));
  assert((message==std::vector<int>{1,23,29,4,163,7454,0,200,200,200,180,200,200,200,180,256,256,7680}));
  store(globals,0,24.f);menu_credit_frame();assert(messageBegins==1);store(globals,0,25.7f);menu_credit_frame();assert(messageBegins==2&&message[15]==0);
  // Back from a game: a new map, no credit until that client is running again.
@@ -235,7 +235,7 @@ int main(int argc,char** argv_){
   assert((local_player_models()==std::vector<std::string>{"simon","simon_aom","simon_twitcher","caps","zed"}));   // Simon, the outfits in their order, then the player's own
   assert(model_outfit("simon_aom")==4&&model_outfit("simon_twitcher")==11&&!model_outfit("simon")&&!model_outfit("zed")&&model_label("simon_aom")=="Afraid of Monsters"&&model_label("simon")=="Simon"&&model_label("zed")=="zed");
   assert(model_box_command(j,"sc_modelbox")&&messageBegins==1&&message[1]==91&&(std::vector<int>(message.begin()+2,message.end())==std::vector<int>{1,0,0,1}));   // logged on: no text fields
-  assert(picture()=="gfx/vgui/sc_mb0.tga"&&messageText=="\nSimon\n\nModel 1 of 5\n\nNext: next model\nDone: keep this one"&&logged("MODEL box open: 5 model(s), current simon"));
+  assert(picture()=="gfx/vgui/sc_mb0.tga"&&messageText=="\nSimon\n\nModel 1 of 5\n\nNext: next model\nDone: keep it, then the hands"&&logged("MODEL box open: 5 model(s), current simon"));
   assert(img[0x3EF6A]==0x90&&img[0x3EF6B]==0x90&&std::string(reinterpret_cast<const char*>(img.data()+0x14736C))=="%s\n");   // OK is Next, the text is ours
   assert(img[0x3F201]==0x8B&&img[0x3F202]==0xF1&&img[0x3F208]==0x6A&&img[0x3F209]==0xFF&&img[0x3F215]==0x90&&img[0x3F216]==0x2C&&img[0x3F21A]==0xE9);   // setBgColor(0,0,0,255): no grey box
   assert(model_box_command(j,"computercheck")&&picture()=="gfx/vgui/sc_mb4.tga"&&messageText.rfind("\nAfraid of Monsters\n\nModel 2 of 5",0)==0&&saved()=="simon_aom"&&serverCommands.back()=="setinfo sc_model \"simon_aom\"\n"&&messageBegins==2);
@@ -243,6 +243,12 @@ int main(int argc,char** argv_){
   assert(model_box_command(j,"computercheck")&&picture()=="gfx/vgui/sc_mbx.tga"&&messageText.rfind("\ncaps\n\nModel 4 of 5",0)==0&&saved()=="caps");   // no preview for the player's own
   assert(model_box_command(j,"computercheck")&&model_box_command(j,"computercheck")&&picture()=="gfx/vgui/sc_mb0.tga"&&saved()=="simon");   // wraps
   assert(model_box_command(j,"computercheck")&&saved()=="simon_aom");
+  // v0.8: Done on the model page opens the hands page in the same panel; Done there closes it.
+  auto savedHands=[&]{std::ifstream f(std::filesystem::path(gameDir)/"storycoop_hands.txt",std::ios::binary);std::string s;f>>s;return s;};
+  assert(hands_saved()=="auto"&&(local_hands()==std::vector<std::string>{"auto","simon","simon_aom","simon_twitcher"}));
+  assert(model_box_command(j,"stopcomputer")&&modelBox.who==j&&modelBox.handsPage&&picture()=="gfx/vgui/sc_mb4.tga"&&messageText.rfind("\nHands: same as the model\n\nHands 1 of 4",0)==0&&saved()=="simon_aom");   // the model chosen stays; its look for "same"
+  assert(model_box_command(j,"computercheck")&&picture()=="gfx/vgui/sc_mb0.tga"&&messageText.rfind("\nHands: Simon\n\nHands 2 of 4",0)==0&&savedHands()=="simon"&&saved()=="simon_aom");
+  assert(model_box_command(j,"computercheck")&&savedHands()=="simon_aom"&&model_box_command(j,"computercheck")&&model_box_command(j,"computercheck")&&savedHands()=="auto");   // wraps
   assert(model_box_command(j,"stopcomputer")&&img==shipped&&!modelBox.who&&logged("MODEL box closed"));
   assert(!model_box_command(j,"stopcomputer")&&!model_box_command(j,"computercheck"));   // the game's own again
   assert(model_box_command(j,"sc_modelbox")&&picture()=="gfx/vgui/sc_mb4.tga");   // kept for the next time
