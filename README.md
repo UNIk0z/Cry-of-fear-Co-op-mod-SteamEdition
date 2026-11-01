@@ -8,7 +8,6 @@
 
 ![Status: early test build](https://img.shields.io/badge/status-early%20test%20build-orange?style=for-the-badge)
 ![Players: 4](https://img.shields.io/badge/players-4-555?style=for-the-badge)
-![Windows](https://img.shields.io/badge/Windows-supported-0078D6?style=for-the-badge&logo=windows&logoColor=white)
 ![Linux](https://img.shields.io/badge/Linux-supported%20(Proton)-FCC624?style=for-the-badge&logo=linux&logoColor=black)
 
 [![Discord](https://img.shields.io/badge/Discord-report%20bugs-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/hgEGSf9MFZ)
@@ -17,7 +16,7 @@
 
 ## ⬇️ Download
 
-### **[Click here to download Cry of Fear Co-op v0.8 for Windows](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.8/Cry.of.Fear.Co-op.v0.8.zip)**
+### **[Click here to download Cry of Fear Co-op v0.8](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.8/Cry.of.Fear.Co-op.v0.8.zip)**
 
 ### **🐧 [Click here to download Cry of Fear Co-op v0.8 for Linux](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.8/Cry.of.Fear.Co-op.v0.8.Linux.zip)**
 
@@ -65,7 +64,7 @@ play **Simon's single-player story** together instead.
 
 ## What you need
 
-- **Cry of Fear** from Steam, on every PC (Windows, or Linux through Steam Proton).
+- **Cry of Fear** from Steam, on every PC (on Linux, through Steam Proton).
 - A way to reach each other's PC, for example **Radmin VPN** or a forwarded
   port **27015**.
 
