@@ -195,12 +195,12 @@ bool weapon_card(const std::string& n){return n.rfind("inventoryitems/weapons/",
 // clearExtras=false (coop-fixes-013 map-change carry): weapons the new map
 // already gave are kept; only missing ones are given.
 void equip_want(Edict* e,const SavedPlayer& saved);   // coop-runtime.hpp: keeps trying the held weapon / dual wield
-void team_cards_rebase(Edict* e);   // coop-runtime.hpp
+void team_cards_restored(Edict* e);   // coop-runtime.hpp
 extern int restoreQuiet;
 bool restore_player_loud(Edict* e,const SavedPlayer& saved,bool land,bool atPose,bool clearExtras);
 bool restore_player(Edict* e,const SavedPlayer& saved,bool land=true,bool atPose=false,bool clearExtras=true){
  // v0.8 (item 12): what comes back on a map load or a save load prints nothing and is no pickup.
- ++restoreQuiet;const bool ok=restore_player_loud(e,saved,land,atPose,clearExtras);--restoreQuiet;team_cards_rebase(e);return ok;
+ ++restoreQuiet;const bool ok=restore_player_loud(e,saved,land,atPose,clearExtras);--restoreQuiet;team_cards_restored(e);return ok;
 }
 bool restore_player_loud(Edict* e,const SavedPlayer& saved,bool land,bool atPose,bool clearExtras){
  const int slot=eng<int(__cdecl*)(Edict*)>(71)(e);

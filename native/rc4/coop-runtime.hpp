@@ -691,12 +691,15 @@ void item_copies_frame(){
   unsigned taken=0;
   if(book){auto m=book->find(r.key);if(m!=book->end())taken=m->second;else if(!here)taken=0xfu;}
   else if(!here)taken=0xfu;
-  PickupCopies c;c.taken=taken;bool originalUsed=false;
+  PickupCopies c;c.taken=taken;bool originalUsed=false,missing=false;
   for(int k=0;k<slots;++k){if(taken&(1u<<k))continue;Edict* e=nullptr;
    if(here&&!originalUsed){e=r.e;originalUsed=true;}
-   else {if(used+made>=maxEdicts-96){++noRoom;continue;}e=pickup_spawn(r);if(!e){++noRoom;continue;}++made;}
+   else {if(used+made>=maxEdicts-96){++noRoom;missing=true;continue;}e=pickup_spawn(r);if(!e){++noRoom;missing=true;continue;}++made;}
    c.e[k]=e;c.serial[k]=serial(e);const int n=eng<int(__cdecl*)(Edict*)>(71)(e);if(n>=0&&n<=maxEdicts){pickupOwner[n]=k+1;pickupOwnerSerial[n]=serial(e);}
   }
+  // Review 2026-11-04: a slot whose copy could not be made (edict limit) would have no pickup there at all;
+  // the map's own one is then everybody's again, first come first served, as before v0.8.
+  if(missing&&originalUsed){const int n=eng<int(__cdecl*)(Edict*)>(71)(r.e);if(n>=0&&n<=maxEdicts)pickupOwner[n]=0;}
   if(here&&!originalUsed){entity_retire(r.e);++finished;}
   pickupCopies[i]=c;++pickups;
  }
@@ -715,6 +718,9 @@ constexpr unsigned FlGodmode=0x40u,FlNotarget=0x80u,FlFrozen=0x1000u;
 struct LoadWait {bool armed=false;int expected=0;unsigned long long since=0;std::map<std::pair<Edict*,int>,unsigned> held;int shown=-1;};
 LoadWait loadWait;
 void load_wait_level_change(int players){loadWait={};if(players>1){loadWait.armed=true;loadWait.expected=players;}}
+// Review 2026-11-04: a new game or the main menu forgets a wait the last game left armed (quit while a partner was still loading):
+// the next game's first map held a lone host for 60 s with every trigger shut.
+void load_wait_reset(){loadWait={};}
 void load_wait_release(const char* why){
  for(const auto& [k,bits]:loadWait.held){auto e=k.first;auto v=live(e)&&serial(e)==k.second?vars(e):nullptr;if(!v)continue;unsigned clear=bits;if(camera_view(e))clear&=~FlFrozen;store(v,0x1a8,load<unsigned>(v,0x1a8)&~clear);if(engine[80])eng<void(__cdecl*)(Edict*,int,const char*)>(80)(e,1,"");}
  char line[140]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] LOADWAIT released (%s), %u player(s) were held\n",why,static_cast<unsigned>(loadWait.held.size()));log(line);loadWait={};
@@ -1217,6 +1223,7 @@ void half_read(){
 // A full inventory makes cof_giveitems drop an item_key on the floor instead: never hand over then.
 bool free_slot(Edict* e){void* p=nullptr;std::size_t n=0;if(!player_memory(e,p,n))return false;const std::size_t slots=load<unsigned char>(p,ThreeSlotsOffset)?3:6;for(std::size_t i=0;i<slots;++i){const char* s=string_at(load<int>(p,0x2200+i*4));if(!s||!*s)return true;}return false;}
 bool holds_card(Edict* e,const std::string& path){void* p=nullptr;std::size_t n=0;if(!player_memory(e,p,n))return false;for(std::size_t i=0;i<6;++i){const char* s=string_at(load<int>(p,0x2200+i*4));if(s&&!_stricmp(s,path.c_str()))return true;}return false;}
+void team_known_add(Edict* e,const std::string& card,int delta);   // key items section below
 void half_frame(){
  if(!scoped()||!globals)return;const float now=load<float>(globals,0);if(now<halfNext&&now>=halfNext-1.f)return;halfNext=now+0.5f;
  if(!halfCardsRead)half_read();if(halfCards.empty())return;
@@ -1227,6 +1234,8 @@ void half_frame(){
    if(to==from||!holds_card(to,h.partner)||holds_card(to,h.path)||!client_ready(to)||!client_ready(from)||!free_slot(to))continue;
    const bool given=helper_use_pairs("cof_giveitems",{{"message",h.path},{"spawnflags","1"}},to)&&holds_card(to,h.path);
    const bool cleared=given&&helper_use("cof_clearitems","message",h.path,from)&&!holds_card(from,h.path);
+   // Review 2026-11-04: the halves are team cards too. A move is neither a pickup nor a use: counted as one, it could take the half from both players.
+   if(given)team_known_add(to,h.path,1);if(cleared)team_known_add(from,h.path,-1);
    if(given&&engine[80]){eng<void(__cdecl*)(Edict*,int,const char*)>(80)(to,1,"Your partner's half is now in your inventory.\nCombine the two halves.\n");eng<void(__cdecl*)(Edict*,int,const char*)>(80)(from,1,"Your partner has the other half.\nYour half went to them.\n");}
    if(halfLines<40){++halfLines;char line[220]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] COMBINE %s moved from player=%d to player=%d (holds %s): given=%d cleared=%d\n",h.path.c_str(),eng<int(__cdecl*)(Edict*)>(71)(from),eng<int(__cdecl*)(Edict*)>(71)(to),h.partner.c_str(),given?1:0,cleared?1:0);log(line);}
    break;
@@ -1848,22 +1857,31 @@ bool fall_reveal(Edict* e){return helper_use_pairs("env_fade",{{"spawnflags","5"
 // his own "inventorydrop": the key then lies on the floor and the others keep theirs. Inventory given
 // back by a level change or a load (restore_player) never counts as a pickup.
 // Counted, not just seen: fuses from two maps are two cards of the same name, spent one at a time.
+// Review 2026-11-04: what this code gives or takes is added to the receiver's known counts
+// instead of reading his whole inventory again, so a card he picked up himself in the same
+// 0.1 s still counts as his own pickup (two players taking the map's two fuses at once kept
+// one fuse between them). A pickup adds to what the others hold, and a use takes only as
+// many as were used, so a partner who could not be given a second fuse (no free slot) no
+// longer loses both when the other spends one. A key picked up again after a drop is the
+// same key (floor): the others already hold it.
 using CardCounts=std::map<std::string,int>;
-struct TeamCards {std::map<std::pair<Edict*,int>,CardCounts> known;std::map<std::string,std::set<std::string>> declined;std::set<std::pair<Edict*,int>> dropping;float next=0;};
+struct TeamCards {std::map<std::pair<Edict*,int>,CardCounts> known;std::map<std::string,std::set<std::string>> declined;std::set<std::pair<Edict*,int>> dropping;CardCounts floor;float next=0;};
 TeamCards teamCards;
 CardCounts team_cards_of(Edict* e){CardCounts out;void* p=nullptr;std::size_t n=0;if(!player_memory(e,p,n))return out;for(std::size_t i=0;i<6;++i){const char* c=string_at(load<int>(p,0x2200+i*4));if(c&&*c&&team_card(c))++out[c];}return out;}
 int card_count(const CardCounts& counts,const std::string& card){auto it=counts.find(card);return it==counts.end()?0:it->second;}
-void team_cards_rebase(Edict* e){if(live(e))teamCards.known[{e,serial(e)}]=team_cards_of(e);}
+void team_known_add(Edict* e,const std::string& card,int delta){if(!delta||!live(e))return;auto it=teamCards.known.find({e,serial(e)});if(it!=teamCards.known.end())it->second[card]+=delta;}
+// Inventory given back (restore_player): not a pickup. The player is caught up with what the others hold once settled.
+void team_cards_restored(Edict* e){if(live(e))teamCards.known.erase({e,serial(e)});}
 void team_cards_command(Edict* e,const char* command){if(command&&!std::strcmp(command,"inventorydrop")&&live(e))teamCards.dropping.insert({e,serial(e)});}
 // Up to as many of this card as "want", while there is room.
 void team_give(Edict* to,const std::string& card,int want){
  const auto identity=player_identity(to);auto& declined=teamCards.declined[identity];if(declined.count(card))return;
- const int index=eng<int(__cdecl*)(Edict*)>(71)(to);
+ const int index=eng<int(__cdecl*)(Edict*)>(71)(to),before=card_count(team_cards_of(to),card);
  for(int guard=0;guard<6&&card_count(team_cards_of(to),card)<want;++guard){char line[200]{};
   if(!free_slot(to)){declined.insert(card);std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] KEYITEM %.60s: player=%d has no free slot, not given\n",card.c_str(),index);log(line);break;}
   const bool ok=helper_use_pairs("cof_giveitems",{{"message",card},{"spawnflags","1"}},to);
   std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] KEYITEM %.60s %s player=%d\n",card.c_str(),ok?"also given to":"could not be given to",index);log(line);if(!ok)break;}
- team_cards_rebase(to);
+ team_known_add(to,card,card_count(team_cards_of(to),card)-before);
 }
 bool team_settled(Edict* e){return client_ready(e)&&carry_settled(e)&&view_alive(e)&&!departedPlayers.count(player_identity(e))&&!(bagLoss.active&&!bagLoss.wiped.count({e,serial(e)}));}
 void team_cards_frame(){
@@ -1878,9 +1896,10 @@ void team_cards_frame(){
   const CardCounts before=it->second;it->second=cards;const int index=eng<int(__cdecl*)(Edict*)>(71)(e);
   std::set<std::string> names;for(const auto& [c,n]:before)names.insert(c);for(const auto& [c,n]:cards)names.insert(c);
   for(const auto& c:names){const int was=card_count(before,c),is=card_count(cards,c);if(was==is)continue;char line[200]{};
-   if(is>was){teamCards.declined[player_identity(e)].erase(c);for(auto o:players)if(o!=e&&team_settled(o))team_give(o,c,is);continue;}
-   if(dropped){teamCards.declined[player_identity(e)].insert(c);std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] KEYITEM %.60s dropped by player=%d; the others keep theirs\n",c.c_str(),index);log(line);continue;}
-   int taken=0;for(auto o:players){if(o==e)continue;for(int guard=0;guard<6&&card_count(team_cards_of(o),c)>is;++guard){if(!helper_use("cof_clearitems","message",c,o))break;++taken;}team_cards_rebase(o);}
+   if(is>was){teamCards.declined[player_identity(e)].erase(c);int fresh=is-was;auto& onFloor=teamCards.floor[c];const int back=(std::min)(fresh,onFloor);onFloor-=back;fresh-=back;
+    for(auto o:players)if(o!=e&&team_settled(o))team_give(o,c,(std::max)(is,card_count(team_cards_of(o),c)+fresh));continue;}
+   if(dropped){teamCards.declined[player_identity(e)].insert(c);teamCards.floor[c]+=was-is;std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] KEYITEM %.60s dropped by player=%d; the others keep theirs\n",c.c_str(),index);log(line);continue;}
+   int taken=0;for(auto o:players){if(o==e)continue;const int had=card_count(team_cards_of(o),c),keep=(std::max)(0,had-(was-is));for(int guard=0;guard<6&&card_count(team_cards_of(o),c)>keep;++guard){if(!helper_use("cof_clearitems","message",c,o))break;++taken;}team_known_add(o,c,card_count(team_cards_of(o),c)-had);}
    for(auto& [identity,set]:teamCards.declined)set.erase(c);
    std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] KEYITEM %.60s used by player=%d: taken from %d other player(s)\n",c.c_str(),index,taken);log(line);
   }
@@ -1941,6 +1960,24 @@ void story_teleport_lookup(Edict* start,const char* key,const char* value,Edict*
  storyTeleports.push_back({value,dest,0});
  for(const auto& b:BossExits)if(map_base(map_name())==b.map&&!std::strcmp(value,b.teleport)){bossExitName=b.exit;bossExitAt=load<float>(globals,0)+25.f;}
 }
+// Katz 2026-11-04 ("fix that limit"): a player on a ladder when the story moves the others was moved too,
+// and then put back at the ladder's end: LadderThink (decomp CoF_Ladder.cpp 365/396) sets his origin to the
+// top or bottom entity when the climb ends. He is now left on the ladder and moved beside the same player
+// once his climb is over (no climb camera, controls back), within 60 s.
+struct ClimbFollow {int serial=-1;Edict* leader=nullptr;int leaderSerial=-1;float until=0,atLeast=0;};
+std::unordered_map<Edict*,ClimbFollow> climbFollows;
+bool climbing(Edict* e){void* p=nullptr;std::size_t n=0;if(!player_memory(e,p,n))return false;auto c=ladder_tracked(load<std::uint32_t>(p,PlayerScene));return c&&ladder_is_camera(c);}
+void climb_follow_frame(){
+ if(climbFollows.empty()||!globals)return;const float now=load<float>(globals,0);
+ for(auto it=climbFollows.begin();it!=climbFollows.end();){
+  Edict* o=it->first;const auto f=it->second;auto v=vars(o);
+  if(!v||serial(o)!=f.serial||now>f.until||!live(f.leader)||serial(f.leader)!=f.leaderSerial||!view_alive(f.leader)){it=climbFollows.erase(it);continue;}
+  if(climbing(o)||!view_alive(o)||(load<unsigned>(v,0x1a8)&FlFrozen)){++it;continue;}
+  it=climbFollows.erase(it);auto a=vars(f.leader);float d=0;for(int k=0;k<3;++k){const float x=load<float>(a,8+k*4)-load<float>(v,8+k*4);d+=x*x;}if(d<f.atLeast*f.atLeast)continue;
+  const bool moved=move_beside(o,f.leader);if(moved){auto& l=lastPlaces[o];l.serial=serial(o);l.x=load<float>(v,8);l.y=load<float>(v,12);l.z=load<float>(v,16);l.known=true;l.ignoreUntil=now+1.f;}
+  char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] STORYTELEPORT player=%d off the ladder: %s player=%d\n",eng<int(__cdecl*)(Edict*)>(71)(o),moved?"moved beside":"no free spot beside",eng<int(__cdecl*)(Edict*)>(71)(f.leader));log(line);
+ }
+}
 void story_body_move(Edict* o,Edict* leader){
  auto a=vars(leader),q=vars(o);if(!a||!q)return;std::array<float,3> at{};if(!find_landing({load<float>(a,8),load<float>(a,12),load<float>(a,16)},o,at))return;
  for(int k=0;k<3;++k)store(q,0x20+k*4,0.f);eng<void(__cdecl*)(Edict*,const float*)>(28)(o,at.data());
@@ -1949,6 +1986,7 @@ int story_gather(Edict* leader,float atLeast,int& failed){
  int moved=0;const float now=load<float>(globals,0);auto a=vars(leader);if(!a)return 0;
  for(auto o:connected_players()){auto q=vars(o);if(o==leader||!q||!client_ready(o))continue;float d=0;for(int k=0;k<3;++k){const float x=load<float>(a,8+k*4)-load<float>(q,8+k*4);d+=x*x;}if(d<atLeast*atLeast)continue;
   if(!view_alive(o)){story_body_move(o,leader);continue;}
+  if(climbing(o)){climbFollows[o]={serial(o),leader,serial(leader),now+60.f,atLeast};++moved;continue;}
   if(move_beside(o,leader)){auto& l=lastPlaces[o];auto n=vars(o);l.serial=serial(o);l.x=load<float>(n,8);l.y=load<float>(n,12);l.z=load<float>(n,16);l.known=true;l.ignoreUntil=now+1.f;++moved;}else ++failed;}
  return moved;
 }
@@ -2051,4 +2089,4 @@ void wheelchair_frame(){
   for(int k=0;k<3;++k)store(v,0x20+k*4,load<float>(v,0x20+k*4)*cap/s);
   if(!wheelchairCutLogged){wheelchairCutLogged=true;char line[120]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] WHEELCHAIR speed %.0f held to its cap %.0f\n",s,cap);log(line);}}
 }
-void coop_map_changed(){collision_restore();wardrobeDone=false;teamCards.known.clear();teamCards.dropping.clear();teamCards.next=0;staleCards.clear();storyTeleports.clear();storyAnchor={};storyLateDone.clear();arrivalGrace.clear();exitTriggers.clear();bossExitAt=-1;bossSave={};bossOverAt=-1;sceneWatch={};wheelchairCutLogged=false;subtitleMuteUntil=-1;pickupCopies.clear();pickupOwner.clear();pickupOwnerSerial.clear();deployLogged.clear();doorHides.clear();stripClears.clear();fadesDone=false;doorPressUsed.clear();itemCopiesDone=false;pickupOwnersNext=0;forcedVisible.clear();bossOver=false;fallBacks.clear();doorGlobals.clear();doorLocks.clear();trainEscape={};floorWallsDone=false;quickNotices.clear();fallWatch.clear();equipWants.clear();nightmareLogged=false;morphineWatch.clear();prologueSkip={};partyLimitLogged=-1;joinWait={};skipScene={};skipAfter={};skipJump.clear();skipLines=0;evidence_reset();drowned_reset();give_reset();stuckUsed.clear();nightmareRegroup={};nameStates.clear();lastPlaces.clear();sceneSeen.clear();sceneFollowers.clear();idleProbes.clear();doorMusicLines=0;sceneMoveLines=0;}
+void coop_map_changed(){collision_restore();wardrobeDone=false;teamCards.known.clear();teamCards.dropping.clear();teamCards.floor.clear();teamCards.next=0;staleCards.clear();storyTeleports.clear();climbFollows.clear();storyAnchor={};storyLateDone.clear();arrivalGrace.clear();exitTriggers.clear();bossExitAt=-1;bossSave={};bossOverAt=-1;sceneWatch={};wheelchairCutLogged=false;subtitleMuteUntil=-1;pickupCopies.clear();pickupOwner.clear();pickupOwnerSerial.clear();deployLogged.clear();doorHides.clear();stripClears.clear();fadesDone=false;doorPressUsed.clear();itemCopiesDone=false;pickupOwnersNext=0;forcedVisible.clear();bossOver=false;fallBacks.clear();doorGlobals.clear();doorLocks.clear();trainEscape={};floorWallsDone=false;quickNotices.clear();fallWatch.clear();equipWants.clear();nightmareLogged=false;morphineWatch.clear();prologueSkip={};partyLimitLogged=-1;joinWait={};skipScene={};skipAfter={};skipJump.clear();skipLines=0;evidence_reset();drowned_reset();give_reset();stuckUsed.clear();nightmareRegroup={};nameStates.clear();lastPlaces.clear();sceneSeen.clear();sceneFollowers.clear();idleProbes.clear();doorMusicLines=0;sceneMoveLines=0;}

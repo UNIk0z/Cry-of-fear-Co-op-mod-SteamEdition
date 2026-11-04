@@ -479,6 +479,14 @@ int main(int argc,char** argv){
   story_teleport_lookup(nullptr,"targetname","sc4_cd_5_move",&entities[14]);assert(storyTeleports.empty());   // a converted door moves its own user
   story_teleport_lookup(nullptr,"targetname","2teleportion",&entities[12]);assert(storyTeleports.size()==1);
   story_teleport_frame();assert(storyTeleports.empty()&&teleports==1&&std::fabs(origin(&entities[2])[0]-100.f)<300.f&&storyAnchor.who==&entities[1]&&logged({"STORYTELEPORT 2teleportion moved player=1; partners moved=1"}));
+  // Katz 2026-11-04: a partner on a ladder stays on it, and is moved once the climb is over.
+  {make(16,"cof_ladder_manager","climbme",914);allocate(&entities[16],0x1b4);place(&entities[16],-497,1135,0);make(17,"camera_model","",915);allocate(&entities[17],0x200);place(&entities[17],-497,1135,96);
+   ladders.clear();Ladder l;l.seat.e=&entities[16];l.seat.serial=serial(&entities[16]);l.seat.name="climbme";ladders.push_back(l);
+   place(&entities[2],-497,1135,37);store(pd(&entities[2]),0x5ac,reinterpret_cast<std::uint32_t>(pd(&entities[17])));assert(climbing(&entities[2]));
+   teleports=0;story_teleport_lookup(nullptr,"targetname","2teleportion",&entities[12]);story_teleport_frame();assert(teleports==0&&climbFollows.count(&entities[2]));
+   climb_follow_frame();assert(teleports==0);   // still climbing
+   store(pd(&entities[2]),0x5ac,0u);climb_follow_frame();assert(teleports==1&&climbFollows.empty()&&std::fabs(origin(&entities[2])[0]-100.f)<300.f&&logged({"off the ladder: moved beside player=1"}));
+   ladders.clear();for(int i=16;i<=17;++i){entities[i]={};store(&entities[i],0,1);}}
   // Katz's loop: back in the corridor with the one-shot trigger used, the map's own teleport sends him on; on the way in he never bounces.
   const bool loadingBefore=loadingCheckpoint;loadingCheckpoint=false;storyAnchor={};storyLateDone.clear();fired.clear();carryDone[&entities[2]]=serial(&entities[2]);place(&entities[2],-497,1135,-1064);
   story_late_frame(&entities[2]);assert((fired==std::vector<std::string>{"teleport 2teleportion"})&&storyAnchor.who==&entities[2]);
@@ -509,8 +517,26 @@ int main(int argc,char** argv){
   {carryDone[&entities[1]]=serial(&entities[1]);carryDone[&entities[2]]=serial(&entities[2]);tick();put(&entities[1],0,fuse);put(&entities[1],1,fuse);tick();assert(card_count(team_cards_of(&entities[2]),fuse)==2);
    store(pd(&entities[1]),0x2200,0);tick();assert(card_count(team_cards_of(&entities[2]),fuse)==1);
    for(int i=0;i<6;++i){store(pd(&entities[1]),0x2200+i*4,0);store(pd(&entities[2]),0x2200+i*4,0);}teamCards={};carryDone.clear();}
+  // Review 2026-11-04: both take one of the map's two fuses in the same 0.1 s: each ends with two.
+  {carryDone[&entities[1]]=serial(&entities[1]);carryDone[&entities[2]]=serial(&entities[2]);tick();put(&entities[1],0,fuse);put(&entities[2],0,fuse);tick();
+   assert(card_count(team_cards_of(&entities[1]),fuse)==2&&card_count(team_cards_of(&entities[2]),fuse)==2);
+   // Both spend one in the same 0.1 s: none left, and nobody loses more than was used.
+   store(pd(&entities[1]),0x2200,0);store(pd(&entities[2]),0x2200,0);tick();tick();assert(card_count(team_cards_of(&entities[1]),fuse)==0&&card_count(team_cards_of(&entities[2]),fuse)==0);
+   // A partner who could not get the second fuse: one spent by him leaves the other one.
+   put(&entities[2],0,fuse);put(&entities[2],1,fuse);teamCards.known[{&entities[2],serial(&entities[2])}]={{fuse,2}};put(&entities[1],0,fuse);teamCards.known[{&entities[1],serial(&entities[1])}]={{fuse,1}};
+   store(pd(&entities[1]),0x2200,0);tick();assert(card_count(team_cards_of(&entities[2]),fuse)==1);
+   for(int i=0;i<6;++i){store(pd(&entities[1]),0x2200+i*4,0);store(pd(&entities[2]),0x2200+i*4,0);}teamCards={};
+   // A key dropped and taken again is the same key: the partner does not get a second one.
+   auto rope2=std::string("inventoryitems/rope.txt");tick();put(&entities[1],0,rope2);tick();assert(card_count(team_cards_of(&entities[2]),rope2)==1);
+   team_cards_command(&entities[1],"inventorydrop");store(pd(&entities[1]),0x2200,0);tick();put(&entities[1],0,rope2);tick();assert(card_count(team_cards_of(&entities[2]),rope2)==1);
+   // Inventory given back (a fall respawn, a rejoin) is no pickup, and he gets what the team found meanwhile.
+   const auto valve=std::string("inventoryitems/valve.txt");put(&entities[1],1,valve);store(pd(&entities[2]),0x2200,0);team_cards_restored(&entities[2]);tick();
+   assert(card_count(team_cards_of(&entities[1]),rope2)==1&&holds_card(&entities[2],valve)&&holds_card(&entities[2],rope2));
+   for(int i=0;i<6;++i){store(pd(&entities[1]),0x2200+i*4,0);store(pd(&entities[2]),0x2200+i*4,0);}teamCards={};carryDone.clear();}
   // A personal card is nobody else's.
   auto tape=std::string("inventoryitems/cassettetape.txt");carryDone[&entities[1]]=serial(&entities[1]);carryDone[&entities[2]]=serial(&entities[2]);tick();put(&entities[1],0,tape);tick();assert(!holds_card(&entities[2],tape));
   for(int i=0;i<6;++i)store(pd(&entities[1]),0x2200+i*4,0);teamCards={};carryDone.clear();nextFree=20;}
+  // Review 2026-11-04: a wait the last game left armed is gone in a new one.
+  load_wait_level_change(2);assert(loadWait.armed);reset();assert(!loadWait.armed);
  std::puts("PASS world/campaign checkpoint fixtures: saves at any RC2/RC4 recorder (BSP-indexed), per-player poses, removed pickups and key-unlocked doors restored after load with authored-target/hidden/story-toggled exclusions, safe TraceHull landings (occupied, wall, water), tape reminder set on restore, boat partner gathered at the dock only, stuck command and nightmare photo regroup. NOT Cry of Fear gameplay verification.");
 }

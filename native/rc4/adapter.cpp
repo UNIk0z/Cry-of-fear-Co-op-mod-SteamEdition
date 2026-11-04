@@ -177,8 +177,8 @@ void opening_think_evidence(Edict* e){
  const int id=serial(e);auto found=openingThinks.find(e);if(found!=openingThinks.end()&&found->second==id)return;
  openingThinks[e]=id;char s[200]{};std::snprintf(s,sizeof(s),"[STORYCOOP_RC4_HOTFIX] NATIVE_THINK %s edict=%d time=%.2f\n",name,eng<int(__cdecl*)(Edict*)>(71)(e),load<float>(globals,0));log(s);
 }
-void state_reset();void objective_session_reset();
-void reset(){objective_session_reset();state_reset();carry_reset();give_reset();give_owed_reset();rejoin_reset();journal.reset();puzzle_reset();checkpoint_reset();keypad_reset();story_reset();for(auto& item:allocations){item.second.sent=0;item.second.next=0;item.second.notified=0;item.second.rejection=0;}}
+void state_reset();void objective_session_reset();void load_wait_reset();
+void reset(){objective_session_reset();state_reset();load_wait_reset();carry_reset();give_reset();give_owed_reset();rejoin_reset();journal.reset();puzzle_reset();checkpoint_reset();keypad_reset();story_reset();for(auto& item:allocations){item.second.sent=0;item.second.next=0;item.second.notified=0;item.second.rejection=0;}}
 std::string sha_file(const std::wstring& path){
  BCRYPT_ALG_HANDLE alg=nullptr;BCRYPT_HASH_HANDLE h=nullptr;DWORD size=0,got=0;
  if(BCryptOpenAlgorithmProvider(&alg,BCRYPT_SHA256_ALGORITHM,nullptr,0)<0)return {};
@@ -405,7 +405,7 @@ void everyone(bool capture){if(!globals)return;for(int i=1;i<=load<int>(globals,
 #include "state-runtime.hpp"
 #include "client-menu.hpp"
 void frame_evidence();
-void __cdecl start_frame(){crumb("start_frame");++netFrame;collision_restore();gameui_patch();firstPlayerLookup=false;pause_poll();menu_credit_frame();give_flush();three_slots_frame();chapter_frame();join_wait_frame();regroup_frame();checkpoint_start_frame();keypad_frame();story_frame();logo_frame();score_sync();keydoor_frame();ladder_frame();pp_frame();half_frame();skip_frame();party_counters_frame();prologue_skip_frame();boss_frame();train_escape_frame();floor_walls_frame();stayout_fades_frame();wardrobe_frame();join_connect_frame();load_wait_frame();door_lock_frame();item_copies_frame();team_cards_frame();story_teleport_frame();scene_watch_frame();boss_save_frame();wheelchair_frame();frame_evidence();}
+void __cdecl start_frame(){crumb("start_frame");++netFrame;collision_restore();gameui_patch();firstPlayerLookup=false;pause_poll();menu_credit_frame();give_flush();three_slots_frame();chapter_frame();join_wait_frame();regroup_frame();checkpoint_start_frame();keypad_frame();story_frame();logo_frame();score_sync();keydoor_frame();ladder_frame();pp_frame();half_frame();skip_frame();party_counters_frame();prologue_skip_frame();boss_frame();train_escape_frame();floor_walls_frame();stayout_fades_frame();wardrobe_frame();join_connect_frame();load_wait_frame();door_lock_frame();item_copies_frame();team_cards_frame();story_teleport_frame();climb_follow_frame();scene_watch_frame();boss_save_frame();wheelchair_frame();frame_evidence();}
 void __cdecl game_init(){crash_install();reset();native<void(__cdecl*)()>(0)();if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_checkpoint_load",&checkpoint_load_command);if(engine[56])eng<void(__cdecl*)(cvar_t*)>(56)(&collisionCvar);if(engine[56])eng<void(__cdecl*)(cvar_t*)>(56)(&extrasCvar);if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_checkpoint_prepare",&checkpoint_prepare_command);if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_door_music",&door_music_command);if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_report",&model_report_send);log("[STORYCOOP_RC4] GameInit forwarded; checkpoint command registered\n");}
 // v0.3 audit: the main menu map (c_game_menu1) ends every game. Only the mod's
 // New Game/Load entries and cof_campaign_story4 reset the session, so a game

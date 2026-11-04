@@ -16,9 +16,9 @@
 
 ## ⬇️ Download
 
-### **[Click here to download Cry of Fear Co-op v0.8](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.8/Cry.of.Fear.Co-op.v0.8.zip)**
+### **[Click here to download Cry of Fear Co-op v0.8.1](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.8.1/Cry.of.Fear.Co-op.v0.8.1.zip)**
 
-### **[Click here to download Cry of Fear Co-op v0.8 for Linux](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.8/Cry.of.Fear.Co-op.v0.8.Linux.tar.gz)**
+### **[Click here to download Cry of Fear Co-op v0.8.1 for Linux](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.8.1/Cry.of.Fear.Co-op.v0.8.1.Linux.tar.gz)**
 
 > [!NOTE]
 > **Linux is supported now.** Cry of Fear runs through Steam Proton, and Linux and Windows players can play together. See the Linux steps below the Windows ones.
@@ -35,7 +35,7 @@
 3. With Cry of Fear closed, open **`Cry of Fear Co-op.exe`** and click **Install** (every player). The program isn't signed, so Windows may warn about it: click **More info**, then **Run anyway**.
 4. To play, click **Run Co-op Mod**. See [Play](#2-play) below.
 
-**Linux (Steam Proton):** download the **[Linux package](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.8/Cry.of.Fear.Co-op.v0.8.Linux.tar.gz)** and extract it (`tar xzf` or your file manager). With the game closed, open a terminal in that folder, run `bash coop.sh` and pick **Install**. To play, run `bash coop.sh` again and pick **Run Co-op Mod** (if the game's own launcher window opens, click **LAUNCH**). It needs Python 3. The Linux version is new, so please report anything that breaks.
+**Linux (Steam Proton):** download the **[Linux package](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.8.1/Cry.of.Fear.Co-op.v0.8.1.Linux.tar.gz)** and extract it (`tar xzf` or your file manager). With the game closed, open a terminal in that folder, run `bash coop.sh` and pick **Install**. To play, run `bash coop.sh` again and pick **Run Co-op Mod** (if the game's own launcher window opens, click **LAUNCH**). It needs Python 3. The Linux version is new, so please report anything that breaks.
 
 > [!WARNING]
 > **This mod is unfinished,**
@@ -154,7 +154,7 @@ Every bug report needs the **log file**. That's how we can see what happened.
 - Three and four players have not been tested yet.
 - Open bugs: a crawler enemy is missing in the subway, and crouching on a save
   station jitters.
-- The v0.7, v0.7.1, v0.7.2 and v0.8 fixes have not been tried in a co-op session yet, including the
+- The v0.7, v0.7.1, v0.7.2, v0.8 and v0.8.1 fixes have not been tried in a co-op session yet, including the
   university enemies, the elevator scene after entering the code and the door
   opened from the other side, and the v0.7.2 ladder and revive fixes. The outfits have only been tried alone so far.
 - `Cry of Fear Co-op.exe` is new and has only been tested with fake scripts. A real install, uninstall and

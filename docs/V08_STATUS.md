@@ -31,6 +31,24 @@ Evidence: Katz's Playtest 3000 folder (17 clips, more.txt, the host's and the pa
 | 13 | Doctor and police loop | Fixed, not run in game (fixture passes) | Item 11's teleport rule. Exit triggers also do nothing for a player's first 3 s on a map, and no trigger fires during the load wait. Anyone who ends up in that corridor with *40 already used is sent to the station by the map's own teleport. | Katz's spot, s4_subwaysick2_e0 to s4_subway2st1_e2 at -236 -1588 -143, is where trigger *40's teleport lands the first player (destination -237 -1589 -208). All four co-op spawns stand in *40, 16 units from exit *37. The other player stayed in the dark corridor and walked into *37, and s4_subwaysick2 *82 came straight back. After that *40 was used, so nobody could reach the station. Host log 2026-10-31 shows the loop. |
 | 14 | "Zoom" | Investigated; speed cap fixed, not run in game | The wheelchair's speed cap now holds every frame. | Clip 17 is the host's own wheelchair on the final map (ping 0, HUD speed 287 against a cap of 220), not ping or prediction. The map was inferred from the clip's health and hands. If 220 still feels too fast, the cap needs lowering. |
 
+## Code review 2026-11-04 (Claude, not run in game)
+
+A read of the adapter, the launcher and the install scripts for conflicts between features, checked against the decompile. There are no Linux scripts in the repository. Fixed in code (fixture cases in test-world.cpp; adapter build W/work/claude-s42-native-002, suites W/work/claude-s42-tests-002.log):
+
+| Area | Problem | Fix |
+|---|---|---|
+| Key items (item 2) | Two players taking the map's two fuses in the same 0.1 s ended with one fuse between them: the receiver's whole inventory was read again after the give, so his own pickup was never seen. | What the code gives or takes is added to the known counts. |
+| Key items | A use took the card from the others down to the user's new count. A partner who held two fuses (the other one had no free slot for the second) lost both when one was spent: a socket left without a fuse. | A use takes as many as were used from each other player. A pickup adds to what they hold. A key picked up again after a drop is the same key (counted on the floor), so nobody gets a second copy. |
+| Key items vs fall respawn and rejoin | A player given his inventory back (restore_player) never got the key items the others found while he was dead or away. The comment promised it. | A restore makes him new to the team: once settled he gets what the others hold, and his own restored cards are not shared as pickups. |
+| Two-half items vs key items | The halves (number plates, scissors) are key items too. The v0.3 half move (one player's half given to the partner, cleared from him) looked like a use and could take the half from both players. | The move is recorded as neither a pickup nor a use. |
+| Load wait (v0.6) | A wait armed by a level change was kept by the main menu and a new game. After quitting while a partner was still loading, the next game's first map held a lone host frozen for 60 s with every trigger shut. | reset() clears it (new game, main menu, Continue). |
+| Pickups (item 1) | When a slot's copy could not be made (edict limit), that slot had nothing at that spot. | The map's own pickup is then everybody's, first come first served, as before v0.8. |
+| Launcher | A .part file left by a launcher killed mid-download made the next update fail once ("file exists"). | The download overwrites it. The launcher binary is not rebuilt; the next package does that. |
+
+Checked and left as they are: per-player copies are never written to the map state, so a revisit does not double them. cof_clearitems takes one card per Use (ClearOutSlotNamed, all=0). subtitle_main lookups are null-checked by the game. A skipped scene's zoom is returned through the fan-out counter. The boss autosave (slot 6) is refused while a load is still restoring someone, and is tried again every 2 s.
+
+Ladder climber (Katz: "fix that limit"): a player climbing when a story teleport or a scene end moved the others was moved too, then put back at the ladder's end when the climb finished (LadderThink sets his origin). He now stays on the ladder and is moved beside the same player once the climb is over and his controls are back (within 60 s). Known limit, not changed: R typed in the chat box during a scene counts as a skip vote.
+
 ## Tests for Katz to run
 
 Full list: docs/V08_TEST.md. Solo first:

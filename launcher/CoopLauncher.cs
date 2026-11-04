@@ -735,7 +735,8 @@ namespace CofCoop
                 {
                     response.EnsureSuccessStatusCode();
                     using (Stream input = await response.Content.ReadAsStreamAsync())
-                    using (FileStream file = new FileStream(partial, FileMode.CreateNew))
+                    // Create, not CreateNew: a .part left by a launcher that was killed mid-download is overwritten.
+                    using (FileStream file = new FileStream(partial, FileMode.Create))
                     using (SHA256 hash = SHA256.Create())
                     {
                         byte[] buffer = new byte[81920];

@@ -77,8 +77,10 @@ export function main(args){
   const bytes=fs.readFileSync(path.join(candidate,rel));if(pin&&sha256(bytes)!==pin)throw Error('Changed package file: '+rel);
   fs.mkdirSync(path.dirname(path.join(data,rel)),{recursive:true});fs.writeFileSync(path.join(data,rel),bytes,{flag:'wx'});
  }
- fs.copyFileSync(path.join(linuxDir,'coop-linux.py'),path.join(data,'coop-linux.py'),fs.constants.COPYFILE_EXCL);
- fs.copyFileSync(path.join(linuxDir,'coop.sh'),path.join(root,'coop.sh'),fs.constants.COPYFILE_EXCL);fs.chmodSync(path.join(root,'coop.sh'),0o755);
+ // LF only: a Windows checkout (core.autocrlf) has CRLF, and bash stops at the first $'\r'.
+ const lf=name=>fs.readFileSync(path.join(linuxDir,name),'utf8').replace(/\r\n/g,'\n');
+ fs.writeFileSync(path.join(data,'coop-linux.py'),lf('coop-linux.py'),{flag:'wx'});
+ fs.writeFileSync(path.join(root,'coop.sh'),lf('coop.sh'),{flag:'wx'});fs.chmodSync(path.join(root,'coop.sh'),0o755);
  fs.writeFileSync(path.join(root,'READ ME.txt'),linuxReadMe(catalog.coopFixes.id),{flag:'wx'});
  fs.mkdirSync(path.join(root,'playermodels'));fs.writeFileSync(path.join(root,'playermodels','PUT PLAYER MODELS HERE.txt'),'Put your own player models (.mdl files made for the Cry of Fear player skeleton) in this folder,\nthen run the mod (bash coop.sh run). Each model is copied into the game once.\n',{flag:'wx'});
  const summary={root,version:catalog.coopFixes.id,files:files.filter(([r])=>!r.endsWith('.ps1')).length};
