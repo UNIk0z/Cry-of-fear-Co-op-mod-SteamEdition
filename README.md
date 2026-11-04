@@ -146,19 +146,12 @@ Every bug report needs the **log file**. That's how we can see what happened.
 
 ## Current Known limits
 
-- Most chapter starts have been tried alone. Most of the campaign has not been
-  played through in co-op yet.
-- The endings (the strangle scenes and the final wheelchair boss) are still
-  designed around player 1.
-- Some particle effects may only show for the host.
-- Three and four players have not been tested yet.
-- Open bugs: a crawler enemy is missing in the subway, and crouching on a save
+- Only the host can save, at a tape recorder.
+- A crawler enemy is missing in the subway (s4_subtunnel2), and crouching on a save
   station jitters.
-- The v0.7, v0.7.1, v0.7.2, v0.8 and v0.8.1 fixes have not been tried in a co-op session yet, including the
-  university enemies, the elevator scene after entering the code and the door
-  opened from the other side, and the v0.7.2 ladder and revive fixes. The outfits have only been tried alone so far.
-- `Cry of Fear Co-op.exe` is new and has only been tested with fake scripts. A real install, uninstall and
-  update with it have not been run.
+- Pressing R while typing in the chat during a cutscene counts as a skip vote.
+- The crashes when joining that showed up in our logs happen inside the RebuiltSimon
+  add-on, not in this mod. If you crash while joining with it installed, try without it.
 
 ## Credits
 
