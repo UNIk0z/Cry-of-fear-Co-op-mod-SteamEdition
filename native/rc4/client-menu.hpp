@@ -181,11 +181,13 @@ void skip_key_poll(bool gameuiActive){
  if(focused&&!skipKeyDown&&(state&0x8001)!=0)eng<void(__cdecl*)(const char*)>(39)("cmd sc_skip\n");
  skipKeyDown=focused&&(state&0x8000)!=0;
 }
+void qol_timer();void team_line_patch();void session_join_started(const std::string& target);void session_joined_report();   // qol-runtime.hpp (v0.9)
 void CALLBACK menu_hold_timer(HWND,UINT,UINT_PTR,DWORD){
  // v0.7.1: R does not depend on the pause guard. A game whose engine or GameUI build is
  // not the pinned one had no R at all, and its player's missing vote blocked everybody.
  pause_probe();const bool active=pauseProbe.ready&&reinterpret_cast<bool(__thiscall*)(void*)>((*reinterpret_cast<void***>(pauseProbe.ui))[11])(pauseProbe.ui);
  skip_key_poll(active);if(pauseProbe.ready)menu_hold(active);
+ qol_timer();
 }
 void menu_hold_start(){auto set=reinterpret_cast<UINT_PTR(WINAPI*)(HWND,UINT_PTR,UINT,TIMERPROC)>(user32_proc("SetTimer"));if(clientImage&&!menuTimer&&set)menuTimer=set(nullptr,0,50,&menu_hold_timer);}
 bool gameuiTried=false;
@@ -249,7 +251,7 @@ bool join_box_command(Edict* e,const char* command){
 }
 void join_connect_frame(){
  if(pendingJoin.target.empty()||GetTickCount64()<pendingJoin.due)return;const std::string target=pendingJoin.target;pendingJoin={};
- if(engine[39])eng<void(__cdecl*)(const char*)>(39)(("connect "+target+"\n").c_str());
+ session_join_started(target);if(engine[39])eng<void(__cdecl*)(const char*)>(39)(("connect "+target+"\n").c_str());
 }
 // --- The player model box (v0.7, docs/V07_TODO.md 3) ----------------------------------------
 // Katz 2026-10-27: a "Player Model" button on the co-op main menu, beside Host
@@ -370,7 +372,11 @@ bool model_box_command(Edict* e,const char* command){
 // "sc_report", stuffed by the server of the game this player is in: runs in this player's own game, whoever hosts.
 void __cdecl model_report_send(){
  const auto dir=game_dir_path();std::string model;if(!dir.empty()){std::ifstream f(dir/L"storycoop_model.txt",std::ios::binary);if(f)f>>model;}for(auto& c:model)c=static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
- if(!model_name_ok(model))model="simon";const std::string text="cmd sc_mdl "+model+" "+hands_saved()+"\n";if(engine[39])eng<void(__cdecl*)(const char*)>(39)(text.c_str());
+ if(!model_name_ok(model))model="simon";
+ // v0.9 (item 9): this game's own subtitle language goes with it (qol-runtime.hpp); older hosts read two words only.
+ const int language=engine[57]?static_cast<int>(eng<float(__cdecl*)(const char*)>(57)("cof_subtitlelanguage")):1;
+ const std::string text="cmd sc_mdl "+model+" "+hands_saved()+" "+std::to_string(language<0||language>7?1:language)+"\n";if(engine[39])eng<void(__cdecl*)(const char*)>(39)(text.c_str());
+ session_joined_report();
 }
 // --- Up to ten syringes in co-op (v0.6.1) ---------------------------------------------
 // Katz 2026-10-25: "players should be able to hold more than one morphine/syringe
@@ -410,7 +416,7 @@ void client_menu_patch(){
  std::error_code error;const auto bytes=std::filesystem::file_size(file,error);
  if(dos->e_magic!=IMAGE_DOS_SIGNATURE||nt->Signature!=IMAGE_NT_SIGNATURE||error||bytes!=1754112){log("[STORYCOOP_RC4] MENU co-op menu off: client.dll is not the expected game version\n");return;}
  std::string why;const int result=client_menu_apply(base,nt->OptionalHeader.SizeOfImage,reinterpret_cast<std::uint32_t>(base),why);
- if(result){clientImage=base;clientImageSize=nt->OptionalHeader.SizeOfImage;}
+ if(result){clientImage=base;clientImageSize=nt->OptionalHeader.SizeOfImage;team_line_patch();}
  if(result==1)log("[STORYCOOP_RC4] MENU co-op main menu set up in memory (the client.dll file is not changed)\n");
  else if(result==2)log("[STORYCOOP_RC4] MENU co-op main menu already in place\n");
  else {const std::string line="[STORYCOOP_RC4] MENU co-op menu off: "+why+"; the game's own menu stays\n";log(line.c_str());}

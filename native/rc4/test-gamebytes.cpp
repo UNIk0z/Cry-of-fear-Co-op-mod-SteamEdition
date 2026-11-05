@@ -33,6 +33,17 @@ int main(int argc,char** argv){
  for(const auto& [name,list]:std::vector<std::pair<const char*,std::vector<ClientPatch>>>{{"join_box_patches",join_box_patches()},{"model_box_patches",model_box_patches()},{"menu_hold_patches",menu_hold_patches()}}){apply(name,list,client);apply(name,list,client,true);}
  // The picture name the model box changes per model must be there too.
  apply("model box picture",{{ModelBoxPicture,client_text(ModelBoxPictureShipped,ModelBoxPictureBytes),client_text("gfx/vgui/sc_mb0.tga",ModelBoxPictureBytes),false}},client);
+ // v0.9 team HUD (qol-runtime.hpp): the list line, the list switch and every address the adapter reads.
+ apply("team list line",{{TeamLineVa,team_line_shipped(ClientPreferredBase),team_line_ours(ClientPreferredBase,0x20000000),false}},client);
+ for(const std::uint32_t to:{TeamAlways,TeamNever}){apply("team list switch",{{TeamListPattern,client_dword(TeamFour),client_dword(to),false}},client);apply("team list switch",{{TeamListPattern,client_dword(TeamFour),client_dword(to),false}},client,true);}
+ auto bytes_at=[&](std::uint32_t va,const std::vector<unsigned char>& want){return va>=ClientPreferredBase&&va-ClientPreferredBase+want.size()<=client.size()&&std::equal(want.begin(),want.end(),client.begin()+(va-ClientPreferredBase));};
+ const std::vector<std::pair<std::uint32_t,std::vector<unsigned char>>> reads{
+  {TeamFour,{'4',0}},{TeamNever,client_text("%s - Health %i - Ping %d",25)},{TeamPlainFormatVa,{'%','s',0}},
+  {0x1003C9DF,{0x83,0xc3,0x14}},                                                                                      // g_PlayerInfoList rows: add ebx,14h
+  {0x1003C80C,{0x8b,0x85,0x98,0xfd,0xff,0xff,0xff,0x34,0x30}},                                                          // (before the line patch: health from the HUD's own array)
+  {0x10079156,{0xa1,0x00,0x26,0x1b,0x10,0x85,0xc0,0x74,0x63,0x8b,0x88,0x04,0x14,0x00,0x00,0x85,0xc9,0x74,0x59,0x8b,0x01,0x8b,0x40,0x28}}};   // gViewPort->m_pRECBInventory->isVisible
+ auto shipped=mapped(game/"cl_dlls"/"client.dll");
+ for(const auto& [va,want]:reads){const bool ok=va>=0x1003C807&&va<0x1003C823?std::equal(want.begin(),want.end(),shipped.begin()+(va-ClientPreferredBase)):bytes_at(va,want);if(!ok){std::printf("FAIL team HUD read at %08X\n",va);return 1;}}
  auto ui=mapped(game/"cl_dlls"/"GameUI.dll");apply("gameui_patches",gameui_patches(),ui);
  auto server=mapped(game/"cl_dlls"/"hl.dll");apply("ammo_limit_patches",ammo_limit_patches(),server);
  std::puts("PASS patch lists: every patch fits the real client.dll, GameUI.dll and hl.dll");

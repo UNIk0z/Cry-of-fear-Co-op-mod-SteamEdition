@@ -1,0 +1,7 @@
+storycoop_unstuck
+{
+	line1		"Stuck? Press * to get free (co-op)."
+	line2		"It moves you out of a wall, or next to your partner."
+	nobutton	"K"
+	cfgbutton	"sc_unstuck"
+}

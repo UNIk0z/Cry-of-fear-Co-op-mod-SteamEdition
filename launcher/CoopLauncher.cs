@@ -32,11 +32,14 @@ namespace CofCoop
     static class Program
     {
         [STAThread]
-        static void Main()
+        static int Main(string[] args)
         {
+            // v0.9, for tests: --make-spray <picture> <out.wad> (no window).
+            if (args.Length == 3 && args[0] == "--make-spray") { try { return Spray.Command(args[1], args[2]); } catch { return 3; } }
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new LauncherForm());
+            return 0;
         }
     }
 
@@ -95,7 +98,9 @@ namespace CofCoop
         readonly float scale;
         readonly Font menuFont, smallFont, tinyFont;
         readonly List<MenuLine> scriptLines = new List<MenuLine>();
-        MenuLine runLine, updateLine, installLine, uninstallLine, readMeLine, quitLine;
+        MenuLine runLine, updateLine, installLine, uninstallLine, settingsLine, sprayLine, readMeLine, quitLine;
+        // v0.9: when the game started (the rejoin offer only reads a session file written after it).
+        DateTime gameStartedAt = DateTime.MinValue;
         string infoText = "", messageText = "", hintText = "";
         string version = "";
         Dictionary<string, object> catalog;
@@ -116,7 +121,7 @@ namespace CofCoop
         const string ReleaseApi = "https://api.github.com/repos/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/latest";
         const string ReleasesPage = "https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases";
         const string DownloadPrefix = "https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/";
-        const int StatusTop = 372;
+        const int StatusTop = 440;
 
         int S(float v) { return (int)Math.Round(v * scale); }
 
@@ -128,7 +133,7 @@ namespace CofCoop
             AutoScaleMode = AutoScaleMode.None;
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(S(600), S(470));
+            ClientSize = new Size(S(600), S(538));
             BackColor = Theme.Back;
             DoubleBuffered = true;
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
@@ -145,6 +150,8 @@ namespace CofCoop
             updateLine = AddLine("CHECK FOR UPDATES", "Asks GitHub if a newer version is out. Nothing is changed.", x, ref y, step, false);
             installLine = AddLine("INSTALL", "Installs this version into the game. Your saves stay. Close the game first.", x, ref y, step, true);
             uninstallLine = AddLine("UNINSTALL", "Removes the co-op mod. Saves and your playermodels folder stay.", x, ref y, step, true);
+            settingsLine = AddLine("SETTINGS", "Field of view, head bob and the co-op keys (unstuck, HUD off, spray).", x, ref y, step, false);
+            sprayLine = AddLine("SPRAY", "Turns a picture into your spray logo.", x, ref y, step, false);
             readMeLine = AddLine("READ ME", "Opens the instructions.", x, ref y, step, false);
             quitLine = AddLine("QUIT", "Closes this window.", x, ref y, step, false);
 
@@ -152,6 +159,8 @@ namespace CofCoop
             updateLine.Click += delegate { UpdateClicked(); };
             installLine.Click += delegate { RunScript(filesDir, "setup-coop.ps1", "", "install", "Installing..."); };
             uninstallLine.Click += delegate { Uninstall(); };
+            settingsLine.Click += delegate { OpenPage(true); };
+            sprayLine.Click += delegate { OpenPage(false); };
             readMeLine.Click += delegate { OpenReadMe(); };
             quitLine.Click += delegate { Close(); };
 
@@ -470,7 +479,10 @@ namespace CofCoop
         {
             bool running = IsGameRunning();
             if (running == gameRunning && !force) return;
+            bool closed = gameRunning && !running && !force;
+            if (running && !gameRunning) gameStartedAt = DateTime.Now;
             gameRunning = running;
+            if (closed && gameStartedAt != DateTime.MinValue) OfferRejoin();
             UpdateEnabled();
             if (working != null || busy) return;
             if (running) Say("Cry of Fear is running. Close it to install, update or uninstall.");
@@ -554,6 +566,7 @@ namespace CofCoop
             if (kind == "install") Say("Co-op " + version + " installed. Your saves are untouched.");
             else if (kind == "uninstall") Say("Co-op mod removed. Saves and playermodels kept.");
             else if (kind == "run") Say("Starting Cry of Fear... Host or join from the co-op menu.");
+            else if (kind == "rejoin") Say("Starting Cry of Fear and joining the host again...");
             else if (kind == "update") UpdateInstalled();
         }
 
@@ -590,6 +603,42 @@ namespace CofCoop
                 try { File.WriteAllLines(place, output); return place == places[0] ? "launcher.log" : place; } catch { }
             }
             return null;
+        }
+
+        // ---- v0.9: Settings and Spray pages, rejoin offer (CoopExtras.cs) ----
+
+        void OpenPage(bool settings)
+        {
+            string game = FindGameDirectory();
+            if (game == null) { Say("Cry of Fear was not found in your Steam libraries."); return; }
+            using (Form page = settings ? (Form)new SettingsForm(game) : new SprayForm(game)) page.ShowDialog(this);
+        }
+
+        // The game closed while this PC was joined to a host (a crash or a drop that ended the game):
+        // if that host still answers, offer to join it again.
+        void OfferRejoin()
+        {
+            if (working != null || busy) return;
+            string game = FindGameDirectory();
+            if (game == null) return;
+            string target = Rejoin.Pending(game, gameStartedAt);
+            if (target == null) return;
+            Rejoin.Seen(game, target);
+            Say("The game closed. Checking if " + target + " is still up...");
+            System.Threading.Tasks.Task.Run(delegate {
+                bool up = Rejoin.Answers(target);
+                BeginInvoke(new Action(delegate {
+                    if (!up) { Say("The game closed. " + target + " does not answer."); return; }
+                    if (working != null || busy || IsGameRunning()) return;
+                    Activate();
+                    using (RejoinForm ask = new RejoinForm(target))
+                    {
+                        ask.ShowDialog(this);
+                        if (ask.Chosen) RunScript(filesDir, "join-coop.ps1", " -HostAddress \"" + target + "\"", "rejoin", "Rejoining " + target + "...");
+                        else Say("");
+                    }
+                }));
+            });
         }
 
         void Uninstall()

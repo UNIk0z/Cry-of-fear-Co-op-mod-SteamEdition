@@ -181,6 +181,8 @@ $bad=@($bad | Where-Object { -not ($otherSha.ContainsKey($_) -and [IO.File]::Exi
 # v0.1: the CO-OP title (built from this PC's own title) is optional too.
 $built=@($catalog.extras | Where-Object { $null -ne $_ -and $null -ne $_.deltaFrom } | ForEach-Object { $_.target.Replace('/','\') })
 $bad=@($bad | Where-Object { -not ($built -contains $_ -and -not [IO.File]::Exists((Join-Path $game $_))) })
+# v0.9: a player's own settings files (sc_setup.scr, storycoop_server.cfg, storycoop_comfort.cfg) may hold his changes.
+$bad=@($bad | Where-Object { -not ($mutable.ContainsKey($_) -and [IO.File]::Exists((Join-Path $game $_))) })
 if ($bad.Count) { $bad | ForEach-Object { Write-Output "Not as expected: $_" }; throw 'Verification failed after install.' }
 Write-CofStep 100 'Done'
 if ($originals.Count) { Write-Output "DONE: co-op $version installed and verified ($($expected.Count) files). Saves were not touched; of the game's own files only the menu title and the main menu (cl_dlls\client.dll) are replaced; Uninstall puts the originals back." }

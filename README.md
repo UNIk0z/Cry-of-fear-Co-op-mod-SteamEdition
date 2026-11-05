@@ -16,9 +16,9 @@
 
 ## ⬇️ Download
 
-### **[Click here to download Cry of Fear Co-op v0.8.1](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.8.1/Cry.of.Fear.Co-op.v0.8.1.zip)**
+### **[Click here to download Cry of Fear Co-op v0.9](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.9/Cry.of.Fear.Co-op.v0.9.zip)**
 
-### **[Click here to download Cry of Fear Co-op v0.8.1 for Linux](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.8.1/Cry.of.Fear.Co-op.v0.8.1.Linux.tar.gz)**
+### **[Click here to download Cry of Fear Co-op v0.9 for Linux](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.9/Cry.of.Fear.Co-op.v0.9.Linux.tar.gz)**
 
 > [!NOTE]
 > **Linux is supported now.** Cry of Fear runs through Steam Proton, and Linux and Windows players can play together. See the Linux steps below the Windows ones.
@@ -35,7 +35,7 @@
 3. With Cry of Fear closed, open **`Cry of Fear Co-op.exe`** and click **Install** (every player). The program isn't signed, so Windows may warn about it: click **More info**, then **Run anyway**.
 4. To play, click **Run Co-op Mod**. See [Play](#2-play) below.
 
-**Linux (Steam Proton):** download the **[Linux package](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.8.1/Cry.of.Fear.Co-op.v0.8.1.Linux.tar.gz)** and extract it (`tar xzf` or your file manager). With the game closed, open a terminal in that folder, run `bash coop.sh` and pick **Install**. To play, run `bash coop.sh` again and pick **Run Co-op Mod** (if the game's own launcher window opens, click **LAUNCH**). It needs Python 3. The Linux version is new, so please report anything that breaks.
+**Linux (Steam Proton):** download the **[Linux package](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.9/Cry.of.Fear.Co-op.v0.9.Linux.tar.gz)** and extract it (`tar xzf` or your file manager). With the game closed, open a terminal in that folder, run `bash coop.sh` and pick **Install**. To play, run `bash coop.sh` again and pick **Run Co-op Mod** (if the game's own launcher window opens, click **LAUNCH**). It needs Python 3. The Linux version is new, so please report anything that breaks.
 
 > [!WARNING]
 > **This mod is unfinished,**
@@ -59,6 +59,13 @@ play **Simon's single-player story** together instead.
 | 🪜 **Ladders for everyone** | Every player can climb the same ladder at the same time. |
 | 🧍 **Player models** | Pick Simon, one of his 11 outfits or your own model in the *Player Model* box, which shows a preview. Pressing Done then lets you pick your hands. The others see your outfit too. Your own model shows for them when the host has the same file. |
 | 🔓 **Unlock extras** | A host option that opens the Chapter 1 secret room with every unlockable. |
+| 🆘 **Unstuck (K)** | Stuck in a wall or a prop? **K** puts you free. Lost in another room? **K** brings you to your partner. Works alone too. |
+| ❤️ **Down and revive** | The others see "*name* is down". Revive time and the auto respawn time are host options. A revived player groans in his own voice as he gets up. |
+| 👥 **Player list** | The game's own co-op list (health, ping, syringe icon) shows on every story map, hides in cutscenes and shows who is busy: (phone), (reading), (bag), (puzzle). |
+| 🗒️ **Objective reminder** | A player who joins late, respawns or uses unstuck sees the current objective. |
+| 🌍 **Your own subtitles** | Each player reads subtitles and objectives in the language set in his own game. |
+| 🎨 **Sprays and settings** | *Spray* in the launcher turns any picture into your spray (**T** in the game). *Settings* sets field of view, head bob and the keys. **H** hides the HUD for screenshots. |
+| 🔁 **Rejoin** | If your game crashes while you are in someone's game, the launcher offers to rejoin. |
 | 📼 **Saving** | Only the host can save. The host uses a tape recorder and picks one of the 5 slots in the game's save window. Saves are kept on the host's PC. |
 | ✅ **Your game stays original** | The mod only runs when you start it with **Run Co-op Mod** in the launcher. Starting Cry of Fear normally gives you the original game. |
 
@@ -74,7 +81,7 @@ The download has these files:
 
 | File | When to use it |
 |---|---|
-| `Cry of Fear Co-op.exe` | The launcher: **Install** once per new version with the game closed, **Run Co-op Mod** every time you play, **Check for Updates** (it also installs a newer version) and **Uninstall** |
+| `Cry of Fear Co-op.exe` | The launcher: **Install** once per new version with the game closed, **Run Co-op Mod** every time you play, **Check for Updates** (it also installs a newer version), **Uninstall**, **Settings** (field of view, head bob, keys) and **Spray** (your spray picture) |
 | `READ ME.txt` | The same instructions as this page |
 | `playermodels` folder | To add your own player models (see [Play](#2-play)) |
 
@@ -91,8 +98,9 @@ Every player clicks **Run Co-op Mod** in the launcher.
 - **Host:** click *Host Simon's Story*. The game's **Create Server** window
   opens: pick where to start (*Chapter-0-Prologue* up to
   *Chapter-7-Only-Safe-at-Home*) or a save (*Load-Save-Slot-1* to *5*), set the
-  number of players (2 to 4), the difficulty, player collision and *Unlock
-  extras*, and click **Start**. A chapter starts where its title card shows, with the weapons
+  number of players (2 to 4), the difficulty, player collision, *Unlock
+  extras*, the revive time and the auto respawn time, and click **Start**.
+  More host settings are in `cryoffear/storycoop_server.cfg` in the game folder. A chapter starts where its title card shows, with the weapons
   Simon has found by then. Give your friends your address (for
   example your Radmin VPN IP).
 - **Friend:** click *Join Simon's Story*. A box opens: type the host's IP
@@ -117,8 +125,16 @@ Every player clicks **Run Co-op Mod** in the launcher.
 > **Skip a cutscene:** press **R** (the screen shows "Press R to skip"). When every player has pressed it, the scene
 > jumps to its end. Only scenes with a yes/no choice still to come, and the stats screen at the end, cannot be skipped.
 >
-> **Stuck somewhere?** Press **Y** (chat) and type `stuck`. You are moved next
-> to another player.
+> **Stuck somewhere?** Press **K**. Inside a wall or a prop you are put on the
+> nearest free spot; anywhere else you are moved next to another player.
+> Typing `stuck` in the chat (**Y**) still works too.
+>
+> **Keys:** **K** unstuck, **H** HUD on/off, **T** spray. Change them with
+> *Settings* in the launcher. In a fresh Half-Life config **K** is voice chat;
+> in co-op it is unstuck, and the game keeps that key.
+>
+> **Linux:** `bash coop.sh spray picture.png` makes your spray. Keys, field of
+> view and head bob are in `cryoffear/storycoop_comfort.cfg`.
 
 ### 3. Uninstall
 
@@ -150,6 +166,8 @@ Every bug report needs the **log file**. That's how we can see what happened.
 - A crawler enemy is missing in the subway (s4_subtunnel2), and crouching on a save
   station jitters.
 - Pressing R while typing in the chat during a cutscene counts as a skip vote.
+- The v0.9 features (unstuck, player list tags, sprays, settings, subtitles per
+  player, rejoin) have not been played in the game yet. Please report what breaks.
 - The crashes when joining that showed up in our logs happen inside the RebuiltSimon
   add-on, not in this mod. If you crash while joining with it installed, try without it.
 

@@ -25,6 +25,7 @@ $specs=@(
  @{name='story';sources=@('test-story.cpp','checkpoint.cpp','journal.cpp','puzzle.cpp');extra=@()}
  @{name='mapstate';sources=@('test-mapstate.cpp','checkpoint.cpp','journal.cpp','puzzle.cpp');extra=@()}
  @{name='gamebytes';sources=@('test-gamebytes.cpp','checkpoint.cpp','journal.cpp','puzzle.cpp');extra=@()}
+ @{name='qol';sources=@('test-qol.cpp','checkpoint.cpp','journal.cpp','puzzle.cpp');extra=@()}
 )
 foreach ($test in $specs) {
  $args=$common+@($test.extra)+@($test.sources | ForEach-Object { Join-Path $PSScriptRoot $_ })+@(('/Fo'+$out+'\'),('/Fe'+$out+'\'+$test.name+'-tests.exe'))+$link
@@ -39,9 +40,10 @@ foreach ($test in $specs) {
  elseif ($test.name -eq 'story') { $storyFixture=Join-Path $out 'story-fixture';New-Item -ItemType Directory -Path $storyFixture | Out-Null; & ($out+'\'+$test.name+'-tests.exe') $storyFixture }
  elseif ($test.name -eq 'session') { $sessionFixture=Join-Path $out 'session-fixture';New-Item -ItemType Directory -Path $sessionFixture | Out-Null; & ($out+'\'+$test.name+'-tests.exe') $sessionFixture }
  elseif ($test.name -eq 'mapstate') { $mapFixture=Join-Path $out 'mapstate-fixture';New-Item -ItemType Directory -Path $mapFixture | Out-Null; & ($out+'\'+$test.name+'-tests.exe') $mapFixture }
+ elseif ($test.name -eq 'qol') { $qolFixture=Join-Path $out 'qol-fixture';New-Item -ItemType Directory -Path $qolFixture | Out-Null; & ($out+'\'+$test.name+'-tests.exe') $qolFixture }
  elseif ($test.name -eq 'world') { $worldFixture=Join-Path $out 'world-fixture';New-Item -ItemType Directory -Path $worldFixture | Out-Null; & ($out+'\'+$test.name+'-tests.exe') $worldFixture }
  elseif ($test.name -eq 'gamebytes') { $gameFolder=if ($env:COF_GAME_DIRECTORY) { $env:COF_GAME_DIRECTORY } else { 'D:\SteamLibrary\steamapps\common\Cry of Fear\cryoffear' }; & ($out+'\'+$test.name+'-tests.exe') $gameFolder }
  else { & ($out+'\'+$test.name+'-tests.exe') }
  if ($LASTEXITCODE -ne 0) { throw "Fixture failed: $($test.name)" }
 }
-Write-Output 'PASS all 15 native fixture suites. No Cry of Fear DLL loaded or game launched.'
+Write-Output 'PASS all 16 native fixture suites. No Cry of Fear DLL loaded or game launched.'

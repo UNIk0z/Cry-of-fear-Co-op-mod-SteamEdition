@@ -11,6 +11,7 @@
 #   coop-linux.py run        start Cry of Fear with the co-op menu
 #   coop-linux.py uninstall  set the co-op files aside
 #   coop-linux.py check      say what install would do, change nothing
+#   coop-linux.py spray <picture.png|.bmp>   make it your spray logo (tempdecal.wad)
 # Options: --game "<...>/steamapps/common/Cry of Fear/cryoffear"
 import base64, datetime, hashlib, json, os, re, shutil, struct, subprocess, sys, urllib.parse, uuid, zlib
 
@@ -425,16 +426,23 @@ def install_package(game, catalog, verify_only=False, progress=None):
         target = extra['target']
         if extra.get('replaces'):
             raise Stop('This package replaces a game file; the Linux installer does not support that. Nothing installed.')
-        if not re.fullmatch(r'(maps/storycoop_[a-z0-9]+\.(custom|coopm)|models/player/simon(_[a-z]+)?/simon(_[a-z]+)?\.mdl|gfx/vgui/menu/sc_(host|join|mdl)(_mo)?\.tga|gfx/vgui/sc_logo\.tga|maps/(Chapter-[0-7](-[A-Za-z]+)+|Load-Save-Slot-[1-5])\.bsp|gfx/vgui/sc_(joinbox|mb[a-z0-9]+)\.tga|sc_setup\.scr)', target) \
+        if not re.fullmatch(r'(maps/storycoop_[a-z0-9]+\.(custom|coopm)|models/player/simon(_[a-z]+)?/simon(_[a-z]+)?\.mdl|gfx/vgui/menu/sc_(host|join|mdl)(_mo)?\.tga|gfx/vgui/sc_logo\.tga|maps/(Chapter-[0-7](-[A-Za-z]+)+|Load-Save-Slot-[1-5])\.bsp|gfx/vgui/sc_(joinbox|mb[a-z0-9]+)\.tga|sc_setup\.scr|storycoop_(server|comfort)\.cfg|txtfiles/storycoop_hints\.txt)', target) \
                 or not re.fullmatch(r'[a-f0-9]{64}', extra['sha256']) or extra['fileBytes'] < 1:
             raise Stop('Invalid extra file catalog.')
         path = find(game, target)
         present = os.path.isfile(path)
         setup_replace = False
         if extra.get('mutable') and target == 'sc_setup.scr':
-            keep = present and 'sc_extras' in read(path).decode('latin-1')
+            # v0.9: an older one without the revive options is replaced once, like v0.7's Unlock extras.
+            text = read(path).decode('latin-1') if present else ''
+            keep = present and 'sc_extras' in text and 'sv_coopcprtime' in text
             setup_replace = present and not keep
             if keep:
+                prepared.append(dict(path=path, exists=True))
+                continue
+        elif extra.get('mutable'):
+            # v0.9: the host's storycoop_server.cfg and each player's storycoop_comfort.cfg are theirs once there.
+            if present:
                 prepared.append(dict(path=path, exists=True))
                 continue
         elif present and file_sha(path) != extra['sha256']:
@@ -465,7 +473,7 @@ def install_package(game, catalog, verify_only=False, progress=None):
             if data is None or sha(data) != extra['sha256']:
                 raise Stop('Generated extra mismatch. Nothing installed.')
         elif extra.get('file'):
-            if not re.fullmatch(r'extras/(storycoop_[a-z0-9]+\.(custom|coopm)|sc_(host|join|mdl)(_mo)?\.tga|sc_joinbox\.tga|sc_setup\.scr)', extra['file']):
+            if not re.fullmatch(r'extras/(storycoop_[a-z0-9]+\.(custom|coopm)|sc_(host|join|mdl)(_mo)?\.tga|sc_joinbox\.tga|sc_setup\.scr|storycoop_(server|comfort)\.cfg|storycoop_hints\.txt)', extra['file']):
                 raise Stop('Invalid extra package file.')
             data = read(os.path.join(HERE, extra['file']))
         elif extra.get('build') == 'simon-outfit-model':
@@ -747,13 +755,184 @@ def run(game, dry=False):
     say('In the main menu choose "Host Simon\'s Story" or "Join Simon\'s Story".')
 
 
+# --- v0.9: spray logo (the same file the Windows launcher's SPRAY page writes) ---------------
+# The engine takes a custom logo of 1024 to 20480 bytes: one miptex of at most 256x256, four mip
+# levels, 256 colours; palette entry 255 = 0 0 255 makes it a full-colour decal whose index 255 is
+# clear (decomp engine_hw com_custom.c, decals.c, GL_DRAW.C Draw_MiptexTexture).
+SPRAY_MAX_PIXELS = 14336
+
+
+def png_rgba(data):
+    if data[:8] != b'\x89PNG\r\n\x1a\n':
+        raise Stop('Not a PNG file.')
+    pos, chunks, idat = 8, {}, b''
+    while pos + 8 <= len(data):
+        length, kind = struct.unpack('>I4s', data[pos:pos + 8])
+        body = data[pos + 8:pos + 8 + length]
+        pos += 12 + length
+        if kind == b'IDAT':
+            idat += body
+        elif kind == b'IEND':
+            break
+        else:
+            chunks[kind] = body
+    width, height, depth, colour, _, _, interlace = struct.unpack('>IIBBBBB', chunks[b'IHDR'])
+    channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}.get(colour)
+    if depth != 8 or interlace or channels is None or width * height > 4096 * 4096:
+        raise Stop('Use an 8-bit, not interlaced PNG.')
+    raw, stride = zlib.decompress(idat), width * channels
+    rows, prev, at = [], bytearray(stride), 0
+    for _ in range(height):
+        kind, line = raw[at], bytearray(raw[at + 1:at + 1 + stride])
+        at += 1 + stride
+        for i in range(stride):
+            left = line[i - channels] if i >= channels else 0
+            up, upleft = prev[i], prev[i - channels] if i >= channels else 0
+            if kind == 1:
+                line[i] = (line[i] + left) & 255
+            elif kind == 2:
+                line[i] = (line[i] + up) & 255
+            elif kind == 3:
+                line[i] = (line[i] + (left + up) // 2) & 255
+            elif kind == 4:
+                p = left + up - upleft
+                pa, pb, pc = abs(p - left), abs(p - up), abs(p - upleft)
+                line[i] = (line[i] + (left if pa <= pb and pa <= pc else up if pb <= pc else upleft)) & 255
+        rows.append(line)
+        prev = line
+    palette, alpha = chunks.get(b'PLTE', b''), chunks.get(b'tRNS', b'')
+    out = bytearray()
+    for line in rows:
+        for x in range(width):
+            if colour == 6:
+                out += line[x * 4:x * 4 + 4]
+            elif colour == 2:
+                out += line[x * 3:x * 3 + 3] + b'\xff'
+            elif colour == 0:
+                out += bytes((line[x],) * 3) + b'\xff'
+            elif colour == 4:
+                out += bytes((line[x * 2],) * 3) + bytes((line[x * 2 + 1],))
+            else:
+                i = line[x]
+                out += palette[i * 3:i * 3 + 3] + bytes((alpha[i] if i < len(alpha) else 255,))
+    return width, height, bytes(out)
+
+
+def bmp_rgba(data):
+    if data[:2] != b'BM':
+        raise Stop('Not a BMP file.')
+    offset, = struct.unpack_from('<I', data, 10)
+    width, height, _, bits, compression = struct.unpack_from('<iiHHI', data, 18)
+    if bits not in (24, 32) or compression not in (0, 3) or width <= 0 or height == 0:
+        raise Stop('Use a 24 or 32-bit BMP.')
+    flip, height = height > 0, abs(height)
+    stride = (width * bits // 8 + 3) & ~3
+    out = bytearray()
+    for y in range(height):
+        row = offset + (height - 1 - y if flip else y) * stride
+        for x in range(width):
+            b, g, r = data[row + x * bits // 8:row + x * bits // 8 + 3]
+            out += bytes((r, g, b, 255))
+    return width, height, bytes(out)
+
+
+def spray_size(width, height):
+    s = min(1.0, 128.0 / max(1, width, height))
+    for _ in range(200):
+        w, h = max(16, int(width * s) // 16 * 16), max(16, int(height * s) // 16 * 16)
+        if w * h <= SPRAY_MAX_PIXELS:
+            return w, h
+        s *= 0.95
+    return 96, 96
+
+
+def spray_wad(width, height, rgba):
+    w, h = spray_size(width, height)
+    pixels = []   # area average of the source pixels under each target pixel
+    for y in range(h):
+        y0, y1 = y * height // h, max(y * height // h + 1, (y + 1) * height // h)
+        for x in range(w):
+            x0, x1 = x * width // w, max(x * width // w + 1, (x + 1) * width // w)
+            r = g = b = a = n = 0
+            for sy in range(y0, y1):
+                for sx in range(x0, x1):
+                    p = (sy * width + sx) * 4
+                    pa = rgba[p + 3]
+                    r += rgba[p] * pa; g += rgba[p + 1] * pa; b += rgba[p + 2] * pa; a += pa; n += 1
+            pixels.append((r // a, g // a, b // a, a // n) if a else (0, 0, 0, 0))
+    opaque = [(p[0] << 16) | (p[1] << 8) | p[2] for p in pixels if p[3] >= 128]
+    palette = bytearray(768)
+    palette[765:768] = b'\x00\x00\xff'
+    boxes = [opaque] if opaque else []
+    while 0 < len(boxes) < 255:
+        best = None
+        for i, box in enumerate(boxes):
+            if len(box) < 2:
+                continue
+            for ch in range(3):
+                shift = 16 - ch * 8
+                vals = [(c >> shift) & 255 for c in box]
+                spread = max(vals) - min(vals)
+                if spread > 0 and (best is None or spread > best[0]):
+                    best = (spread, i, shift)
+        if best is None:
+            break
+        _, i, shift = best
+        box = sorted(boxes[i], key=lambda c: (c >> shift) & 255)
+        boxes[i], extra = box[:len(box) // 2], box[len(box) // 2:]
+        boxes.append(extra)
+    for i, box in enumerate(boxes):
+        n = len(box)
+        palette[i * 3:i * 3 + 3] = bytes((sum((c >> 16) & 255 for c in box) // n, sum((c >> 8) & 255 for c in box) // n, sum(c & 255 for c in box) // n))
+    cache, index = {}, bytearray()
+    for p in pixels:
+        if p[3] < 128:
+            index.append(255)
+            continue
+        key = (p[0], p[1], p[2])
+        if key not in cache:
+            cache[key] = min(range(len(boxes)), key=lambda k: (p[0] - palette[k * 3]) ** 2 + (p[1] - palette[k * 3 + 1]) ** 2 + (p[2] - palette[k * 3 + 2]) ** 2)
+        index.append(cache[key])
+    name = b'{LOGO'.ljust(16, b'\0')
+    lump, offset, mips = bytearray(name + struct.pack('<II', w, h)), 40, bytearray()
+    for m in range(4):
+        lump += struct.pack('<I', offset)
+        offset += (w >> m) * (h >> m)
+        mips += bytes(index[(y << m) * w + (x << m)] for y in range(h >> m) for x in range(w >> m))
+    lump += mips + struct.pack('<H', 256) + palette + b'\0\0'
+    return b'WAD3' + struct.pack('<ii', 1, 12 + len(lump)) + lump + struct.pack('<iiibbh', 12, len(lump), len(lump), 0x43, 0, 0) + name, (w, h)
+
+
+def spray(game, picture):
+    data = read(picture)
+    width, height, rgba = png_rgba(data) if data[:4] == b'\x89PNG' else bmp_rgba(data)
+    wad, (w, h) = spray_wad(width, height, rgba)
+    if not 1024 <= len(wad) <= 20480:
+        raise Stop('This picture does not work as a spray.')
+    target = os.path.join(game, 'tempdecal.wad')
+    keep = target + '.storycoop-original'
+    if os.path.isfile(target) and not os.path.exists(keep):
+        shutil.copyfile(target, keep)
+    with open(target + '.new', 'wb') as f:
+        f.write(wad)
+    os.replace(target + '.new', target)
+    say('Spray saved (%dx%d, %d bytes): %s. Spray in the game with T (storycoop_comfort.cfg).' % (w, h, len(wad), target))
+
+
 def main(argv):
     command = argv[1] if len(argv) > 1 else 'help'
     game = None
     if '--game' in argv:
         game = argv[argv.index('--game') + 1]
-    if command not in ('install', 'uninstall', 'check', 'run', 'run-dry'):
-        print(__doc__ if __doc__ else '', 'Usage: coop-linux.py install|run|uninstall|check [--game <...>/Cry of Fear/cryoffear]')
+    if command == 'spray-file' and len(argv) == 4:
+        # Tests: spray-file <picture> <out.wad>, no game folder needed.
+        data = read(argv[2])
+        width, height, rgba = png_rgba(data) if data[:4] == b'\x89PNG' else bmp_rgba(data)
+        with open(argv[3], 'wb') as f:
+            f.write(spray_wad(width, height, rgba)[0])
+        return 0
+    if command not in ('install', 'uninstall', 'check', 'run', 'run-dry', 'spray') or (command == 'spray' and (len(argv) < 3 or argv[2] == '--game')):
+        print(__doc__ if __doc__ else '', 'Usage: coop-linux.py install|run|uninstall|check|spray <picture.png> [--game <...>/Cry of Fear/cryoffear]')
         return 2
     try:
         if not game:
@@ -766,6 +945,9 @@ def main(argv):
         say('Cry of Fear: %s' % game)
         if command in ('run', 'run-dry'):
             run(game, dry=command == 'run-dry')
+            return 0
+        if command == 'spray':
+            spray(game, argv[2])
             return 0
         if game_running() and command != 'check':
             raise Stop('Close Cry of Fear first. Nothing changed.')

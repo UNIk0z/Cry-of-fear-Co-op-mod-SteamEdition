@@ -254,11 +254,14 @@ foreach ($extra in @($catalog.extras | Where-Object { $null -ne $_ })) {
     }
     # v0.5.1: the Create Server entries (maps/Chapter-N-*.bsp, maps/Load-Save-Slot-N.bsp), the
     # join box picture and the Create Server options (sc_setup.scr, rewritten by the game: mutable).
-    if ($extra.target -cnotmatch '^(maps/storycoop_[a-z0-9]+\.(custom|coopm)|models/player/simon(_[a-z]+)?/simon(_[a-z]+)?\.mdl|gfx/vgui/menu/sc_(host|join|mdl)(_mo)?\.tga|gfx/vgui/sc_logo\.tga|maps/(Chapter-[0-7](-[A-Za-z]+)+|Load-Save-Slot-[1-5])\.bsp|gfx/vgui/sc_(joinbox|mb[a-z0-9]+)\.tga|sc_setup\.scr)$' -or $extra.sha256 -cnotmatch '^[a-f0-9]{64}$' -or $extra.fileBytes -lt 1) { throw 'Invalid extra file catalog.' }
+    if ($extra.target -cnotmatch '^(maps/storycoop_[a-z0-9]+\.(custom|coopm)|models/player/simon(_[a-z]+)?/simon(_[a-z]+)?\.mdl|gfx/vgui/menu/sc_(host|join|mdl)(_mo)?\.tga|gfx/vgui/sc_logo\.tga|maps/(Chapter-[0-7](-[A-Za-z]+)+|Load-Save-Slot-[1-5])\.bsp|gfx/vgui/sc_(joinbox|mb[a-z0-9]+)\.tga|sc_setup\.scr|storycoop_(server|comfort)\.cfg|txtfiles/storycoop_hints\.txt)$' -or $extra.sha256 -cnotmatch '^[a-f0-9]{64}$' -or $extra.fileBytes -lt 1) { throw 'Invalid extra file catalog.' }
     $extraPath=Join-Path $gameRoot ($extra.target.Replace('/','\'))
     $extraExists=[IO.File]::Exists($extraPath)
     # v0.7: a kept sc_setup.scr without the 'Unlock extras' option (sc_extras) is replaced once, so the option shows up.
-    if ($extra.mutable -and $extra.target -ceq 'sc_setup.scr') { $keepSetup=$extraExists -and ([IO.File]::ReadAllText($extraPath) -match 'sc_extras'); $setupReplace=$extraExists -and -not $keepSetup; if ($Remove -or $keepSetup) { $prepared.Add(@{path=$extraPath; exists=$extraExists; extra=$true}); continue } }
+    # v0.9: the same for the revive options (sv_coopcprtime).
+    if ($extra.mutable -and $extra.target -ceq 'sc_setup.scr') { $setupText=if ($extraExists) { [IO.File]::ReadAllText($extraPath) } else { '' }; $keepSetup=$extraExists -and $setupText -match 'sc_extras' -and $setupText -match 'sv_coopcprtime'; $setupReplace=$extraExists -and -not $keepSetup; if ($Remove -or $keepSetup) { $prepared.Add(@{path=$extraPath; exists=$extraExists; extra=$true}); continue } }
+    # v0.9: the host's storycoop_server.cfg and each player's storycoop_comfort.cfg are theirs once there.
+    elseif ($extra.mutable) { if ($Remove -or $extraExists) { $prepared.Add(@{path=$extraPath; exists=$extraExists; extra=$true}); continue } }
     elseif ($extraExists -and (Get-PatchFileSha $extraPath) -cne $extra.sha256) { throw "Unknown/changed file retained: $extraPath. Nothing installed or removed." }
     if ($Remove) { $prepared.Add(@{path=$extraPath; exists=$extraExists; extra=$true}); continue }
     if ($null -ne $extra.deltaFrom) {
@@ -279,7 +282,7 @@ foreach ($extra in @($catalog.extras | Where-Object { $null -ne $_ })) {
         try { $extraBytes=Expand-XorDelta ([IO.File]::ReadAllBytes($titleSource)) ([IO.File]::ReadAllBytes((Join-Path $PSScriptRoot ($extra.file.Replace('/','\'))))) } catch { $extraBytes=$null }
         if ($null -eq $extraBytes -or (Get-PatchSha $extraBytes) -cne $extra.sha256 -or $extraBytes.Length -ne $extra.fileBytes) { throw 'Generated extra mismatch. Nothing installed.' }
     } elseif ($extra.file) {
-        if ($extra.file -cnotmatch '^extras/(storycoop_[a-z0-9]+\.(custom|coopm)|sc_(host|join|mdl)(_mo)?\.tga|sc_joinbox\.tga|sc_setup\.scr)$') { throw 'Invalid extra package file.' }
+        if ($extra.file -cnotmatch '^extras/(storycoop_[a-z0-9]+\.(custom|coopm)|sc_(host|join|mdl)(_mo)?\.tga|sc_joinbox\.tga|sc_setup\.scr|storycoop_(server|comfort)\.cfg|storycoop_hints\.txt)$') { throw 'Invalid extra package file.' }
         $extraBytes=[IO.File]::ReadAllBytes((Join-Path $PSScriptRoot ($extra.file.Replace('/','\'))))
     } elseif ($extra.build -ceq 'simon-outfit-model') {
         # v0.7: built from the Simon model made just above and this PC's costume textures. Optional: a missing or changed one only leaves that outfit out of the box.

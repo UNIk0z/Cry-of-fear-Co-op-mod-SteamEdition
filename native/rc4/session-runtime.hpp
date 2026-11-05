@@ -84,6 +84,8 @@ struct ModelState{float next=0;int attempts=0;unsigned logged=0;std::string want
 // runs it and answers "cmd sc_mdl <model> <hands>" (model_report_send, client-menu.hpp).
 struct ModelReport {std::string model,hands;};
 std::map<int,ModelReport> modelReports;
+// v0.9 (item 9): each joining game's own cof_subtitlelanguage, from the same report (qol-runtime.hpp).
+std::map<int,int> playerLanguage;bool checkpoint_host(Edict* e);
 bool model_report_command(Edict* e,const char* command);
 // v0.7: Simon's outfits, in the order of the client's clothes state 1..11. Each is a
 // player model built at install (scripts/simon-model.mjs), so every PC has them.
@@ -148,7 +150,9 @@ bool model_report_command(Edict* e,const char* command){
  const std::string model=arg(1),hands=arg(2);const int index=eng<int(__cdecl*)(Edict*)>(71)(e);if(index<1||index>32)return true;
  if(!model_name_ok(model)||!(hands=="auto"||hands=="simon"||model_outfit(hands)))return true;
  auto& r=modelReports[index];if(r.model!=model||r.hands!=hands){char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MODEL player=%d reports model %.32s, hands %.32s\n",index,model.c_str(),hands.c_str());log(line);}
- r={model,hands};return true;
+ r={model,hands};
+ const std::string language=arg(3);if(language.size()==1&&language[0]>='0'&&language[0]<='7'&&!checkpoint_host(e)){const int l=language[0]-'0';const auto known=playerLanguage.find(index);if(known==playerLanguage.end()||known->second!=l){char note[100]{};std::snprintf(note,sizeof(note),"[STORYCOOP_RC4] LANGUAGE player=%d reads subtitles in %d\n",index,l);log(note);}playerLanguage[index]=l;}
+ return true;
 }
 void model_frame(Edict* e){
  if(!model_map()||!globals||!live(e)||!engine[106]||!engine[107]||!engine[109]||std::strcmp(classname(e),"player"))return;
@@ -572,7 +576,7 @@ void __cdecl stuff_command(Edict* e,const char* format,...){
 // (CmdStart) and then every 5 s without a fade-in, so it is always there.
 // v0.1 (user): the build is named v0.1 (v0.2 since 2026-10-16), and Special Thanks lists Mesilll,
 // Michal Eminov and caixa in that order (it misspelled "Michael" before). v0.6 (Katz 2026-10-25): joah added; v0.7 (Katz): written Joah230.
-constexpr const char* MenuCredit="Co-op mod v0.8.1 developed by Anas Sammak (koolkat)\nSpecial thanks: Mesilll, Michal Eminov, caixa, Joah230";
+constexpr const char* MenuCredit="Co-op mod v0.9 developed by Anas Sammak (koolkat)\nSpecial thanks: Mesilll, Michal Eminov, caixa, Joah230";
 struct MenuCreditState{int serial=-1;float next=0,active=-1;bool logged=false,shown=false;};
 MenuCreditState menuCredit;
 void menu_credit_reset(){const bool logged=menuCredit.logged;menuCredit={};menuCredit.logged=logged;}

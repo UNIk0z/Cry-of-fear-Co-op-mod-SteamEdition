@@ -61,7 +61,7 @@ if (-not [IO.File]::Exists($csc)) { throw 'The .NET Framework 4 C# compiler was 
 $cscArgs=@('/nologo','/target:winexe','/platform:anycpu','/optimize+','/utf8output',
  ('/out:'+$OutFile),('/win32icon:'+$iconPath),('/win32manifest:'+(Join-Path $here 'app.manifest')),
  '/r:System.dll','/r:System.Drawing.dll','/r:System.Windows.Forms.dll','/r:System.Net.Http.dll','/r:System.Web.Extensions.dll','/r:System.IO.Compression.dll','/r:System.IO.Compression.FileSystem.dll',
- (Join-Path $here 'CoopLauncher.cs'),$infoPath)
+ (Join-Path $here 'CoopLauncher.cs'),(Join-Path $here 'CoopExtras.cs'),$infoPath)
 & $csc $cscArgs
 if ($LASTEXITCODE -ne 0) { throw ('csc failed with exit code '+$LASTEXITCODE) }
 $hash=(Get-FileHash -LiteralPath $OutFile -Algorithm SHA256).Hash.ToLowerInvariant()

@@ -1,7 +1,8 @@
 // Cry of Fear co-op (Simon's story): options of the game's Create Server window.
 // The co-op adapter makes that window read this file instead of settings.scr
-// (only when the game is started with "Run Co-op Mod.cmd"). The window may
-// rewrite it to keep the last choices.
+// (only in co-op launches: Run Co-op Mod in "Cry of Fear Co-op.exe"). The window
+// may rewrite it to keep the last choices. v0.9: revive time (sv_coopcprtime)
+// and auto respawn (sv_auto_respawn_time) are the game's own cvars.
 //
 // Format: "cvar" { "Prompt" { type [ type info ] } { default } }
 // BOOL "0"/"1"; NUMBER min max; STRING; LIST "label" "value" ... with the
@@ -51,6 +52,20 @@ DESCRIPTION SERVER_OPTIONS
 		"Unlock extras (Chapter 1 secret room)"
 		{ BOOL }
 		{ "0" }
+	}
+
+	"sv_coopcprtime"
+	{
+		"Revive time (seconds)"
+		{ NUMBER 1.000000 30.000000 }
+		{ "5.000000" }
+	}
+
+	"sv_auto_respawn_time"
+	{
+		"Auto respawn while down (seconds)"
+		{ NUMBER 10.000000 999.000000 }
+		{ "384.000000" }
 	}
 
 	"pausable"
