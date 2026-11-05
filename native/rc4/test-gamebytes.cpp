@@ -56,6 +56,11 @@ int main(int argc,char** argv){
  assert(std::equal(sdkRef.begin(),sdkRef.end(),hardware.begin()+(0x01D22D6C-SprayHwBase)));
  const std::vector<unsigned char> passGuard{0x83,0x3d,0x48,0x6b,0x55,0x10,0};
  assert(std::equal(passGuard.begin(),passGuard.end(),shipped.begin()+0x93cf0));
+ // Independent retail API initializer: nested callback parameters are not table fields.
+ for(const auto& getter:std::vector<std::pair<std::size_t,std::uint32_t>>{{SprayCvarSlot,0x01D21A5E},{SprayEntitySlot,0x01D23831},{SprayClockSlot,0x01D23868},{SprayLevelSlot,0x01D23BFB}})
+  assert(load<std::uint32_t>(hardware.data(),0x01EA9A90-SprayHwBase+getter.first*4)==getter.second);
+ assert(load<std::uint32_t>(hardware.data(),0x01EA9A90-SprayHwBase+76*4)==0x01D23C40); // recorded crash: SetScreenFade + 0x1f
+ std::puts("PASS real client API getters: entity 53, time 54, level 74; fade setter 76 is never used as a getter");
  std::puts("PASS spray engine pool, public SDK callback and render-pass guard pins");
  std::puts("PASS patch lists: every patch fits the real client.dll, GameUI.dll and hl.dll");
  return 0;

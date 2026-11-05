@@ -1,6 +1,8 @@
 // Included after qol-runtime.hpp. The SDK draw callback renders engine-transferred player decals
 // after CoF's world pass, which suppresses the engine's normal world/decal drawing.
 constexpr std::uint32_t SprayHwBase=0x01D00000, SprayPoolVa=0x023ABD90, SprayPlayersVa=0x02F8B770, SprayDrawSlotVa=0x02FB9C38;
+// Slots are verified against the real engine table, not counted from nested C declarations.
+constexpr std::size_t SprayCvarSlot=15,SprayEntitySlot=53,SprayClockSlot=54,SprayLevelSlot=74;
 constexpr char SprayHwSha[]="9dd34e536c4bb7cda3bc1bc4f0f5f6163687566a16f35c0ea0be59f93da62875";
 struct SprayDecal {void* next;void* surface;float x,y,scale;short texture,flags,entity;};
 static_assert(sizeof(SprayDecal)==28,"engine decal ABI");
@@ -79,8 +81,8 @@ bool spray_same(const SprayDecal& a,const SprayDecal& b){
 }
 void spray_cache_reset(){spraySeen={};sprayRetry={};for(auto& latest:sprayLatest)latest.clear();}
 void spray_refresh(){
- const auto level=load<const char*(__cdecl*)()>(clientImage,0x1b2608+76*4);
- const auto clock=load<float(__cdecl*)()>(clientImage,0x1b2608+55*4);
+ const auto level=load<const char*(__cdecl*)()>(clientImage,0x1b2608+SprayLevelSlot*4);
+ const auto clock=load<float(__cdecl*)()>(clientImage,0x1b2608+SprayClockSlot*4);
  const char* name=level?level():nullptr;const float now=clock?clock():-1.f;
  // Network corrections can rewind cl.time; a fresh server starts at 1 s (sv_main.c).
  if((name&&sprayLevel!=name)||(now>=0.f&&now<2.f&&sprayClock>now+1.f))spray_cache_reset();
@@ -104,8 +106,8 @@ void spray_refresh(){
 void spray_render(){
  if(!sprayHw||!clientImage||clientImageSize<0x556b4c)return;spray_refresh();
  if(load<int>(clientImage,0x556b48)||!spray_gl_init())return;
- const auto clientCvar=load<float(__cdecl*)(const char*)>(clientImage,0x1b2608+15*4);if(!clientCvar||clientCvar("gl_renderer")==0.f||clientCvar("gl_customdecals")==0.f||clientCvar("r_decals")==0.f)return;
- const auto byIndex=load<void*(__cdecl*)(int)>(clientImage,0x1b2608+54*4);if(!byIndex||!byIndex(0))return;
+ const auto clientCvar=load<float(__cdecl*)(const char*)>(clientImage,0x1b2608+SprayCvarSlot*4);if(!clientCvar||clientCvar("gl_renderer")==0.f||clientCvar("gl_customdecals")==0.f||clientCvar("r_decals")==0.f)return;
+ const auto byIndex=load<void*(__cdecl*)(int)>(clientImage,0x1b2608+SprayEntitySlot*4);if(!byIndex||!byIndex(0))return;
  bool begun=false;
  for(const auto& player:sprayLatest)for(const auto& p:player){
   const auto entity=p.entity?byIndex(p.entity):nullptr;if(p.entity&&!spray_readable(entity,0xb60))continue;

@@ -7,9 +7,11 @@ using namespace rc4;
 namespace {
 std::vector<unsigned char> hw(0x12e8000),client(0x600000),entity(0xb60),cust(0xa4),wad(0x30),cache(0x44),texture(28),surface(48),info(44),wall(24),poly(16+4*28);
 int polygons=0,nativeCalls=0,attribs=0,matrices=0,voices=0,rotations=0;unsigned bound=0;float tx=0;bool decalsOn=true,benchmarkMode=false;std::vector<SprayVertex> drawn;std::vector<unsigned> textures;Edict playerEdict;unsigned char globalData[0xa0]{};
-std::string currentLevel="s4_fixture";float currentClock=100.f;int fixtureMap=0;
+std::string currentLevel="s4_fixture";float currentClock=100.f;int fixtureMap=0;int unexpectedFadeWrites=0,unexpectedShakeCalls=0;
 const char* level_(){return currentLevel.c_str();}float clock_(){return currentClock;}
 void next_map(){currentLevel="s4_fixture"+std::to_string(++fixtureMap);}
+const char* wrong_fade_slot(){++unexpectedFadeWrites;return "s4_wrong_fade_slot";}
+float wrong_shake_slot(){++unexpectedShakeCalls;return currentClock;}
 void native_draw(){++nativeCalls;}
 float cvar_(const char*){return decalsOn?1.f:0.f;}
 void* entity_(int n){return n==0||n==2?entity.data():nullptr;}
@@ -27,7 +29,9 @@ void sound_(Edict* e,int channel,const char* s,float,float,int,int){assert(e==&p
 void wire_end(){}void wire_begin(int,int,const float*,Edict*){}void wire_byte(int){}void wire_short(int){}
 void setup(){
  sprayHw=hw.data();clientImage=client.data();clientImageSize=client.size();sprayOriginal=&native_draw;
- store(clientImage,0x1b2608+15*4,&cvar_);store(clientImage,0x1b2608+54*4,&entity_);store(clientImage,0x1b2608+55*4,&clock_);store(clientImage,0x1b2608+76*4,&level_);
+ store(clientImage,0x1b2608+15*4,&cvar_);// Independent API order from the engine initializer, not from the renderer's offsets.
+ store(clientImage,0x1b2608+53*4,&entity_);store(clientImage,0x1b2608+54*4,&clock_);store(clientImage,0x1b2608+74*4,&level_);
+ store(clientImage,0x1b2608+55*4,&wrong_shake_slot);store(clientImage,0x1b2608+76*4,&wrong_fade_slot);
  store(spray_hw(SprayPlayersVa),0x234,cust.data());store(cust.data(),0,1);store(cust.data(),0x44,3);store<unsigned char>(cust.data(),0x50,4);store(cust.data(),0x8c,1);store(cust.data(),0x98,wad.data());
  store(wad.data(),4,cache.data());store(wad.data(),8,1);store(cache.data(),0x40,texture.data());store<unsigned>(texture.data(),16,64);store<unsigned>(texture.data(),20,64);store(texture.data(),24,77);
  store(surface.data(),36,poly.data());store(surface.data(),44,info.data());store(info.data(),36,wall.data());store<unsigned>(wall.data(),16,64);store<unsigned>(wall.data(),20,64);store(poly.data(),8,4);
@@ -72,6 +76,13 @@ void retention_checks(){
 }
 int main(int argc,char** args){
  setup();auto& d=*static_cast<SprayDecal*>(spray_hw(SprayPoolVa));
+ if(argc>1&&!std::strcmp(args[1],"--abi")){
+  auto pool=static_cast<SprayDecal*>(spray_hw(SprayPoolVa));pool[0]={};spray_draw_callback();
+  if(unexpectedFadeWrites||unexpectedShakeCalls){std::printf("FAIL real API layout: fade setter calls=%d shake calls=%d\n",unexpectedFadeWrites,unexpectedShakeCalls);return 1;}
+  if(sprayLevel!=currentLevel||sprayClock!=currentClock){std::puts("FAIL real API getter values");return 1;}
+  std::puts("PASS real API layout: correct getters, no screen-fade setter or shake calls");return 0;
+ }
+
  if(argc>1&&!std::strcmp(args[1],"--benchmark")){
   benchmarkMode=true;auto pool=static_cast<SprayDecal*>(spray_hw(SprayPoolVa));const auto base=d;pool[0]={};
   for(int player=0;player<4;++player)store(spray_hw(SprayPlayersVa),static_cast<std::size_t>(player)*0x250+0x234,cust.data());
@@ -110,5 +121,6 @@ int main(int argc,char** args){
  store(globals,0,11.f);message_begin(0,23,nullptr,nullptr);write_byte(109);message_end();assert(voices==1);
  message_begin(0,23,nullptr,nullptr);write_byte(112);write_byte(1);write_short(0);write_byte(0);message_end();assert(voices==2);
  retention_checks();
+ assert(unexpectedFadeWrites==0&&unexpectedShakeCalls==0);
  std::puts("PASS spray: SDK render callback, received player texture, walls/floors/ceilings, brush transform, clipping, invalid input, GL state balance, native broadcast sound and deduplication. No game launched.");
 }

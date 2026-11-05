@@ -1,3 +1,5 @@
+Crash/fade correction (2026-11-06): the performance build used shifted client API indices, calling SetScreenFade instead of GetLevelName and V_CalcShake instead of GetClientTime. The repair uses verified entity/time/level slots 53/54/74, with independent mock layout and real-engine table assertions. Repeated crashes at hw.dll+0x23C5F match the accidental fade setter. All 17 native suites and 66 applicable Node tests pass; actual door-fade/ESC appearance and crash-free gameplay still require a game test. Earlier fixture passes did not validate the ABI because the mock repeated the implementation's wrong offsets.
+
 Spray follow-up: the source now renders player logos through the co-op draw callback, adds a shared hiss, and keeps only each player's newest spray with cached geometry. The user confirmed the initial visible-spray repair works. All 17 native suites and 66 applicable Node tests passed (69 optional skips); actual FPS after the retention change still needs a game test.
 
 # Cry of Fear co-op v0.9 status (Claude, 2026-11-06)
