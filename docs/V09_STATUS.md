@@ -1,3 +1,5 @@
+Spray follow-up: the source now renders player logos through the co-op draw callback, adds a shared hiss, and keeps only each player's newest spray with cached geometry. The user confirmed the initial visible-spray repair works. All 17 native suites and 66 applicable Node tests passed (69 optional skips); actual FPS after the retention change still needs a game test.
+
 # Cry of Fear co-op v0.9 status (Claude, 2026-11-06)
 
 Nothing here has run in the game: Katz does not want the game launched on the PC. "Done" means built and checked without the game: the decompile (cof-decompiled/src), the disassembly of the pinned client.dll and hl.dll, the native fixture suites and the Node suite. What Katz should try is in docs/V09_TEST.md (solo first).

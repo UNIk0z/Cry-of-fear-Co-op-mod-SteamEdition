@@ -64,7 +64,7 @@ play **Simon's single-player story** together instead.
 | 👥 **Player list** | The game's own co-op list (health, ping, syringe icon) shows on every story map, hides in cutscenes and shows who is busy: (phone), (reading), (bag), (puzzle). |
 | 🗒️ **Objective reminder** | A player who joins late, respawns or uses unstuck sees the current objective. |
 | 🌍 **Your own subtitles** | Each player reads subtitles and objectives in the language set in his own game. |
-| 🎨 **Sprays and settings** | *Spray* in the launcher turns any picture into your spray (**T** in the game). *Settings* sets field of view, head bob and the keys. **H** hides the HUD for screenshots. |
+| 🎨 **Sprays and settings** | *Spray* in the launcher turns any picture into your spray (**T** in the game), with a shared spray sound. Each player keeps their newest spray; a new one replaces their previous logo. *Settings* sets field of view, head bob and the keys. **H** hides the HUD for screenshots. |
 | 🔁 **Rejoin** | If your game crashes while you are in someone's game, the launcher offers to rejoin. |
 | 📼 **Saving** | Only the host can save. The host uses a tape recorder and picks one of the 5 slots in the game's save window. Saves are kept on the host's PC. |
 | ✅ **Your game stays original** | The mod only runs when you start it with **Run Co-op Mod** in the launcher. Starting Cry of Fear normally gives you the original game. |

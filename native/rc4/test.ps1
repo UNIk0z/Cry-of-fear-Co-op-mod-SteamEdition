@@ -26,6 +26,7 @@ $specs=@(
  @{name='mapstate';sources=@('test-mapstate.cpp','checkpoint.cpp','journal.cpp','puzzle.cpp');extra=@()}
  @{name='gamebytes';sources=@('test-gamebytes.cpp','checkpoint.cpp','journal.cpp','puzzle.cpp');extra=@()}
  @{name='qol';sources=@('test-qol.cpp','checkpoint.cpp','journal.cpp','puzzle.cpp');extra=@()}
+ @{name='spray';sources=@('test-spray.cpp','checkpoint.cpp','journal.cpp','puzzle.cpp');extra=@()}
 )
 foreach ($test in $specs) {
  $args=$common+@($test.extra)+@($test.sources | ForEach-Object { Join-Path $PSScriptRoot $_ })+@(('/Fo'+$out+'\'),('/Fe'+$out+'\'+$test.name+'-tests.exe'))+$link
@@ -46,4 +47,4 @@ foreach ($test in $specs) {
  else { & ($out+'\'+$test.name+'-tests.exe') }
  if ($LASTEXITCODE -ne 0) { throw "Fixture failed: $($test.name)" }
 }
-Write-Output 'PASS all 16 native fixture suites. No Cry of Fear DLL loaded or game launched.'
+Write-Output 'PASS all 17 native fixture suites. No Cry of Fear DLL loaded or game launched.'

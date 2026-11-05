@@ -353,7 +353,8 @@ void __cdecl qol_register_commands(){
  if(!engine[140])return;auto add=eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140);
  add("sc_teamhud",&team_hud_command);add("sc_busy",&team_busy_command);add("sc_hud",&hud_toggle_command);
 }
-void qol_timer(){team_rows_update();bag_poll();comfort_frame();}
+void spray_client_install();
+void qol_timer(){team_rows_update();bag_poll();comfort_frame();spray_client_install();}
 void session_join_started(const std::string& target){lastJoinTarget=target;session_state("joining");}
 // A game started with "+connect <ip:port>" (the launcher's rejoin, join-coop.ps1) joined that address.
 std::string command_line_target(const char* line){

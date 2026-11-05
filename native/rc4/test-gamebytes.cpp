@@ -5,6 +5,7 @@
 // v0.6.3 to v0.7.1, which the fake images of the other suites cannot show.
 #define _CRT_SECURE_NO_WARNINGS
 #include "adapter.cpp"
+#include <cassert>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -46,6 +47,16 @@ int main(int argc,char** argv){
  for(const auto& [va,want]:reads){const bool ok=va>=0x1003C807&&va<0x1003C823?std::equal(want.begin(),want.end(),shipped.begin()+(va-ClientPreferredBase)):bytes_at(va,want);if(!ok){std::printf("FAIL team HUD read at %08X\n",va);return 1;}}
  auto ui=mapped(game/"cl_dlls"/"GameUI.dll");apply("gameui_patches",gameui_patches(),ui);
  auto server=mapped(game/"cl_dlls"/"hl.dll");apply("ammo_limit_patches",ammo_limit_patches(),server);
+ // The spray pass reads engine data, wraps an SDK callback, and never calls a private game function.
+ assert(sha_file((game.parent_path()/L"hw.dll").wstring())==SprayHwSha);
+ auto hardware=mapped(game.parent_path()/"hw.dll");
+ const std::vector<unsigned char> poolRef{0x68,0x00,0xc0,0x01,0x00,0x6a,0x00,0x68,0x90,0xbd,0x3a,0x02};
+ assert(std::equal(poolRef.begin(),poolRef.end(),hardware.begin()+(0x01D6F7F2-SprayHwBase)));
+ const std::vector<unsigned char> sdkRef{0xff,0x15,0x38,0x9c,0xfb,0x02};
+ assert(std::equal(sdkRef.begin(),sdkRef.end(),hardware.begin()+(0x01D22D6C-SprayHwBase)));
+ const std::vector<unsigned char> passGuard{0x83,0x3d,0x48,0x6b,0x55,0x10,0};
+ assert(std::equal(passGuard.begin(),passGuard.end(),shipped.begin()+0x93cf0));
+ std::puts("PASS spray engine pool, public SDK callback and render-pass guard pins");
  std::puts("PASS patch lists: every patch fits the real client.dll, GameUI.dll and hl.dll");
  return 0;
 }

@@ -292,7 +292,8 @@ void inventory_quiet_begin(int dest,int type,Edict* e){
 }
 int inventory_quiet_byte(int value){if(!inventoryQuiet.inventory)return value;return inventoryQuiet.bytes++==3?1:value;}
 const char* inventory_quiet_text(const char* s){return inventoryQuiet.text&&s&&(!std::strncmp(s,"Picked up",9)||!std::strncmp(s,"You got",7))?"":s;}
-void __cdecl message_begin(int dest,int type,const float* origin,Edict* e){
+void spray_wire_begin(int type);void spray_wire_byte(int value);void spray_wire_end();
+void __cdecl message_begin(int dest,int type,const float* origin,Edict* e){spray_wire_begin(type);
  inventory_quiet_begin(dest,type,e);language_wire_begin(dest,type,e);busy_note_opened(dest,type,e);
  creditsBytes=scoped()&&creditsMessage>0&&type==creditsMessage?0:-1;
  unlocksActive=verified&&unlocksMessage>0&&type==unlocksMessage;
@@ -308,7 +309,7 @@ void __cdecl message_begin(int dest,int type,const float* origin,Edict* e){
  if(packet.active){noteWire={};noteWire.active=true;noteWire.dest=dest;noteWire.type=type;noteWire.recipient=e;noteWire.hasOrigin=origin!=nullptr;if(origin)std::copy(origin,origin+3,noteWire.origin.begin());return;}
  eng<void(__cdecl*)(int,int,const float*,Edict*)>(46)(dest,type,origin,e);
 }
-void __cdecl write_byte(int value){value=credits_byte(value);value=inventory_quiet_byte(value);if(logo_write(value)||score_write(48,value))return;mirror_op(48,value,0,nullptr);if(recorder_write(48,value,0,nullptr))return;if(packet.active){switch(packet.bytes++){case 0:packet.slot=value;break;case 1:packet.meta.codeFlag=value;break;case 2:packet.meta.codeType=value;break;default:packet.valid=false;}}
+void __cdecl write_byte(int value){spray_wire_byte(value);value=credits_byte(value);value=inventory_quiet_byte(value);if(logo_write(value)||score_write(48,value))return;mirror_op(48,value,0,nullptr);if(recorder_write(48,value,0,nullptr))return;if(packet.active){switch(packet.bytes++){case 0:packet.slot=value;break;case 1:packet.meta.codeFlag=value;break;case 2:packet.meta.codeType=value;break;default:packet.valid=false;}}
  if(!note_buffer(48,value))eng<void(__cdecl*)(int)>(48)(value);
 }
 void __cdecl write_short(int value){if(score_write(50,value))return;mirror_op(50,value,0,nullptr);if(recorder_write(50,value,0,nullptr))return;if(packet.active){if(packet.shorts++)packet.valid=false;packet.meta.codeValue=value;}
@@ -334,7 +335,7 @@ void __cdecl message_end(){if(logo_end()||score_end())return;if(recorder_end()){
   if(packet.valid&&packet.slot>=1&&packet.slot<=16&&packet.bytes==3&&packet.shorts==1&&packet.strings==11){auto before=journal.size();auto rejected=journal.grant(packet.note,packet.meta);if(rejected&&packet.note[0x40])log("[STORYCOOP_RC4] JOURNAL packet rejected: invalid/conflicting/full; native packet forwarded\n");if(journal.size()!=before){char s[180]{};std::snprintf(s,sizeof(s),"[STORYCOOP_RC4] JOURNAL acquired=%u player=%d slot=%d id=%s page=%s codeType=%d\n",static_cast<unsigned>(journal.size()),eng<int(__cdecl*)(Edict*)>(71)(packet.recipient),packet.slot,Journal::resource(packet.note).c_str(),reinterpret_cast<const char*>(packet.note.data()),packet.meta.codeType);log(s);}}
   else log("[STORYCOOP_RC4] JOURNAL malformed packet; native packet forwarded, no grant\n");
  }packet={};reader={};
- mirror_flush();
+ mirror_flush();spray_wire_end();
 }
 void __cdecl write_char(int n){mirror_op(49,n,0,nullptr);if(!recorder_write(49,n,0,nullptr)&&!note_buffer(49,n))eng<void(__cdecl*)(int)>(49)(n);}
 void __cdecl write_long(int n){if(unlocksActive)n|=0x20;mirror_op(51,n,0,nullptr);if(!recorder_write(51,n,0,nullptr)&&!note_buffer(51,n))eng<void(__cdecl*)(int)>(51)(n);}
@@ -406,6 +407,7 @@ void everyone(bool capture){if(!globals)return;for(int i=1;i<=load<int>(globals,
 #include "state-runtime.hpp"
 #include "client-menu.hpp"
 #include "qol-runtime.hpp"
+#include "spray-runtime.hpp"
 void frame_evidence();
 void __cdecl start_frame(){crumb("start_frame");++netFrame;collision_restore();gameui_patch();firstPlayerLookup=false;pause_poll();menu_credit_frame();give_flush();three_slots_frame();chapter_frame();join_wait_frame();regroup_frame();checkpoint_start_frame();keypad_frame();story_frame();logo_frame();score_sync();keydoor_frame();ladder_frame();pp_frame();half_frame();skip_frame();party_counters_frame();prologue_skip_frame();boss_frame();train_escape_frame();floor_walls_frame();stayout_fades_frame();wardrobe_frame();join_connect_frame();load_wait_frame();door_lock_frame();item_copies_frame();team_cards_frame();story_teleport_frame();climb_follow_frame();scene_watch_frame();boss_save_frame();wheelchair_frame();team_hud_frame();language_frame();frame_evidence();}
 void __cdecl game_init(){crash_install();reset();native<void(__cdecl*)()>(0)();if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_checkpoint_load",&checkpoint_load_command);if(engine[56])eng<void(__cdecl*)(cvar_t*)>(56)(&collisionCvar);if(engine[56])eng<void(__cdecl*)(cvar_t*)>(56)(&extrasCvar);if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_checkpoint_prepare",&checkpoint_prepare_command);if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_door_music",&door_music_command);if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_report",&model_report_send);qol_register_commands();log("[STORYCOOP_RC4] GameInit forwarded; checkpoint command registered\n");}
@@ -427,7 +429,7 @@ int __cdecl spawn(Edict* e){
  // v0.3 map state: the entity's BSP identity, read before its own Spawn runs.
  std::string stateKey;bool dm=false;if(scoped()){if(world)state_map_begin();stateKey=state_identity(e);auto p=vars(e);dm=p&&(load<unsigned>(p,0x1a4)&2048u);}
  int result=native<int(__cdecl*)(Edict*)>(1)(e);if(world){checkpoint_world_ready();level_change_release();chapter_world_started();}
- if(world&&scoped()){deathmatch_open();groans_precache();}   // v0.5 RC-2048 (world-runtime.hpp); v0.9 revive groans
+ if(world&&scoped()){deathmatch_open();groans_precache();spray_precache();}   // v0.5 RC-2048 (world-runtime.hpp); v0.9 revive groans
  if(scoped())world_spawned(e,world,result,stateKey,dm);
  // User request: shared notes must glow red like every other pickup. Native
  // CPasswordNote::Spawn (100835A6) sets renderfx 100 (+0x160); the shared-note
@@ -570,4 +572,4 @@ extern "C" int __cdecl GetEntityAPI2(void* table,int* version){
 }
 // v0.4: leave the exception handlers before the engine unloads this DLL (session-runtime.hpp crash_uninstall).
 // v0.9: a FreeLibrary (the engine quitting) puts the team list line back; at process end nothing runs any more.
-extern "C" BOOL WINAPI DllMain(HINSTANCE,DWORD reason,LPVOID reserved){if(reason==DLL_PROCESS_DETACH){rc4::menu_hold_stop();if(!reserved)rc4::team_line_unpatch();rc4::session_closed();rc4::crash_uninstall();}return TRUE;}
+extern "C" BOOL WINAPI DllMain(HINSTANCE,DWORD reason,LPVOID reserved){if(reason==DLL_PROCESS_DETACH){rc4::menu_hold_stop();if(!reserved){rc4::spray_client_uninstall();rc4::team_line_unpatch();}rc4::session_closed();rc4::crash_uninstall();}return TRUE;}

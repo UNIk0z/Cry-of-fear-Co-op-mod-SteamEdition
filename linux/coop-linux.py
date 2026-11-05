@@ -426,7 +426,7 @@ def install_package(game, catalog, verify_only=False, progress=None):
         target = extra['target']
         if extra.get('replaces'):
             raise Stop('This package replaces a game file; the Linux installer does not support that. Nothing installed.')
-        if not re.fullmatch(r'(maps/storycoop_[a-z0-9]+\.(custom|coopm)|models/player/simon(_[a-z]+)?/simon(_[a-z]+)?\.mdl|gfx/vgui/menu/sc_(host|join|mdl)(_mo)?\.tga|gfx/vgui/sc_logo\.tga|maps/(Chapter-[0-7](-[A-Za-z]+)+|Load-Save-Slot-[1-5])\.bsp|gfx/vgui/sc_(joinbox|mb[a-z0-9]+)\.tga|sc_setup\.scr|storycoop_(server|comfort)\.cfg|txtfiles/storycoop_hints\.txt)', target) \
+        if not re.fullmatch(r'(maps/storycoop_[a-z0-9]+\.(custom|coopm)|models/player/simon(_[a-z]+)?/simon(_[a-z]+)?\.mdl|gfx/vgui/menu/sc_(host|join|mdl)(_mo)?\.tga|gfx/vgui/sc_logo\.tga|maps/(Chapter-[0-7](-[A-Za-z]+)+|Load-Save-Slot-[1-5])\.bsp|gfx/vgui/sc_(joinbox|mb[a-z0-9]+)\.tga|sc_setup\.scr|storycoop_(server|comfort)\.cfg|txtfiles/storycoop_hints\.txt|sound/storycoop/spray\.wav)', target) \
                 or not re.fullmatch(r'[a-f0-9]{64}', extra['sha256']) or extra['fileBytes'] < 1:
             raise Stop('Invalid extra file catalog.')
         path = find(game, target)
@@ -473,7 +473,7 @@ def install_package(game, catalog, verify_only=False, progress=None):
             if data is None or sha(data) != extra['sha256']:
                 raise Stop('Generated extra mismatch. Nothing installed.')
         elif extra.get('file'):
-            if not re.fullmatch(r'extras/(storycoop_[a-z0-9]+\.(custom|coopm)|sc_(host|join|mdl)(_mo)?\.tga|sc_joinbox\.tga|sc_setup\.scr|storycoop_(server|comfort)\.cfg|storycoop_hints\.txt)', extra['file']):
+            if not re.fullmatch(r'extras/(storycoop_[a-z0-9]+\.(custom|coopm)|sc_(host|join|mdl)(_mo)?\.tga|sc_joinbox\.tga|sc_setup\.scr|storycoop_(server|comfort)\.cfg|storycoop_hints\.txt|spray\.wav)', extra['file']):
                 raise Stop('Invalid extra package file.')
             data = read(os.path.join(HERE, extra['file']))
         elif extra.get('build') == 'simon-outfit-model':

@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { spraySound } from './spray-sound.mjs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {decodeBsp,sha256} from './bsp.mjs';
@@ -166,7 +167,7 @@ export function main(args){
  if(buildReport.sha256!==sha256(adapter)||buildReport.bytes!==adapter.length||buildReport.nativeBackendSha256!==backendSha256||buildReport.architecture!=='x86'||buildReport.exports!==846||buildReport.exactNamesAndOrdinals!==true||buildReport.jumpStubs!==843||buildReport.registerAndStackPreserving!==true||buildReport.nativeBackendLoaded!==false)throw Error('Native artifact build verification mismatch');
  const source=fs.readdirSync(path.join(repo,'native','rc4'),{withFileTypes:true}).filter(e=>e.isFile()&&/\.(?:cpp|hpp|ps1)$/.test(e.name)).map(e=>({name:e.name,bytes:fs.readFileSync(path.join(repo,'native','rc4',e.name))}));
  for(const [name,hash] of Object.entries(buildReport.sources??{}))if(!source.some(f=>f.name===name&&sha256(f.bytes)===hash))throw Error('Native artifact/source mismatch: '+name);
- if(Object.keys(buildReport.sources??{}).length!==(v09?21:v03?20:v01?19:campaign13?18:campaign6?17:campaign5?16:coop3||campaign4?15:coopNative?14:coopFixes?13:campaignDoors?12:cameraNotes?11:maintenance?9:6))throw Error('Native implementation source count mismatch');
+ if(Object.keys(buildReport.sources??{}).length!==(v09?22:v03?20:v01?19:campaign13?18:campaign6?17:campaign5?16:coop3||campaign4?15:coopNative?14:coopFixes?13:campaignDoors?12:cameraNotes?11:maintenance?9:6))throw Error('Native implementation source count mismatch');
  const prepared=[],dependencies=new Map(),reports=[];
  for(const spec of specs){
   const r=JSON.parse(fs.readFileSync(path.join(build,spec.map+'.json'))),bytes=fs.readFileSync(path.join(build,spec.map+'.bsp'));
@@ -214,6 +215,7 @@ export function main(args){
  if(v07)extras.push(...modelboxExtras(),...outfitExtras());
  // v0.9: the host's settings file, each player's comfort settings and co-op keys (both mutable: theirs once installed), the unstuck key prompt.
  if(v09)for(const [file,target,mutable] of [['storycoop_server.cfg','storycoop_server.cfg',true],['storycoop_comfort.cfg','storycoop_comfort.cfg',true],['storycoop_hints.txt','txtfiles/storycoop_hints.txt',false]]){const bytes=fs.readFileSync(path.join(repo,'scripts','menu',file));extras.push({target,file:'extras/'+file,bytes,sha256:sha256(bytes),fileBytes:bytes.length,...(mutable?{mutable:true}:{})});}
+ if(v09){const bytes=spraySound();extras.push({target:'sound/storycoop/spray.wav',file:'extras/spray.wav',bytes,sha256:sha256(bytes),fileBytes:bytes.length});}
  const catalog={schemaVersion:2,release:'story-state-rc4',implementationCommit:commit,nativeDllSha256:backendSha256,entry:RC4_ENTRY,maps:prepared.map(p=>p.entry),dependencies:[...dependencies.values()].sort((a,b)=>a.map.localeCompare(b.map)),requiresFullRC2:true,menu:null,runtimeAdapter:{file:'storycoop_rc4.dll',sha256:sha256(adapter),fileBytes:adapter.length,loadSwitch:'-dll cl_dlls/storycoop_rc4.dll',status:'EXPERIMENTAL; BOOTSTRAP AND TWO-CLIENT GAMEPLAY REQUIRED'},nativeSource:source.map(f=>({file:f.name,sha256:sha256(f.bytes)})),protectedParents:specs.map(s=>({map:s.parent,release:s.parentRelease,sha256:s.parentSha256,planSha256:s.parentPlanSha256})),status:'AWAITING TWO-CLIENT GAMEPLAY VERIFICATION',diskSaving:maintenance?{status:'IMPLEMENTED — AUTOMATED TESTS PASSED; AWAITING GAMEPLAY VERIFICATION',maps:['s4_start','s4_start_e0','s4_start_e2'],activePlayers:2,retainedIdentities:4,slots:3,checkpoint:'Storage Tunnel recorder419 anchor; recorder421 uses same safe anchor',wholeWorldRestore:false}:false};
  if(maintenance)catalog.maintenance={id:'story-maintenance-checkpoint-001',protectedHotfix:HOTFIX_PINS,checkpoint:'EXPERIMENTAL; fresh restarted gameplay restore required'};
  if(regression)catalog.regression={id:'notes-regression-001',protectedMaintenanceCatalog:PREVIOUS_MAINTENANCE,noteAuditSha256:buildInfo.noteAuditSha256,mapsByteIdentical:true,vehicle:'DIAGNOSTICS ONLY; runtime visibility cause remains unproven'};
