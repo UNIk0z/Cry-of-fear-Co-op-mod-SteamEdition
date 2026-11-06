@@ -26,3 +26,8 @@ Nothing in v0.10 has run in the game yet. Close Cry of Fear, open "Cry of Fear C
 17. "No respawn while down" on: player 2 goes down and stays down until the host revives him; with both down the game over restarts the map. The host goes down, then player 2 leaves the game: the host can respawn again with Space within a minute.
 18. Vote kick: player 2 types `votekick <host name>` in the console; the host is asked to vote (F1 yes, F2 no). Vote no.
 19. Hunted with two players: Simon appears far from both; when he is killed he comes back about 4 min later.
+
+## v0.10.1 fixes
+
+20. Solo: "Hardcore: no saves" on, use a tape recorder as the host: the screen says "Could not save: saving is off on this server", no save window opens and nothing is saved (`Save refused: saving is off on this server`).
+21. Two players: player 2 picks another model (Player Model) and Red as his colour, joins, then closes his game with Task Manager and clicks REJOIN in his launcher while the host stays on the same map. Back in, he has his own model and colour at once (a ping shows his red) and the host log has a new `NET tuned player=2` line for that map.

@@ -115,7 +115,10 @@ int main(int argc,char** argv_){
  assert((player_colour(2)==std::array<unsigned char,3>{235,220,50})&&(player_colour(1)==std::array<unsigned char,3>{230,40,40})&&(player_colour(4)==std::array<unsigned char,3>{235,220,50}));
 
  // --- #19 No saves: the co-op save is refused. No respawn: the native waits are pushed ahead.
- cvars["sv_coop_nosave"]=1;lines.clear();checkpoint_save(p1);assert(logged("saving is off on this server")&&logged("CLIENT1:Could not save:"));cvars["sv_coop_nosave"]=0;
+ cvars["sv_coop_nosave"]=1;lines.clear();checkpoint_save(p1);assert(logged("saving is off on this server")&&logged("CLIENT1:Could not save:"));
+ // v0.10.1: the host's recorder does not open the save window ("Saving... Saved") when saving is off.
+ saveLoadMessage=90;lines.clear();sent.clear();assert(recorder_begin(1,90,nullptr,p1));recorder_write(48,0,0,nullptr);recorder_write(54,0,0,"Storage Tunnel");assert(recorder_end());
+ assert(logged("CLIENT1:Could not save:")&&count_type(90)==0&&!saveWindow.actor);saveLoadMessage=0;cvars["sv_coop_nosave"]=0;
  cvars["sc_norespawn"]=1;now(6.8f);host_options_frame();store(ev(p2),0x174,2);store(ev(p2),0x164,0.f);
  store(pd(p2),PlayerRespawnDelay,10.f);store(pd(p2),PlayerDeadNotify,10.f);store(pd(p2),PlayerAutoRevive,30.f);norespawn_frame(p2);
  assert(load<float>(pd(p2),PlayerRespawnDelay)>60.f&&load<float>(pd(p2),PlayerDeadNotify)>60.f&&load<float>(pd(p2),PlayerAutoRevive)>600.f);
@@ -196,6 +199,10 @@ int main(int argc,char** argv_){
  // Never seen near: he goes after 3 min.
  now(775.f);hunt_frame();assert(hunt.who);now(960.f);hunt_frame();assert(!hunt.who&&logged("he never caught up"));
  cvars["sc_hunted"]=0;
+
+ // v0.10.1: a player who leaves takes his slot's records along, so the next one in that slot is asked again (sc_report).
+ netTuned.insert(2);modelReports[2]={"simon_camo","auto"};playerLanguage[2]=3;playerPrefs[2].colour=5;qol2_disconnect(p2);
+ assert(!netTuned.count(2)&&!modelReports.count(2)&&!playerLanguage.count(2)&&!playerPrefs.count(2));
 
  std::puts("PASS v0.10 fixture: options, hardcore, scaling, dodge, ping, scare, run timer, black and white, outline, hunted");
  return 0;

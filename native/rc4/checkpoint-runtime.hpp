@@ -590,6 +590,8 @@ bool recorder_end(){
   // A partner's recorder Use saves nothing and shows "Only host can save the
   // game" to that partner only (v0.2: never from merely standing there).
   if(!checkpoint_host(message.actor)){char line[100]{};std::snprintf(line,sizeof(line),"[STORYCOOP] SAVE refused for player %d: only the host can save\n",eng<int(__cdecl*)(Edict*)>(71)(message.actor));log(line);if(engine[80])eng<void(__cdecl*)(Edict*,int,const char*)>(80)(message.actor,1,"Only host can save the game");}
+  // v0.10.1 (review): with "no saves" the save window never opens; it played "Saving... Saved" over a refused save.
+  else if(hardcore_nosave())save_failed(message.actor,"[STORYCOOP] Save refused: saving is off on this server (sv_coop_nosave).\n","saving is off on this server");
   else if(const int recorder=near_recorder(message.actor,message.writes[1].text)){
    // v0.7 (docs/V07_TODO.md 4): the host gets the single-player save window
    // (five slots, its sound, fade and post process) instead of the key list.

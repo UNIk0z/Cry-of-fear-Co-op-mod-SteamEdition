@@ -310,5 +310,10 @@ void qol2_world_spawned(){if(!scoped())return;ping_precache();hunt_precache();}
 void qol2_frame(){host_options_frame();scale_frame();run_timer_frame();hunt_frame();}
 void qol2_player_frame(Edict* e){if(!live(e)||std::strcmp(classname(e),"player"))return;norespawn_frame(e);if(!scoped())return;dodge_frame(e);catch_up_frame(e);noir_frame(e);}
 void qol2_map_changed(){pingSprite=0;scaledMonsters.clear();scaleNext=0;scaleLogged=-1;dodgeApplied.clear();noirSent.clear();pingUsed.clear();scareUsed.clear();hunt=Hunt{};hostOptions.next=-1;runTimer.last=-1;runTimer.splitDue=-1;runTimer.next=0;}
-void qol2_disconnect(Edict* e){dodgeApplied.erase(e);noirSent.erase(e);pingUsed.erase(e);scareUsed.erase(e);if(live(e))playerPrefs.erase(eng<int(__cdecl*)(Edict*)>(71)(e));}
+// v0.10.1 (review): what is kept per player slot goes with the player. netTuned (story-runtime.hpp) asks each
+// slot once per map for its tuning and sc_report: a player who rejoined the same slot on the same map (the
+// crash-rejoin offer) got neither, so his model, language, colour and black and white waited for the next map,
+// and the slot's last player's model and language stood in for his.
+void qol2_disconnect(Edict* e){dodgeApplied.erase(e);noirSent.erase(e);pingUsed.erase(e);scareUsed.erase(e);
+ if(!live(e))return;const int index=eng<int(__cdecl*)(Edict*)>(71)(e);playerPrefs.erase(index);netTuned.erase(index);modelReports.erase(index);playerLanguage.erase(index);modelStates.erase(index);}
 void qol2_new_game(){caughtUp.clear();}
