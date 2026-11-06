@@ -68,7 +68,7 @@ play **Simon's single-player story** together instead.
 | 🔁 **Rejoin** | If your game crashes while you are in someone's game, the launcher offers to rejoin. |
 | 📍 **Ping and scare** | **G** marks where you look for everyone, with your name and the distance. **J** plays a laugh at the teammate closest to you. |
 | 📖 **Hunted** | A host option (experimental): Book Simon with the sledgehammer follows the team a few minutes into each story map. |
-| ⏱️ **Host options** | All off until the host turns them on: a run timer with chapter times, outlines on far teammates in their colour, more monster health for more players, and hardcore (no saves, no respawn while down). |
+| ⏱️ **Host options** | All off until the host turns them on: a run timer with chapter times, outlines on far teammates in their colour, more monster health for more players, and hardcore (no saves, no respawn while down: only a revive brings you back, unless nobody alive is left to revive you). |
 | 🤝 **Late join and vote kick** | A player who joins a game in progress gets the host's weapons and starts next to them. `votekick <name>` in the console starts a vote (F1 yes, F2 no). |
 | 📼 **Saving** | Only the host can save. The host uses a tape recorder and picks one of the 5 slots in the game's save window. Saves are kept on the host's PC. |
 | ✅ **Your game stays original** | The mod only runs when you start it with **Run Co-op Mod** in the launcher. Starting Cry of Fear normally gives you the original game. |
@@ -134,12 +134,12 @@ Every player clicks **Run Co-op Mod** in the launcher.
 > nearest free spot; anywhere else you are moved next to another player.
 > Typing `stuck` in the chat (**Y**) still works too.
 >
-> **Keys:** **K** unstuck, **H** HUD on/off, **T** spray. Change them with
+> **Keys:** **K** unstuck, **H** HUD on/off, **T** spray, **G** ping, **J** scare. Change them with
 > *Settings* in the launcher. In a fresh Half-Life config **K** is voice chat;
 > in co-op it is unstuck, and the game keeps that key.
 >
 > **Linux:** `bash coop.sh spray picture.png` makes your spray. Keys, field of
-> view and head bob are in `cryoffear/storycoop_comfort.cfg`.
+> view, head bob, your colour (`sc_color 0-8`) and black and white (`sc_noir 1`) are in `cryoffear/storycoop_comfort.cfg`.
 
 ### 3. Uninstall
 
