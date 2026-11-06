@@ -27,7 +27,7 @@ released v0.5.1 adapter has SHA256 `a1181dbf...`.
 
 ## Build the launcher
 
-`launcher/build-launcher.ps1 -Version 0.9` builds `launcher/out/Cry of Fear Co-op.exe` from
+`launcher/build-launcher.ps1 -Version 0.10` builds `launcher/out/Cry of Fear Co-op.exe` from
 `CoopLauncher.cs` and `CoopExtras.cs` (Settings, Spray, rejoin offer) with the C# compiler of
 the .NET Framework, using the icon of your installed game.
 `scripts/player-package.mjs` copies it into the player ZIP when it is there.
@@ -41,9 +41,9 @@ same on Linux.
 powershell -NoProfile -ExecutionPolicy Bypass -File native/rc4/test.ps1 -Adapter <build folder>\storycoop_rc4.dll -OutputDirectory <new empty folder>
 ```
 
-It builds the 16 fixture programs from `native/rc4/test-*.cpp` and runs them.
+It builds the 18 fixture programs from `native/rc4/test-*.cpp` and runs them.
 No game DLL is loaded and the game is not started. Expect
-`PASS all 16 native fixture suites`.
+`PASS all 18 native fixture suites`.
 
 ## Node tests
 

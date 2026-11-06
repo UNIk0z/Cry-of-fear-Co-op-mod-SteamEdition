@@ -30,7 +30,7 @@ namespace {struct InitializeExports{InitializeExports(){for(auto& entry:rc4_expo
 namespace rc4 {
 namespace {
 Engine engine{},forwardEngine{};Table original{};void* globals=nullptr;
-HMODULE backend=nullptr;bool verified=false;int clothesMessage=0,addNote=0,noteDoc=0,textMessage=0,resetHud=0,initHud=0,proFontMessage=0,healthCapMessage=0,cofLogoMessage=0,qslotUpdateMessage=0,computerMessage=0,creditsMessage=0,unlocksMessage=0,concussMessage=0,cameraZoomMessage=0,inventoryMessage=0,controlHintMessage=0,objectivesMessage=0;
+HMODULE backend=nullptr;bool verified=false;int clothesMessage=0,addNote=0,noteDoc=0,textMessage=0,resetHud=0,initHud=0,proFontMessage=0,healthCapMessage=0,cofLogoMessage=0,qslotUpdateMessage=0,computerMessage=0,creditsMessage=0,unlocksMessage=0,concussMessage=0,cameraZoomMessage=0,inventoryMessage=0,controlHintMessage=0,objectivesMessage=0,blackWhiteMessage=0,chapterMessage=0;
 Journal journal;
 void checkpoint_reset();
 void keypad_reset();
@@ -127,6 +127,7 @@ void vehicle_evidence(Edict* e,const char* phase,int host,int packed){
 }
 bool pickup_hidden(int number,Edict* e,Edict* host);bool pickup_blocked(Edict* pickup,Edict* player);   // coop-runtime.hpp (v0.8)
 bool collision_off();   // coop-runtime.hpp (v0.5 host setup)
+bool outline_state(void* state,Edict* e,Edict* host);   // qol2-runtime.hpp (v0.10)
 bool player_force_visible(Edict* e,Edict* host);void player_forced_log(Edict* e,Edict* host,bool shown);   // coop-runtime.hpp (v0.6)
 int __cdecl full_pack(void* state,int number,Edict* e,Edict* host,int flags,int player,unsigned char* set){
  // coop-fixes-014: no player model inside this client's scene camera, but the
@@ -158,6 +159,7 @@ int __cdecl full_pack(void* state,int number,Edict* e,Edict* host,int flags,int 
  }
  if(result&&hide&&state)store(state,0x3c,load<unsigned>(state,0x3c)|0x80u);
  if(result&&player&&state&&collision_off())store<short>(state,0x3a,0);   // v0.5 E2: collision off
+ if(result&&player&&state&&!hide)outline_state(state,e,host);   // v0.10: far teammates outlined (sc_outline)
  return result;
 }
 void __cdecl visibility(Edict* view,Edict* client,unsigned char** pvs,unsigned char** pas){
@@ -178,7 +180,8 @@ void opening_think_evidence(Edict* e){
  openingThinks[e]=id;char s[200]{};std::snprintf(s,sizeof(s),"[STORYCOOP_RC4_HOTFIX] NATIVE_THINK %s edict=%d time=%.2f\n",name,eng<int(__cdecl*)(Edict*)>(71)(e),load<float>(globals,0));log(s);
 }
 void state_reset();void objective_session_reset();void load_wait_reset();
-void reset(){objective_session_reset();state_reset();load_wait_reset();carry_reset();give_reset();give_owed_reset();rejoin_reset();journal.reset();puzzle_reset();checkpoint_reset();keypad_reset();story_reset();for(auto& item:allocations){item.second.sent=0;item.second.next=0;item.second.notified=0;item.second.rejection=0;}}
+void qol2_new_game();   // qol2-runtime.hpp
+void reset(){qol2_new_game();objective_session_reset();state_reset();load_wait_reset();carry_reset();give_reset();give_owed_reset();rejoin_reset();journal.reset();puzzle_reset();checkpoint_reset();keypad_reset();story_reset();for(auto& item:allocations){item.second.sent=0;item.second.next=0;item.second.notified=0;item.second.rejection=0;}}
 std::string sha_file(const std::wstring& path){
  BCRYPT_ALG_HANDLE alg=nullptr;BCRYPT_HASH_HANDLE h=nullptr;DWORD size=0,got=0;
  if(BCryptOpenAlgorithmProvider(&alg,BCRYPT_SHA256_ALGORITHM,nullptr,0)<0)return {};
@@ -227,7 +230,7 @@ void* __cdecl allocate(Edict* e,std::int32_t bytes){
  if(scoped()&&p&&bytes>0){auto& a=allocations[e];a={p,static_cast<std::size_t>(bytes),serial(e)};a.born=globals?load<float>(globals,0):0;a.stamp=++stamps;}return p;
 }
 void __cdecl release(Edict* e){camera_forget(e);allocations.erase(e);eng<void(__cdecl*)(Edict*)>(65)(e);}
-int __cdecl register_message(const char* name,int bytes){int id=eng<int(__cdecl*)(const char*,int)>(75)(name,bytes);if(name&&std::strcmp(name,"Clothes")==0)clothesMessage=id;if(name&&std::strcmp(name,"ViewEntity")==0)cameraViewMessage=id;if(name&&std::strcmp(name,"ModelAttach")==0)cameraAttachMessage=id;if(name&&std::strcmp(name,"ResetHUD")==0)resetHud=id;if(name&&std::strcmp(name,"ScoreInfo")==0)scoreInfoMessage=id;if(name&&std::strcmp(name,"InitHUD")==0)initHud=id;if(name&&std::strcmp(name,"AddNote")==0&&bytes==-1)addNote=id;if(name&&std::strcmp(name,"NoteDoc")==0&&bytes==-1)noteDoc=id;if(name&&std::strcmp(name,"TextMsg")==0&&bytes==-1)textMessage=id;if(name&&std::strcmp(name,"SaveLoad")==0&&bytes==-1)saveLoadMessage=id;if(name&&std::strcmp(name,"ScreenFade")==0)screenFadeMessage=id;if(name&&std::strcmp(name,"ProFont")==0)proFontMessage=id;if(name&&std::strcmp(name,"HealthCap")==0&&bytes==1)healthCapMessage=id;if(name&&std::strcmp(name,"CoFLogo")==0&&bytes==1)cofLogoMessage=id;if(name&&std::strcmp(name,"Computer")==0)computerMessage=id;if(name&&std::strcmp(name,"QSlotUpdate")==0&&bytes==2)qslotUpdateMessage=id;if(name&&std::strcmp(name,"Credits")==0&&bytes==-1)creditsMessage=id;if(name&&std::strcmp(name,"Unlocks")==0)unlocksMessage=id;if(name&&std::strcmp(name,"Concuss")==0)concussMessage=id;if(name&&std::strcmp(name,"CameraZoom")==0)cameraZoomMessage=id;if(name&&std::strcmp(name,"Inventory")==0)inventoryMessage=id;if(name&&std::strcmp(name,"ControlHint")==0&&bytes==-1)controlHintMessage=id;if(name&&std::strcmp(name,"Objectives")==0&&bytes==-1)objectivesMessage=id;return id;}
+int __cdecl register_message(const char* name,int bytes){int id=eng<int(__cdecl*)(const char*,int)>(75)(name,bytes);if(name&&std::strcmp(name,"Clothes")==0)clothesMessage=id;if(name&&std::strcmp(name,"ViewEntity")==0)cameraViewMessage=id;if(name&&std::strcmp(name,"ModelAttach")==0)cameraAttachMessage=id;if(name&&std::strcmp(name,"ResetHUD")==0)resetHud=id;if(name&&std::strcmp(name,"ScoreInfo")==0)scoreInfoMessage=id;if(name&&std::strcmp(name,"InitHUD")==0)initHud=id;if(name&&std::strcmp(name,"AddNote")==0&&bytes==-1)addNote=id;if(name&&std::strcmp(name,"NoteDoc")==0&&bytes==-1)noteDoc=id;if(name&&std::strcmp(name,"TextMsg")==0&&bytes==-1)textMessage=id;if(name&&std::strcmp(name,"SaveLoad")==0&&bytes==-1)saveLoadMessage=id;if(name&&std::strcmp(name,"ScreenFade")==0)screenFadeMessage=id;if(name&&std::strcmp(name,"ProFont")==0)proFontMessage=id;if(name&&std::strcmp(name,"HealthCap")==0&&bytes==1)healthCapMessage=id;if(name&&std::strcmp(name,"CoFLogo")==0&&bytes==1)cofLogoMessage=id;if(name&&std::strcmp(name,"Computer")==0)computerMessage=id;if(name&&std::strcmp(name,"QSlotUpdate")==0&&bytes==2)qslotUpdateMessage=id;if(name&&std::strcmp(name,"Credits")==0&&bytes==-1)creditsMessage=id;if(name&&std::strcmp(name,"Unlocks")==0)unlocksMessage=id;if(name&&std::strcmp(name,"Concuss")==0)concussMessage=id;if(name&&std::strcmp(name,"CameraZoom")==0)cameraZoomMessage=id;if(name&&std::strcmp(name,"Inventory")==0)inventoryMessage=id;if(name&&std::strcmp(name,"ControlHint")==0&&bytes==-1)controlHintMessage=id;if(name&&std::strcmp(name,"Objectives")==0&&bytes==-1)objectivesMessage=id;if(name&&std::strcmp(name,"BlackWhite")==0&&bytes==1)blackWhiteMessage=id;if(name&&std::strcmp(name,"Chapter")==0&&bytes==-1)chapterMessage=id;return id;}
 #include "note-layout.hpp"
 // --- Story text for every player (coop-fixes-004) ---------------------------
 // Subtitles (subtitle_main think 1005FC20, driven by subtitle_linechange
@@ -293,7 +296,8 @@ void inventory_quiet_begin(int dest,int type,Edict* e){
 int inventory_quiet_byte(int value){if(!inventoryQuiet.inventory)return value;return inventoryQuiet.bytes++==3?1:value;}
 const char* inventory_quiet_text(const char* s){return inventoryQuiet.text&&s&&(!std::strncmp(s,"Picked up",9)||!std::strncmp(s,"You got",7))?"":s;}
 void spray_wire_begin(int type);void spray_wire_byte(int value);void spray_wire_end();
-void __cdecl message_begin(int dest,int type,const float* origin,Edict* e){spray_wire_begin(type);
+void qol2_wire_begin(int dest,int type,Edict* e);int qol2_wire_byte(int value);void qol2_wire_string(const char* s);   // qol2-runtime.hpp (v0.10)
+void __cdecl message_begin(int dest,int type,const float* origin,Edict* e){spray_wire_begin(type);qol2_wire_begin(dest,type,e);
  inventory_quiet_begin(dest,type,e);language_wire_begin(dest,type,e);busy_note_opened(dest,type,e);
  creditsBytes=scoped()&&creditsMessage>0&&type==creditsMessage?0:-1;
  unlocksActive=verified&&unlocksMessage>0&&type==unlocksMessage;
@@ -309,13 +313,13 @@ void __cdecl message_begin(int dest,int type,const float* origin,Edict* e){spray
  if(packet.active){noteWire={};noteWire.active=true;noteWire.dest=dest;noteWire.type=type;noteWire.recipient=e;noteWire.hasOrigin=origin!=nullptr;if(origin)std::copy(origin,origin+3,noteWire.origin.begin());return;}
  eng<void(__cdecl*)(int,int,const float*,Edict*)>(46)(dest,type,origin,e);
 }
-void __cdecl write_byte(int value){spray_wire_byte(value);value=credits_byte(value);value=inventory_quiet_byte(value);if(logo_write(value)||score_write(48,value))return;mirror_op(48,value,0,nullptr);if(recorder_write(48,value,0,nullptr))return;if(packet.active){switch(packet.bytes++){case 0:packet.slot=value;break;case 1:packet.meta.codeFlag=value;break;case 2:packet.meta.codeType=value;break;default:packet.valid=false;}}
+void __cdecl write_byte(int value){value=qol2_wire_byte(value);spray_wire_byte(value);value=credits_byte(value);value=inventory_quiet_byte(value);if(logo_write(value)||score_write(48,value))return;mirror_op(48,value,0,nullptr);if(recorder_write(48,value,0,nullptr))return;if(packet.active){switch(packet.bytes++){case 0:packet.slot=value;break;case 1:packet.meta.codeFlag=value;break;case 2:packet.meta.codeType=value;break;default:packet.valid=false;}}
  if(!note_buffer(48,value))eng<void(__cdecl*)(int)>(48)(value);
 }
 void __cdecl write_short(int value){if(score_write(50,value))return;mirror_op(50,value,0,nullptr);if(recorder_write(50,value,0,nullptr))return;if(packet.active){if(packet.shorts++)packet.valid=false;packet.meta.codeValue=value;}
  if(!note_buffer(50,value))eng<void(__cdecl*)(int)>(50)(value);
 }
-void __cdecl write_string(const char* s){s=inventory_quiet_text(s);mirror_op(54,0,0,s);if(recorder_write(54,0,0,s))return;s=language_wire_text(s);if(packet.active){if(packet.strings>=NoteFields.size()||!s)packet.valid=false;else{auto f=NoteFields[packet.strings];std::size_t n=0;while(n<f.capacity&&s[n])++n;if(n==f.capacity)packet.valid=false;else std::memcpy(packet.note.data()+f.offset,s,n+1);}++packet.strings;}
+void __cdecl write_string(const char* s){qol2_wire_string(s);s=inventory_quiet_text(s);mirror_op(54,0,0,s);if(recorder_write(54,0,0,s))return;s=language_wire_text(s);if(packet.active){if(packet.strings>=NoteFields.size()||!s)packet.valid=false;else{auto f=NoteFields[packet.strings];std::size_t n=0;while(n<f.capacity&&s[n])++n;if(n==f.capacity)packet.valid=false;else std::memcpy(packet.note.data()+f.offset,s,n+1);}++packet.strings;}
  std::string corrected;
  if(reader.active&&s){
   if(reader.strings==0){std::size_t length=0;while(length<32&&s[length])++length;if(length<32)reader.page.assign(s,length);else reader.active=false;}
@@ -408,9 +412,10 @@ void everyone(bool capture){if(!globals)return;for(int i=1;i<=load<int>(globals,
 #include "client-menu.hpp"
 #include "qol-runtime.hpp"
 #include "spray-runtime.hpp"
+#include "qol2-runtime.hpp"
 void frame_evidence();
-void __cdecl start_frame(){crumb("start_frame");++netFrame;collision_restore();gameui_patch();firstPlayerLookup=false;pause_poll();menu_credit_frame();give_flush();three_slots_frame();chapter_frame();join_wait_frame();regroup_frame();checkpoint_start_frame();keypad_frame();story_frame();logo_frame();score_sync();keydoor_frame();ladder_frame();pp_frame();half_frame();skip_frame();party_counters_frame();prologue_skip_frame();boss_frame();train_escape_frame();floor_walls_frame();stayout_fades_frame();wardrobe_frame();join_connect_frame();load_wait_frame();door_lock_frame();item_copies_frame();team_cards_frame();story_teleport_frame();climb_follow_frame();scene_watch_frame();boss_save_frame();wheelchair_frame();team_hud_frame();language_frame();frame_evidence();}
-void __cdecl game_init(){crash_install();reset();native<void(__cdecl*)()>(0)();if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_checkpoint_load",&checkpoint_load_command);if(engine[56])eng<void(__cdecl*)(cvar_t*)>(56)(&collisionCvar);if(engine[56])eng<void(__cdecl*)(cvar_t*)>(56)(&extrasCvar);if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_checkpoint_prepare",&checkpoint_prepare_command);if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_door_music",&door_music_command);if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_report",&model_report_send);qol_register_commands();log("[STORYCOOP_RC4] GameInit forwarded; checkpoint command registered\n");}
+void __cdecl start_frame(){crumb("start_frame");++netFrame;collision_restore();gameui_patch();firstPlayerLookup=false;pause_poll();menu_credit_frame();give_flush();three_slots_frame();chapter_frame();join_wait_frame();regroup_frame();checkpoint_start_frame();keypad_frame();story_frame();logo_frame();score_sync();keydoor_frame();ladder_frame();pp_frame();half_frame();skip_frame();party_counters_frame();prologue_skip_frame();boss_frame();train_escape_frame();floor_walls_frame();stayout_fades_frame();wardrobe_frame();join_connect_frame();load_wait_frame();door_lock_frame();item_copies_frame();team_cards_frame();story_teleport_frame();climb_follow_frame();scene_watch_frame();boss_save_frame();wheelchair_frame();team_hud_frame();language_frame();qol2_frame();frame_evidence();}
+void __cdecl game_init(){crash_install();reset();native<void(__cdecl*)()>(0)();if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_checkpoint_load",&checkpoint_load_command);if(engine[56])eng<void(__cdecl*)(cvar_t*)>(56)(&collisionCvar);if(engine[56])eng<void(__cdecl*)(cvar_t*)>(56)(&extrasCvar);if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_checkpoint_prepare",&checkpoint_prepare_command);if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_door_music",&door_music_command);if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_report",&model_report_send);qol_register_commands();qol2_register();log("[STORYCOOP_RC4] GameInit forwarded; checkpoint command registered\n");}
 // v0.3 audit: the main menu map (c_game_menu1) ends every game. Only the mod's
 // New Game/Load entries and cof_campaign_story4 reset the session, so a game
 // started another way in the same process (the tester went c_game_menu1 ->
@@ -429,7 +434,7 @@ int __cdecl spawn(Edict* e){
  // v0.3 map state: the entity's BSP identity, read before its own Spawn runs.
  std::string stateKey;bool dm=false;if(scoped()){if(world)state_map_begin();stateKey=state_identity(e);auto p=vars(e);dm=p&&(load<unsigned>(p,0x1a4)&2048u);}
  int result=native<int(__cdecl*)(Edict*)>(1)(e);if(world){checkpoint_world_ready();level_change_release();chapter_world_started();}
- if(world&&scoped()){deathmatch_open();groans_precache();spray_precache();}   // v0.5 RC-2048 (world-runtime.hpp); v0.9 revive groans
+ if(world&&scoped()){deathmatch_open();groans_precache();spray_precache();qol2_world_spawned();}   // v0.5 RC-2048 (world-runtime.hpp); v0.9 revive groans
  if(scoped())world_spawned(e,world,result,stateKey,dm);
  // User request: shared notes must glow red like every other pickup. Native
  // CPasswordNote::Spawn (100835A6) sets renderfx 100 (+0x160); the shared-note
@@ -453,7 +458,7 @@ void __cdecl think(Edict* e){crumb("think",e);firstPlayerLookup=false;if(!scoped
 void __cdecl put(Edict* e){crumb("putinserver",e);native<void(__cdecl*)(Edict*)>(18)(e);void* p=nullptr;std::size_t n=0;if(scoped()&&player_memory(e,p,n))puzzle_on_player_initialized(e,p,n);}
 void __cdecl client_command(Edict* e){
  crumb("command",e);
- const char* early=eng<const char*(__cdecl*)(int)>(83)(0);menu_command(early);stuck_command(e,early);if(qol_client_command(e,early)||model_box_command(e,early)||join_box_command(e,early)||skip_client_command(e,early)||model_report_command(e,early))return;
+ const char* early=eng<const char*(__cdecl*)(int)>(83)(0);menu_command(early);stuck_command(e,early);if(qol_client_command(e,early)||qol2_client_command(e,early)||model_box_command(e,early)||join_box_command(e,early)||skip_client_command(e,early)||model_report_command(e,early))return;
  // Every story co-op map, the passive opening included: no police flashlight.
  if(campaign_map()&&early&&!std::strcmp(early,"flashlight")){if(!light_command(e,early)&&!openingLightLogged){openingLightLogged=true;log("[STORYCOOP_RC4] LIGHT police flashlight refused (F key); other lights allowed\n");}return;}
  if(!scoped()){native<void(__cdecl*)(Edict*)>(19)(e);return;}
@@ -473,7 +478,7 @@ void __cdecl client_command(Edict* e){
  if(command&&!std::strcmp(command,"boilercheck")&&barPlayer!=e){barPlayer=e;barPlayerSerial=serial(e);char line[100]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] PUZZLEBAR player=%d turns the bars\n",eng<int(__cdecl*)(Edict*)>(71)(e));log(line);}
  const std::string quickArg=itemName=="quicksel"?[]{const char* a=eng<const char*(__cdecl*)(int)>(83)(1);return std::string(a?a:"").substr(0,4);}():std::string();
  team_cards_command(e,command);pickupActor=e;native<void(__cdecl*)(Edict*)>(19)(e);pickupActor=nullptr;actingPlayer=nullptr;
- quick_dual_command(e,itemName.c_str(),quickArg);
+ quick_dual_command(e,itemName.c_str(),quickArg);qol2_after_command(e,itemName.c_str());
  if(itemCommand)evidence_item_end(e,itemName.c_str(),itemSlot.c_str(),cardsBefore);
  if(decision==PuzzleDecision::ForwardOwned)puzzle_after_client_command();
  auto before=journal.size();collect(e);if(journal.size()!=before){char s[100]{};std::snprintf(s,sizeof(s),"[STORYCOOP_RC4] JOURNAL acquired=%u shared after native command\n",static_cast<unsigned>(journal.size()));log(s);everyone(false);}
@@ -487,7 +492,7 @@ void __cdecl activate(Edict* list,int count,int clients){
  coop_version_redirect();story_entry_redirect();
  localServerActive=true;session_state("local");server_cfg_exec();language_activate();
 }
-void __cdecl deactivate(){deathmatch_close();checkpoint_game_over_check();state_deactivate();localServerActive=false;qol_map_changed();join_box_close(nullptr);model_box_close(nullptr);crumb("deactivate");everyone(true);for(int i=1;i<=load<int>(globals,0x90);++i){checkpoint_capture_departing(eng<Edict*(__cdecl*)(int)>(72)(i));carry_departing(eng<Edict*(__cdecl*)(int)>(72)(i));}carry_map_changed();coop_map_changed();story_adopt();story_map_changed();rejoin_map_changed();logo_reset();score_reset();netTuned.clear();pose_reset();loadingCheckpoint=false;restoredPlayers.clear();native<void(__cdecl*)()>(22)();camera_reset();keydoor_reset();ladder_map_reset();pp_reset();boat_reset();keypad_map_changed();objective_reset();light_reset();pause_reset();menu_credit_reset();saveChoice={};mirror={};spawnRecords.clear();allocations.clear();puzzle_map_changed();}
+void __cdecl deactivate(){deathmatch_close();checkpoint_game_over_check();state_deactivate();localServerActive=false;qol_map_changed();qol2_map_changed();join_box_close(nullptr);model_box_close(nullptr);crumb("deactivate");everyone(true);for(int i=1;i<=load<int>(globals,0x90);++i){checkpoint_capture_departing(eng<Edict*(__cdecl*)(int)>(72)(i));carry_departing(eng<Edict*(__cdecl*)(int)>(72)(i));}carry_map_changed();coop_map_changed();story_adopt();story_map_changed();rejoin_map_changed();logo_reset();score_reset();netTuned.clear();pose_reset();loadingCheckpoint=false;restoredPlayers.clear();native<void(__cdecl*)()>(22)();camera_reset();keydoor_reset();ladder_map_reset();pp_reset();boat_reset();keypad_map_changed();objective_reset();light_reset();pause_reset();menu_credit_reset();saveChoice={};mirror={};spawnRecords.clear();allocations.clear();puzzle_map_changed();}
 // Movement/jitter evidence: each client's own network settings once per map,
 // and server frame gaps. Observational only; no rate or prediction changes.
 void client_net_evidence(Edict* e){
@@ -510,7 +515,7 @@ void __cdecl command_start(const Edict* actor,const void* command,unsigned int s
 }
 // Ladder reservations are refreshed after each player's think as well as at
 // StartFrame, so a second player's Use later in the same frame sees the lock.
-void __cdecl prethink(Edict* e){crumb("prethink",e);objective_share();deploy_guard(e);ladder_wait_frame(e);pickupActor=e;native<void(__cdecl*)(Edict*)>(23)(e);pickupActor=nullptr;collision_hold(e);strip_clear_frame(e);idle_stage(e,1);down_frame(e);fall_frame(e);scene_teleport_frame(e);model_frame(e);name_frame(e);light_frame(e);camera_frame(e);camera_join(e);checkpoint_player_frame(e);restore(e);quick_notice_frame(e);carry_frame(e);stale_cards_frame(e);arrival_frame(e);story_late_frame(e);objective_late_frame(e);unstuck_hint_frame(e);equip_frame(e);nightmare_frame(e);morphine_frame(e);limp_frame(e);give_owed_frame(e);rejoin_frame(e);ladder_frame();boat_frame(e);idle_stage(e,2);collision_pre(e);}
+void __cdecl prethink(Edict* e){crumb("prethink",e);objective_share();deploy_guard(e);ladder_wait_frame(e);pickupActor=e;native<void(__cdecl*)(Edict*)>(23)(e);pickupActor=nullptr;collision_hold(e);strip_clear_frame(e);idle_stage(e,1);down_frame(e);fall_frame(e);scene_teleport_frame(e);model_frame(e);name_frame(e);light_frame(e);camera_frame(e);camera_join(e);checkpoint_player_frame(e);restore(e);quick_notice_frame(e);carry_frame(e);stale_cards_frame(e);arrival_frame(e);story_late_frame(e);objective_late_frame(e);unstuck_hint_frame(e);qol2_player_frame(e);equip_frame(e);nightmare_frame(e);morphine_frame(e);limp_frame(e);give_owed_frame(e);rejoin_frame(e);ladder_frame();boat_frame(e);idle_stage(e,2);collision_pre(e);}
 // v0.1: the inventory carry reads every player when a level change is asked
 // for (see carry_level_change), then the engine's own ChangeLevel runs.
 // v0.3: the Drowned's victim lookup (see drowned_index in coop-runtime.hpp).
@@ -523,7 +528,7 @@ void __cdecl server_command_hook(char* text){
 }
 void __cdecl key_value(Edict* e,KeyValue* kv){if(extras_keyvalue_dropped(kv)){kv->handled=1;return;}native<void(__cdecl*)(Edict*,KeyValue*)>(6)(e,kv);pickup_keyvalue(e,kv);evidence_keyvalue(e,kv);ladder_keyvalue(e,kv);door_global_keyvalue(e,kv);state_keyvalue(e,kv);}
 void __cdecl postthink(Edict* e){crumb("postthink",e);collision_restore();idle_stage(e,-1);deploy_guard(e);pickupActor=e;native<void(__cdecl*)(Edict*)>(24)(e);pickupActor=nullptr;door_hide_frame(e);idle_stage(e,3);light_frame(e);pose_frame(e);ladder_frame();pp_frame();idle_stage(e,4);}
-void __cdecl disconnect(Edict* e){qol_disconnect(e);pauseState.othersOpen=false;ladder_left(e);carry_departing(e);stuckUsed.erase(e);codeLayouts.erase(note_connection(e));camera_forget(e);boatDrivers.erase(e);checkpoint_disconnect(e);}
+void __cdecl disconnect(Edict* e){qol_disconnect(e);qol2_disconnect(e);pauseState.othersOpen=false;ladder_left(e);carry_departing(e);stuckUsed.erase(e);codeLayouts.erase(note_connection(e));camera_forget(e);boatDrivers.erase(e);checkpoint_disconnect(e);}
 // v0.3 crash report: Use/Touch only leave a breadcrumb, then the game's own.
 void __cdecl dispatch_use(Edict* e,Edict* other){crumb("use",e);if(scoped()&&pickup_blocked(e,other))return;native<void(__cdecl*)(Edict*,Edict*)>(3)(e,other);}
 void __cdecl dispatch_touch(Edict* e,Edict* other){crumb("touch",e);if(scoped()){if(pickup_blocked(e,other)||arrival_touch_blocked(e,other))return;pp_touch(e,other);train_escape_touch(e,other);if(collision_touch_blocked(e,other))return;}native<void(__cdecl*)(Edict*,Edict*)>(4)(e,other);}

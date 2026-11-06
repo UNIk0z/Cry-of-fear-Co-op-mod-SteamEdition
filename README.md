@@ -16,9 +16,9 @@
 
 ## ⬇️ Download
 
-### **[Click here to download Cry of Fear Co-op v0.9](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.9/Cry.of.Fear.Co-op.v0.9.zip)**
+### **[Click here to download Cry of Fear Co-op v0.10](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.10/Cry.of.Fear.Co-op.v0.10.zip)**
 
-### **[Click here to download Cry of Fear Co-op v0.9 for Linux](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.9/Cry.of.Fear.Co-op.v0.9.Linux.tar.gz)**
+### **[Click here to download Cry of Fear Co-op v0.10 for Linux](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.10/Cry.of.Fear.Co-op.v0.10.Linux.tar.gz)**
 
 > [!NOTE]
 > **Linux is supported now.** Cry of Fear runs through Steam Proton, and Linux and Windows players can play together. See the Linux steps below the Windows ones.
@@ -35,7 +35,7 @@
 3. With Cry of Fear closed, open **`Cry of Fear Co-op.exe`** and click **Install** (every player). The program isn't signed, so Windows may warn about it: click **More info**, then **Run anyway**.
 4. To play, click **Run Co-op Mod**. See [Play](#2-play) below.
 
-**Linux (Steam Proton):** download the **[Linux package](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.9/Cry.of.Fear.Co-op.v0.9.Linux.tar.gz)** and extract it (`tar xzf` or your file manager). With the game closed, open a terminal in that folder, run `bash coop.sh` and pick **Install**. To play, run `bash coop.sh` again and pick **Run Co-op Mod** (if the game's own launcher window opens, click **LAUNCH**). It needs Python 3. The Linux version is new, so please report anything that breaks.
+**Linux (Steam Proton):** download the **[Linux package](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.10/Cry.of.Fear.Co-op.v0.10.Linux.tar.gz)** and extract it (`tar xzf` or your file manager). With the game closed, open a terminal in that folder, run `bash coop.sh` and pick **Install**. To play, run `bash coop.sh` again and pick **Run Co-op Mod** (if the game's own launcher window opens, click **LAUNCH**). It needs Python 3. The Linux version is new, so please report anything that breaks.
 
 > [!WARNING]
 > **This mod is unfinished,**
@@ -64,8 +64,12 @@ play **Simon's single-player story** together instead.
 | 👥 **Player list** | The game's own co-op list (health, ping, syringe icon) shows on every story map, hides in cutscenes and shows who is busy: (phone), (reading), (bag), (puzzle). |
 | 🗒️ **Objective reminder** | A player who joins late, respawns or uses unstuck sees the current objective. |
 | 🌍 **Your own subtitles** | Each player reads subtitles and objectives in the language set in his own game. |
-| 🎨 **Sprays and settings** | *Spray* in the launcher turns any picture into your spray (**T** in the game), with a shared spray sound. Each player keeps their newest spray; a new one replaces their previous logo. *Settings* sets field of view, head bob and the keys. **H** hides the HUD for screenshots. |
+| 🎨 **Sprays and settings** | *Spray* in the launcher turns any picture into your spray (**T** in the game), with a shared spray sound. Each player keeps their newest spray; a new one replaces their previous logo. *Settings* sets field of view, head bob, the keys, your colour, black and white mode and the faint light around you with no torch. **H** hides the HUD for screenshots. |
 | 🔁 **Rejoin** | If your game crashes while you are in someone's game, the launcher offers to rejoin. |
+| 📍 **Ping and scare** | **G** marks where you look for everyone, with your name and the distance. **J** plays a laugh at the teammate closest to you. |
+| 📖 **Hunted** | A host option (experimental): Book Simon with the sledgehammer follows the team a few minutes into each story map. |
+| ⏱️ **Host options** | All off until the host turns them on: a run timer with chapter times, outlines on far teammates in their colour, more monster health for more players, and hardcore (no saves, no respawn while down). |
+| 🤝 **Late join and vote kick** | A player who joins a game in progress gets the host's weapons and starts next to them. `votekick <name>` in the console starts a vote (F1 yes, F2 no). |
 | 📼 **Saving** | Only the host can save. The host uses a tape recorder and picks one of the 5 slots in the game's save window. Saves are kept on the host's PC. |
 | ✅ **Your game stays original** | The mod only runs when you start it with **Run Co-op Mod** in the launcher. Starting Cry of Fear normally gives you the original game. |
 
@@ -99,7 +103,8 @@ Every player clicks **Run Co-op Mod** in the launcher.
   opens: pick where to start (*Chapter-0-Prologue* up to
   *Chapter-7-Only-Safe-at-Home*) or a save (*Load-Save-Slot-1* to *5*), set the
   number of players (2 to 4), the difficulty, player collision, *Unlock
-  extras*, the revive time and the auto respawn time, and click **Start**.
+  extras*, the revive time and the auto respawn time, and the v0.10 options
+  (run timer, outlines, harder with more players, Hunted, hardcore; all off), and click **Start**.
   More host settings are in `cryoffear/storycoop_server.cfg` in the game folder. A chapter starts where its title card shows, with the weapons
   Simon has found by then. Give your friends your address (for
   example your Radmin VPN IP).
@@ -166,8 +171,9 @@ Every bug report needs the **log file**. That's how we can see what happened.
 - A crawler enemy is missing in the subway (s4_subtunnel2), and crouching on a save
   station jitters.
 - Pressing R while typing in the chat during a cutscene counts as a skip vote.
-- The v0.9 features (unstuck, player list tags, sprays, settings, subtitles per
-  player, rejoin) have not been played in the game yet. Please report what breaks.
+- The v0.9 features (unstuck, player list tags, settings, subtitles per player,
+  rejoin) and the v0.10 features (host options, Hunted, ping, scare, colours) have
+  not been played in the game yet. Please report what breaks.
 - The crashes when joining that showed up in our logs happen inside the RebuiltSimon
   add-on, not in this mod. If you crash while joining with it installed, try without it.
 

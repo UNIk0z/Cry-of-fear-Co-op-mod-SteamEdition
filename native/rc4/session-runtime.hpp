@@ -86,6 +86,8 @@ struct ModelReport {std::string model,hands;};
 std::map<int,ModelReport> modelReports;
 // v0.9 (item 9): each joining game's own cof_subtitlelanguage, from the same report (qol-runtime.hpp).
 std::map<int,int> playerLanguage;bool checkpoint_host(Edict* e);
+// v0.10: words 4 and 5 are the player's colour and black-and-white choice; run timer for new games and loads (qol2-runtime.hpp).
+void player_prefs_report(int index,const std::string& colour,const std::string& noir);void run_timer_set(double seconds);double run_timer_saved(int slot);
 bool model_report_command(Edict* e,const char* command);
 // v0.7: Simon's outfits, in the order of the client's clothes state 1..11. Each is a
 // player model built at install (scripts/simon-model.mjs), so every PC has them.
@@ -151,6 +153,7 @@ bool model_report_command(Edict* e,const char* command){
  if(!model_name_ok(model)||!(hands=="auto"||hands=="simon"||model_outfit(hands)))return true;
  auto& r=modelReports[index];if(r.model!=model||r.hands!=hands){char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MODEL player=%d reports model %.32s, hands %.32s\n",index,model.c_str(),hands.c_str());log(line);}
  r={model,hands};
+ player_prefs_report(index,arg(4),arg(5));
  const std::string language=arg(3);if(language.size()==1&&language[0]>='0'&&language[0]<='7'&&!checkpoint_host(e)){const int l=language[0]-'0';const auto known=playerLanguage.find(index);if(known==playerLanguage.end()||known->second!=l){char note[100]{};std::snprintf(note,sizeof(note),"[STORYCOOP_RC4] LANGUAGE player=%d reads subtitles in %d\n",index,l);log(note);}playerLanguage[index]=l;}
  return true;
 }
@@ -314,13 +317,13 @@ std::string menu_host_command(int mode,std::string& notice){
  // v0.5: the server takes the playthrough's player count (setup, or the save's)
  // and a load its own difficulty (D1), never the one the menu page just chose.
  constexpr const char* back="disconnect;maxplayers 1;deathmatch 0;map c_game_menu1\n";
- if(mode==1){reset();checkpointWorldStarted=false;checkpointPrepared=false;sessionOptions=SessionOptions{};sessionOptions.have=true;return host_start_command(sessionOptions,0,"cof_campaign_story4");}
+ if(mode==1){run_timer_set(0);reset();checkpointWorldStarted=false;checkpointPrepared=false;sessionOptions=SessionOptions{};sessionOptions.have=true;return host_start_command(sessionOptions,0,"cof_campaign_story4");}
  const auto dir=checkpoint_directory();int best=0;std::filesystem::file_time_type newest{};Checkpoint chosen;bool chosenBackup=false;
  for(int slot=1;slot<=5;++slot){if(mode>10&&slot!=mode-10)continue;Checkpoint value;bool backup=false;std::filesystem::file_time_type time{};if(!menu_slot_usable(dir,slot,value,backup,time))continue;
   if(!best||time>newest){best=slot;newest=time;chosen=std::move(value);chosenBackup=backup;}}
  if(!best){notice=mode>10?"Save slot "+std::to_string(mode-10)+" is empty.\n":std::string("No co-op save was found. Use a tape recorder in a co-op game first.\n");return back;}
  reset();checkpointWorldStarted=false;const std::string map=chosen.map;const int difficulty=chosen.difficulty;if(chosen.options.have)sessionOptions=chosen.options;
- loadedCheckpoint=std::move(chosen);checkpointSlot=best;checkpointPrepared=true;checkpointPreparedBackup=chosenBackup;
+ run_timer_set(run_timer_saved(best));loadedCheckpoint=std::move(chosen);checkpointSlot=best;checkpointPrepared=true;checkpointPreparedBackup=chosenBackup;
  char line[200]{};std::snprintf(line,sizeof(line),"[STORYCOOP] PREPARE accepted from the main menu: slot%d map=%s%s difficulty=%s\n",best,map.c_str(),chosenBackup?" (backup)":"",difficulty?std::to_string(difficulty).c_str():"menu choice (older save)");log(line);
  return host_start_command(sessionOptions,difficulty,map);
 }
@@ -540,7 +543,7 @@ std::string story_entry_command(const StoryEntry& s,std::string& notice){
  reset();checkpointWorldStarted=false;checkpointPrepared=false;sessionOptions=SessionOptions{};sessionOptions.have=true;
  const int slots=globals?load<int>(globals,0x90):2;sessionOptions.maxPlayers=slots<2?2:slots>4?4:slots;
  sessionOptions.collision=engine[57]&&eng<float(__cdecl*)(const char*)>(57)("sc_collision")==0.f?0:1;
- chapterRun.pending=s.chapter;
+ chapterRun.pending=s.chapter;run_timer_set(0);
  return host_start_command(sessionOptions,difficulty_now(),ChapterStarts[s.chapter].map);
 }
 void story_entry_redirect(){
@@ -576,7 +579,7 @@ void __cdecl stuff_command(Edict* e,const char* format,...){
 // (CmdStart) and then every 5 s without a fade-in, so it is always there.
 // v0.1 (user): the build is named v0.1 (v0.2 since 2026-10-16), and Special Thanks lists Mesilll,
 // Michal Eminov and caixa in that order (it misspelled "Michael" before). v0.6 (Katz 2026-10-25): joah added; v0.7 (Katz): written Joah230.
-constexpr const char* MenuCredit="Co-op mod v0.9 developed by Anas Sammak (koolkat)\nSpecial thanks: Mesilll, Michal Eminov, caixa, Joah230";
+constexpr const char* MenuCredit="Co-op mod v0.10 developed by Anas Sammak (koolkat)\nSpecial thanks: Mesilll, Michal Eminov, caixa, Joah230";
 struct MenuCreditState{int serial=-1;float next=0,active=-1;bool logged=false,shown=false;};
 MenuCreditState menuCredit;
 void menu_credit_reset(){const bool logged=menuCredit.logged;menuCredit={};menuCredit.logged=logged;}

@@ -375,7 +375,9 @@ void __cdecl model_report_send(){
  if(!model_name_ok(model))model="simon";
  // v0.9 (item 9): this game's own subtitle language goes with it (qol-runtime.hpp); older hosts read two words only.
  const int language=engine[57]?static_cast<int>(eng<float(__cdecl*)(const char*)>(57)("cof_subtitlelanguage")):1;
- const std::string text="cmd sc_mdl "+model+" "+hands_saved()+" "+std::to_string(language<0||language>7?1:language)+"\n";if(engine[39])eng<void(__cdecl*)(const char*)>(39)(text.c_str());
+ // v0.10: then this game's colour (sc_color 0-8) and black-and-white choice (sc_noir), from storycoop_comfort.cfg.
+ const int colour=engine[57]?static_cast<int>(eng<float(__cdecl*)(const char*)>(57)("sc_color")):0;const bool noir=engine[57]&&eng<float(__cdecl*)(const char*)>(57)("sc_noir")!=0.f;
+ const std::string text="cmd sc_mdl "+model+" "+hands_saved()+" "+std::to_string(language<0||language>7?1:language)+" "+std::to_string(colour<0||colour>8?0:colour)+" "+(noir?"1":"0")+"\n";if(engine[39])eng<void(__cdecl*)(const char*)>(39)(text.c_str());
  session_joined_report();
 }
 // --- Up to ten syringes in co-op (v0.6.1) ---------------------------------------------

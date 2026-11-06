@@ -206,8 +206,14 @@ namespace CofCoop
     {
         public int Fov = 90;
         public int Bob = 2;   // 0 off, 1 low, 2 default
-        public string Unstuck = "k", Hud = "h", Spray = "t";
+        public string Unstuck = "k", Hud = "h", Spray = "t", Ping = "g", Scare = "j";
         public bool HasView;
+        // v0.10: colour (sc_color 0 automatic .. 8), black and white (sc_noir), the faint light around you with no torch on
+        // (cof_reducedlightcolour1-3, cof_reducedlightradius: client cvars, CoF defaults 0.23 0.23 0.26 and 60).
+        public int Colour = 0, Light = 0;   // Light: 0 game, 1 warm, 2 cold, 3 brighter
+        public bool Noir, Wide;
+        public static readonly string[] Lights = { "0.23 0.23 0.26", "0.30 0.24 0.17", "0.17 0.23 0.32", "0.32 0.32 0.36" };
+        public static readonly string[] Colours = { "Automatic", "Red", "Orange", "Yellow", "Green", "Cyan", "Blue", "Purple", "White" };
 
         public static readonly Regex KeyName = new Regex("^([a-z0-9]|f([1-9]|1[0-2])|mouse[3-5]|ins|del|home|end|pgup|pgdn|kp_[a-z0-9]+)$");
 
@@ -223,14 +229,20 @@ namespace CofCoop
                 {
                     string key = m.Groups[1].Value.ToLowerInvariant(), what = m.Groups[2].Value;
                     if (what == "sc_unstuck") s.Unstuck = key; else if (what == "sc_hud") s.Hud = key; else if (what == "impulse 201") s.Spray = key;
+                    else if (what == "sc_ping") s.Ping = key; else if (what == "sc_scare") s.Scare = key;
                     continue;
                 }
-                m = Regex.Match(line, "^(cl_fovmultiplier|cl_bob)\\s+\"?([0-9.]+)\"?");
+                m = Regex.Match(line, "^(cl_fovmultiplier|cl_bob|sc_color|sc_noir|cof_reducedlightcolour1|cof_reducedlightcolour3|cof_reducedlightradius)\\s+\"?([0-9.]+)\"?");
                 if (!m.Success) continue;
                 double v;
                 if (!double.TryParse(m.Groups[2].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out v)) continue;
-                if (m.Groups[1].Value == "cl_fovmultiplier") { s.Fov = (int)Math.Round(Math.Max(75, Math.Min(110, 90 * v))); s.HasView = true; }
-                else { s.Bob = v <= 0.0001 ? 0 : v < 0.008 ? 1 : 2; s.HasView = true; }
+                string name = m.Groups[1].Value;
+                if (name == "cl_fovmultiplier") { s.Fov = (int)Math.Round(Math.Max(75, Math.Min(110, 90 * v))); s.HasView = true; }
+                else if (name == "cl_bob") { s.Bob = v <= 0.0001 ? 0 : v < 0.008 ? 1 : 2; s.HasView = true; }
+                else if (name == "sc_color") s.Colour = Math.Max(0, Math.Min(8, (int)v));
+                else if (name == "sc_noir") s.Noir = v != 0;
+                else if (name == "cof_reducedlightradius") s.Wide = v > 75;
+                else if (name == "cof_reducedlightcolour1") s.Light = v >= 0.315 ? 3 : v >= 0.28 ? 1 : v <= 0.19 ? 2 : 0;
             }
             return s;
         }
@@ -256,6 +268,21 @@ namespace CofCoop
             b.AppendLine("bind \"" + Hud + "\" \"sc_hud\"");
             b.AppendLine("// Spray your logo");
             b.AppendLine("bind \"" + Spray + "\" \"impulse 201\"");
+            b.AppendLine("// Ping: show the others where you look");
+            b.AppendLine("bind \"" + Ping + "\" \"sc_ping\"");
+            b.AppendLine("// Scare the nearest teammate with a laugh");
+            b.AppendLine("bind \"" + Scare + "\" \"sc_scare\"");
+            b.AppendLine();
+            b.AppendLine("// Your colour: " + Colours[Colour] + " (0 automatic, 1 red, 2 orange, 3 yellow, 4 green, 5 cyan, 6 blue, 7 purple, 8 white)");
+            b.AppendLine("sc_color \"" + Colour + "\"");
+            b.AppendLine("// Black and white picture (1 = on)");
+            b.AppendLine("sc_noir \"" + (Noir ? "1" : "0") + "\"");
+            string[] rgb = Lights[Light].Split(' ');
+            b.AppendLine("// Your faint light when no torch is on: " + (Light == 0 ? "the game's" : Light == 1 ? "warm" : Light == 2 ? "cold" : "brighter") + (Wide ? ", wide" : ""));
+            b.AppendLine("cof_reducedlightcolour1 \"" + rgb[0] + "\"");
+            b.AppendLine("cof_reducedlightcolour2 \"" + rgb[1] + "\"");
+            b.AppendLine("cof_reducedlightcolour3 \"" + rgb[2] + "\"");
+            b.AppendLine("cof_reducedlightradius \"" + (Wide ? "90" : "60") + "\"");
             return b.ToString();
         }
 
@@ -345,43 +372,52 @@ namespace CofCoop
         readonly Dictionary<string, string> binds;
         TrackBar fov;
         Label fovText, note;
-        RadioButton[] bob = new RadioButton[3];
-        TextBox[] keys = new TextBox[3];
-        Label[] keyNotes = new Label[3];
-        static readonly string[] Ours = { "sc_unstuck", "sc_hud", "impulse 201" };
+        RadioButton[] bob = new RadioButton[3], light = new RadioButton[4];
+        CheckBox wide, noir;
+        ComboBox colour;
+        TextBox[] keys = new TextBox[5];
+        Label[] keyNotes = new Label[5];
+        static readonly string[] Ours = { "sc_unstuck", "sc_hud", "impulse 201", "sc_ping", "sc_scare" };
 
-        public SettingsForm(string gameDirectory) : base("Settings", 520, 430)
+        public SettingsForm(string gameDirectory) : base("Settings", 560, 600)
         {
             game = gameDirectory;
             path = Path.Combine(game, "storycoop_comfort.cfg");
             settings = ComfortSettings.Read(path);
             binds = ComfortSettings.GameBinds(game);
-            AddLabel("Used at every co-op start on this PC. Saved in cryoffear\\storycoop_comfort.cfg.", 20, 40, 480, 18, true);
+            AddLabel("Used at every co-op start on this PC. Saved in cryoffear\\storycoop_comfort.cfg.", 20, 40, 520, 18, true);
 
             AddLabel("Field of view", 20, 72, 160, 20, false);
             fov = new TrackBar();
             fov.Minimum = 75; fov.Maximum = 110; fov.TickFrequency = 5; fov.Value = Math.Max(75, Math.Min(110, settings.Fov));
-            fov.Location = new Point(S(180), S(66)); fov.Size = new Size(S(240), S(30)); fov.BackColor = Theme.Back;
-            fovText = AddLabel("", 428, 72, 80, 20, false);
+            fov.Location = new Point(S(180), S(66)); fov.Size = new Size(S(260), S(30)); fov.BackColor = Theme.Back;
+            fovText = AddLabel("", 448, 72, 100, 20, false);
             fov.ValueChanged += delegate { fovText.Text = fov.Value + (fov.Value == 90 ? " (game)" : ""); };
             fovText.Text = fov.Value + (fov.Value == 90 ? " (game)" : "");
             Controls.Add(fov);
 
-            AddLabel("Head bob", 20, 112, 160, 20, false);
+            AddLabel("Head bob", 20, 110, 160, 20, false);
             string[] names = { "Off", "Low", "Default" };
-            for (int i = 0; i < 3; i++)
-            {
-                RadioButton r = new RadioButton();
-                r.Text = names[i]; r.Font = font; r.ForeColor = Theme.Ink; r.BackColor = Color.Transparent;
-                r.Location = new Point(S(180 + i * 100), S(110)); r.Size = new Size(S(96), S(24)); r.Checked = settings.Bob == i;
-                bob[i] = r; Controls.Add(r);
-            }
+            for (int i = 0; i < 3; i++) { bob[i] = Radio(names[i], 180 + i * 100, 108, settings.Bob == i, null); }
 
-            string[] labels = { "Unstuck key", "HUD on/off key", "Spray key" };
-            string[] values = { settings.Unstuck, settings.Hud, settings.Spray };
-            for (int i = 0; i < 3; i++)
+            AddLabel("Light, no torch", 20, 144, 160, 20, false);
+            string[] lights = { "Game", "Warm", "Cold", "Brighter" };
+            Panel lightGroup = new Panel(); lightGroup.Location = new Point(S(180), S(140)); lightGroup.Size = new Size(S(370), S(26)); lightGroup.BackColor = Color.Transparent; Controls.Add(lightGroup);
+            for (int i = 0; i < 4; i++) { light[i] = Radio(lights[i], i * 86, 2, settings.Light == i, lightGroup); }
+            wide = Check("Wider", 180, 168, settings.Wide);
+
+            AddLabel("Your colour", 20, 202, 160, 20, false);
+            colour = new ComboBox(); colour.DropDownStyle = ComboBoxStyle.DropDownList; colour.Font = font; colour.BackColor = Color.FromArgb(0x18, 0x17, 0x16); colour.ForeColor = Theme.Ink; colour.FlatStyle = FlatStyle.Flat;
+            colour.Items.AddRange(ComfortSettings.Colours); colour.SelectedIndex = Math.Max(0, Math.Min(8, settings.Colour));
+            colour.Location = new Point(S(180), S(198)); colour.Size = new Size(S(130), S(24)); Controls.Add(colour);
+            noir = Check("Black and white", 330, 200, settings.Noir);
+            AddLabel("Your colour marks your ping and, if the host turns it on, your outline.", 20, 226, 520, 18, true);
+
+            string[] labels = { "Unstuck key", "HUD on/off key", "Spray key", "Ping key", "Scare key" };
+            string[] values = { settings.Unstuck, settings.Hud, settings.Spray, settings.Ping, settings.Scare };
+            for (int i = 0; i < 5; i++)
             {
-                int y = 156 + i * 52;
+                int y = 256 + i * 46;
                 AddLabel(labels[i], 20, y + 2, 160, 20, false);
                 TextBox t = new TextBox();
                 t.Text = values[i].ToUpperInvariant(); t.Font = font; t.BackColor = Color.FromArgb(0x18, 0x17, 0x16); t.ForeColor = Theme.Ink; t.BorderStyle = BorderStyle.FixedSingle;
@@ -389,13 +425,31 @@ namespace CofCoop
                 int k = i;
                 t.TextChanged += delegate { ShowKeyNote(k); };
                 keys[i] = t; Controls.Add(t);
-                keyNotes[i] = AddLabel("", 180, y + 27, 330, 18, true);
+                keyNotes[i] = AddLabel("", 280, y + 4, 270, 18, true);
                 ShowKeyNote(i);
             }
-            AddLabel("Keys: a letter, a digit, F1-F12, MOUSE3-5. K is voice chat in a new config.", 20, 316, 490, 18, true);
-            note = AddLabel("", 20, 340, 490, 36, false);
-            AddButton("SAVE", 20, 390, delegate { Save(); });
-            AddButton("CLOSE", 160, 390, delegate { Close(); });
+            AddLabel("Keys: a letter, a digit, F1-F12, MOUSE3-5. K is voice chat in a new config.", 20, 488, 520, 18, true);
+            note = AddLabel("", 20, 512, 520, 36, false);
+            AddButton("SAVE", 20, 560, delegate { Save(); });
+            AddButton("CLOSE", 160, 560, delegate { Close(); });
+        }
+
+        RadioButton Radio(string text, int x, int y, bool on, Control parent)
+        {
+            RadioButton r = new RadioButton();
+            r.Text = text; r.Font = font; r.ForeColor = Theme.Ink; r.BackColor = Color.Transparent;
+            r.Location = new Point(S(x), S(y)); r.Size = new Size(S(84), S(24)); r.Checked = on;
+            (parent ?? this).Controls.Add(r);
+            return r;
+        }
+
+        CheckBox Check(string text, int x, int y, bool on)
+        {
+            CheckBox c = new CheckBox();
+            c.Text = text; c.Font = font; c.ForeColor = Theme.Ink; c.BackColor = Color.Transparent;
+            c.Location = new Point(S(x), S(y)); c.Size = new Size(S(200), S(24)); c.Checked = on;
+            Controls.Add(c);
+            return c;
         }
 
         void ShowKeyNote(int i)
@@ -409,16 +463,18 @@ namespace CofCoop
 
         void Save()
         {
-            string[] chosen = new string[3];
-            for (int i = 0; i < 3; i++)
+            string[] chosen = new string[5];
+            for (int i = 0; i < 5; i++)
             {
                 chosen[i] = keys[i].Text.Trim().ToLowerInvariant();
                 if (!ComfortSettings.KeyName.IsMatch(chosen[i])) { note.Text = "\"" + keys[i].Text + "\" is not a key name."; return; }
+                for (int j = 0; j < i; j++) if (chosen[j] == chosen[i]) { note.Text = "Each key can do one thing only."; return; }
             }
-            if (chosen[0] == chosen[1] || chosen[0] == chosen[2] || chosen[1] == chosen[2]) { note.Text = "Each key can do one thing only."; return; }
             settings.Fov = fov.Value;
             settings.Bob = bob[0].Checked ? 0 : bob[1].Checked ? 1 : 2;
-            settings.Unstuck = chosen[0]; settings.Hud = chosen[1]; settings.Spray = chosen[2];
+            settings.Light = light[1].Checked ? 1 : light[2].Checked ? 2 : light[3].Checked ? 3 : 0;
+            settings.Wide = wide.Checked; settings.Noir = noir.Checked; settings.Colour = Math.Max(0, colour.SelectedIndex);
+            settings.Unstuck = chosen[0]; settings.Hud = chosen[1]; settings.Spray = chosen[2]; settings.Ping = chosen[3]; settings.Scare = chosen[4];
             try
             {
                 string temp = path + ".new";

@@ -2,7 +2,9 @@
 // The co-op adapter makes that window read this file instead of settings.scr
 // (only in co-op launches: Run Co-op Mod in "Cry of Fear Co-op.exe"). The window
 // may rewrite it to keep the last choices. v0.9: revive time (sv_coopcprtime)
-// and auto respawn (sv_auto_respawn_time) are the game's own cvars.
+// and auto respawn (sv_auto_respawn_time) are the game's own cvars. v0.10: run
+// timer, outlines, scaling, hunted and the hardcore options; sv_coop_nosave,
+// sv_morphinetriptime and sv_disablehints are the game's own.
 //
 // Format: "cvar" { "Prompt" { type [ type info ] } { default } }
 // BOOL "0"/"1"; NUMBER min max; STRING; LIST "label" "value" ... with the
@@ -66,6 +68,62 @@ DESCRIPTION SERVER_OPTIONS
 		"Auto respawn while down (seconds)"
 		{ NUMBER 10.000000 999.000000 }
 		{ "384.000000" }
+	}
+
+	"sc_timer"
+	{
+		"Run timer"
+		{ LIST "Off" "0" "Chapter times" "1" "Always on screen" "2" }
+		{ "0" }
+	}
+
+	"sc_outline"
+	{
+		"Outline far teammates"
+		{ BOOL }
+		{ "0" }
+	}
+
+	"sc_scale"
+	{
+		"Harder with more players (monster health)"
+		{ BOOL }
+		{ "0" }
+	}
+
+	"sc_hunted"
+	{
+		"Hunted: Book Simon stalks you (experimental)"
+		{ BOOL }
+		{ "0" }
+	}
+
+	"sv_coop_nosave"
+	{
+		"Hardcore: no saves"
+		{ BOOL }
+		{ "0" }
+	}
+
+	"sc_norespawn"
+	{
+		"Hardcore: no respawn while down (revive only)"
+		{ BOOL }
+		{ "0" }
+	}
+
+	"sv_morphinetriptime"
+	{
+		"Morphine trip time (seconds)"
+		{ NUMBER 5.000000 120.000000 }
+		{ "35.000000" }
+	}
+
+	"sv_disablehints"
+	{
+		"No hint pop-ups (objective, key prompt)"
+		{ BOOL }
+		{ "0" }
 	}
 
 	"pausable"

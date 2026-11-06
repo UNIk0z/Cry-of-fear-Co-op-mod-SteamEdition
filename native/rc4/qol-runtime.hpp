@@ -93,7 +93,9 @@ std::string player_name(Edict* e){
 // The game's "Objectives" message (player.cpp 6762: key, hints file, show byte) with show=1 puts the
 // objective at the top of the screen for 5 s (client hud_msg.cpp 1236). Sent to a player who joins a
 // map more than 15 s after it started, who respawned, or who used unstuck. B still shows it any time.
+bool hints_off();   // qol2-runtime.hpp (v0.10): sv_disablehints
 void objective_remind(Edict* e,const char* why){
+ if(hints_off())return;
  if(objectivesMessage<=0||objectiveText.empty()||!live(e)||!client_ready(e)||!engine[46]||!engine[47]||!engine[48]||!engine[54])return;
  const int l=language_of(e);const std::string file=!objectiveFile.empty()?objectiveFile:language_file(l<0?server_language():l,"hints.txt");
  eng<void(__cdecl*)(int,int,const float*,Edict*)>(46)(1,objectivesMessage,nullptr,e);
@@ -159,6 +161,7 @@ bool unstuck_command(Edict* e,const char* command){
 // sc_unstuck. Once per player per hosted game, 8 s after he is first ready on a story map, out of scenes.
 std::set<std::string> unstuckHinted;std::unordered_map<Edict*,std::pair<int,float>> unstuckHintDue;
 void unstuck_hint_frame(Edict* e){
+ if(hints_off())return;
  if(controlHintMessage<=0||!scoped()||!globals||!live(e)||!client_ready(e)||!view_alive(e)||in_scene(e)||!engine[46]||!engine[47]||!engine[54])return;
  std::string key=steam_identity(e);if(key.empty())key="slot"+std::to_string(eng<int(__cdecl*)(Edict*)>(71)(e));if(unstuckHinted.count(key))return;
  const float now=load<float>(globals,0);auto& due=unstuckHintDue[e];if(due.first!=serial(e)){due={serial(e),now+8.f};return;}if(now<due.second)return;

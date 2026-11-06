@@ -5,7 +5,7 @@ $pin='0036b91c01e92ed205513f52563053a55a66a32d257efb5f476b8f1f3dde0e63'
 if ((Get-FileHash -LiteralPath $NativeDll -Algorithm SHA256).Hash.ToLowerInvariant() -cne $pin) { throw 'Unsupported native source DLL; not building.' }
 if (Test-Path -LiteralPath $OutputDirectory) { throw 'Use a fresh private build directory.' }
 $sourcePins=@{}
-foreach ($sourceName in @('adapter.cpp','abi.hpp','journal.cpp','journal.hpp','puzzle.cpp','puzzle.hpp','checkpoint.hpp','checkpoint.cpp','checkpoint-runtime.hpp','camera-runtime.hpp','note-layout.hpp','keydoor-runtime.hpp','ladder-runtime.hpp','pp-runtime.hpp','world-runtime.hpp','session-runtime.hpp','story-runtime.hpp','coop-runtime.hpp','state-runtime.hpp','client-menu.hpp','qol-runtime.hpp','spray-runtime.hpp')) {
+foreach ($sourceName in @('adapter.cpp','abi.hpp','journal.cpp','journal.hpp','puzzle.cpp','puzzle.hpp','checkpoint.hpp','checkpoint.cpp','checkpoint-runtime.hpp','camera-runtime.hpp','note-layout.hpp','keydoor-runtime.hpp','ladder-runtime.hpp','pp-runtime.hpp','world-runtime.hpp','session-runtime.hpp','story-runtime.hpp','coop-runtime.hpp','state-runtime.hpp','client-menu.hpp','qol-runtime.hpp','spray-runtime.hpp','qol2-runtime.hpp')) {
  $sourcePins[$sourceName]=(Get-FileHash -LiteralPath (Join-Path $PSScriptRoot $sourceName) -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 $out=[IO.Path]::GetFullPath($OutputDirectory)

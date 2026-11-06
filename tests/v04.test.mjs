@@ -21,7 +21,7 @@ test('v0.4 scene teleports: exit after the camera, followers, return home; first
  assert.ok(coop.includes('constexpr float SceneExitWindow=1.5f,SceneFollowGrace=30.f,SceneFollowRadius=96.f;')&&coop.includes('Edict* scene_watched(Edict* e,float now)')&&coop.includes('back where they stood before the scene'));
  assert.ok(coop.includes('sceneSeen.clear();sceneFollowers.clear();'));
  const session=src('session-runtime.hpp');
- assert.ok(session.includes('AddVectoredExceptionHandler(1,&crash_vectored)')&&session.match(/MenuCredit="Co-op mod v0\.[4-9](\.\d+)? developed by Anas Sammak \(koolkat\)/));
+ assert.ok(session.includes('AddVectoredExceptionHandler(1,&crash_vectored)')&&session.match(/MenuCredit="Co-op mod v0\.([4-9]|[1-9]\d)(\.\d+)? developed by Anas Sammak \(koolkat\)/));
 });
 
 test('v0.4 vote to skip: SPACE votes, N/N fast-forwards the managers, allowlist, README',async()=>{

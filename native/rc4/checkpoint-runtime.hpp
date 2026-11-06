@@ -292,7 +292,9 @@ void checkpoint_saved_notice(int slot,Edict* actor){
 // user saw nothing happen at a recorder); the full reason stays in the log.
 void save_failed(Edict* actor,const char* full,const char* shown){checkpoint_notice(actor,full);if(!autosaveQuiet&&live(actor)&&engine[80]){std::string text=std::string("Could not save:\n")+shown+"\n";eng<void(__cdecl*)(Edict*,int,const char*)>(80)(actor,1,text.c_str());}}
 const SavedPlayer* carry_record(Edict* e);
+bool hardcore_nosave();void run_timer_save(int slot);   // qol2-runtime.hpp (v0.10)
 void checkpoint_save(Edict* actor){
+ if(hardcore_nosave()){save_failed(actor,"[STORYCOOP] Save refused: saving is off on this server (sv_coop_nosave).\n","saving is off on this server");return;}
  Edict* host=globals&&engine[72]?eng<Edict*(__cdecl*)(int)>(72)(1):nullptr;
  if(!live(actor)||!checkpoint_host(host)){checkpoint_notice(actor,"[STORYCOOP] Save refused: the host is not ready.\n");return;}
  if(actor!=host){checkpoint_notice(actor,"[STORYCOOP] Save refused: only the host can save the game.\n");return;}
@@ -337,7 +339,7 @@ void checkpoint_save(Edict* actor){
  // failed checkpoint commit leaves the previous pair (kept as .bak) matching.
  {std::string why;if(!dir.empty()&&!state_save_slot(dir,checkpointSlot,value,why)){const std::string full="[STORYCOOP] Checkpoint NOT saved: map state "+why+"; the previous save is kept.\n";save_failed(actor,full.c_str(),"the map state could not be written");return;}}
  if(dir.empty()||!commit_checkpoint(dir,checkpointSlot,value)){save_failed(actor,"[STORYCOOP] Checkpoint NOT saved: validation or atomic disk commit failed.\n","the save file could not be written");return;}
- playerBank=std::move(next);sessionSave={checkpointSlot,value.map};char text[160]{};std::snprintf(text,sizeof(text),"[STORYCOOP] Checkpoint slot%d COMMITTED map=%s recorder=%d (%u player records); restart restore still requires gameplay verification.\n",checkpointSlot,value.map.c_str(),value.recorder,static_cast<unsigned>(playerBank.size()));log(text);checkpoint_saved_notice(checkpointSlot,actor);
+ run_timer_save(checkpointSlot);playerBank=std::move(next);sessionSave={checkpointSlot,value.map};char text[160]{};std::snprintf(text,sizeof(text),"[STORYCOOP] Checkpoint slot%d COMMITTED map=%s recorder=%d (%u player records); restart restore still requires gameplay verification.\n",checkpointSlot,value.map.c_str(),value.recorder,static_cast<unsigned>(playerBank.size()));log(text);checkpoint_saved_notice(checkpointSlot,actor);
 }
 // v0.8 (item 10): the start of a boss fight is kept in a sixth slot no menu lists; a game over loads it.
 constexpr int AutosaveSlot=6;

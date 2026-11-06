@@ -258,10 +258,11 @@ foreach ($extra in @($catalog.extras | Where-Object { $null -ne $_ })) {
     $extraPath=Join-Path $gameRoot ($extra.target.Replace('/','\'))
     $extraExists=[IO.File]::Exists($extraPath)
     # v0.7: a kept sc_setup.scr without the 'Unlock extras' option (sc_extras) is replaced once, so the option shows up.
-    # v0.9: the same for the revive options (sv_coopcprtime).
-    if ($extra.mutable -and $extra.target -ceq 'sc_setup.scr') { $setupText=if ($extraExists) { [IO.File]::ReadAllText($extraPath) } else { '' }; $keepSetup=$extraExists -and $setupText -match 'sc_extras' -and $setupText -match 'sv_coopcprtime'; $setupReplace=$extraExists -and -not $keepSetup; if ($Remove -or $keepSetup) { $prepared.Add(@{path=$extraPath; exists=$extraExists; extra=$true}); continue } }
+    # v0.9: the same for the revive options (sv_coopcprtime); v0.10 for its host options (sc_hunted).
+    if ($extra.mutable -and $extra.target -ceq 'sc_setup.scr') { $setupText=if ($extraExists) { [IO.File]::ReadAllText($extraPath) } else { '' }; $keepSetup=$extraExists -and $setupText -match 'sc_extras' -and $setupText -match 'sv_coopcprtime' -and $setupText -match 'sc_hunted'; $setupReplace=$extraExists -and -not $keepSetup; if ($Remove -or $keepSetup) { $prepared.Add(@{path=$extraPath; exists=$extraExists; extra=$true}); continue } }
     # v0.9: the host's storycoop_server.cfg and each player's storycoop_comfort.cfg are theirs once there.
-    elseif ($extra.mutable) { if ($Remove -or $extraExists) { $prepared.Add(@{path=$extraPath; exists=$extraExists; extra=$true}); continue } }
+    # v0.10: one still exactly as an earlier version installed it (oldDefaults) is replaced once (kept as .storycoop-old).
+    elseif ($extra.mutable) { $setupReplace=$extraExists -and -not $Remove -and $null -ne $extra.oldDefaults -and (@($extra.oldDefaults) -contains (Get-PatchFileSha $extraPath)); if (-not $setupReplace -and ($Remove -or $extraExists)) { $prepared.Add(@{path=$extraPath; exists=$extraExists; extra=$true}); continue } }
     elseif ($extraExists -and (Get-PatchFileSha $extraPath) -cne $extra.sha256) { throw "Unknown/changed file retained: $extraPath. Nothing installed or removed." }
     if ($Remove) { $prepared.Add(@{path=$extraPath; exists=$extraExists; extra=$true}); continue }
     if ($null -ne $extra.deltaFrom) {
@@ -320,7 +321,7 @@ foreach ($extra in @($catalog.extras | Where-Object { $null -ne $_ })) {
         $extraBytes=[IO.File]::ReadAllBytes($copySource)
     }
     if ((Get-PatchSha $extraBytes) -cne $extra.sha256 -or $extraBytes.Length -ne $extra.fileBytes) { throw 'Changed extra artifact. Nothing installed.' }
-    if ($extra.mutable -and $extra.target -ceq 'sc_setup.scr' -and $setupReplace) { $prepared.Add(@{path=$extraPath; exists=$false; replace=($extraPath+'.storycoop-old'); originalBytes=[IO.File]::ReadAllBytes($extraPath); artifactBytes=$extraBytes; fileBytes=$extraBytes.Length; extra=$true}); continue }
+    if ($extra.mutable -and $setupReplace) { $prepared.Add(@{path=$extraPath; exists=$false; replace=($extraPath+'.storycoop-old'); originalBytes=[IO.File]::ReadAllBytes($extraPath); artifactBytes=$extraBytes; fileBytes=$extraBytes.Length; extra=$true}); continue }
     $prepared.Add(@{path=$extraPath; exists=$extraExists; artifactBytes=$extraBytes; fileBytes=$extraBytes.Length; extra=$true})
 }
 $menuPath=Join-Path $maps '..\resource\GameMenu.res'

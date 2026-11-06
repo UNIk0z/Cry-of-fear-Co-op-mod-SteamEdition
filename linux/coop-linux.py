@@ -435,14 +435,16 @@ def install_package(game, catalog, verify_only=False, progress=None):
         if extra.get('mutable') and target == 'sc_setup.scr':
             # v0.9: an older one without the revive options is replaced once, like v0.7's Unlock extras.
             text = read(path).decode('latin-1') if present else ''
-            keep = present and 'sc_extras' in text and 'sv_coopcprtime' in text
+            keep = present and 'sc_extras' in text and 'sv_coopcprtime' in text and 'sc_hunted' in text
             setup_replace = present and not keep
             if keep:
                 prepared.append(dict(path=path, exists=True))
                 continue
         elif extra.get('mutable'):
             # v0.9: the host's storycoop_server.cfg and each player's storycoop_comfort.cfg are theirs once there.
-            if present:
+            # v0.10: one still exactly as an earlier version installed it (oldDefaults) is replaced once.
+            setup_replace = present and file_sha(path) in (extra.get('oldDefaults') or [])
+            if present and not setup_replace:
                 prepared.append(dict(path=path, exists=True))
                 continue
         elif present and file_sha(path) != extra['sha256']:
