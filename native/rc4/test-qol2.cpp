@@ -84,6 +84,7 @@ void player(int i,float x,float y){
 }
 Edict* monster(int i,const char* cls,float health){auto e=&entities[i];*e={};store(e,0,0);store(e,4,300+i);store(ev(e),0,intern(cls));store(ev(e),0x164,health);store(ev(e),0x1b4,health);store(ev(e),0x170,1.f);store(ev(e),0x1a8,0x20u);return e;}
 void now(float t){store(globals,0,t);}
+void changelevel_(char*,char*){}
 std::string read(const std::filesystem::path& p){std::ifstream f(p,std::ios::binary);return std::string((std::istreambuf_iterator<char>(f)),std::istreambuf_iterator<char>());}
 const Sent* last_type(int type){for(auto it=sent.rbegin();it!=sent.rend();++it)if(it->type==type)return &*it;return nullptr;}
 int count_type(int type){int n=0;for(const auto& s:sent)if(s.type==type)++n;return n;}
@@ -204,6 +205,31 @@ int main(int argc,char** argv_){
  netTuned.insert(2);modelReports[2]={"simon_camo","auto"};playerLanguage[2]=3;playerPrefs[2].colour=5;qol2_disconnect(p2);
  assert(!netTuned.count(2)&&!modelReports.count(2)&&!playerLanguage.count(2)&&!playerPrefs.count(2));
 
- std::puts("PASS v0.10 fixture: options, hardcore, scaling, dodge, ping, scare, run timer, black and white, outline, hunted");
+ // --- v0.10.1 boss review (docs/BOSS_REVIEW.md): the fight starts with its bar.
+ {nextFree=40;qol2_map_changed();coop_map_changed();engine[6]=reinterpret_cast<void*>(&changelevel_);player(1,0,0);player(2,200,0);
+  auto saw=monster(20,"monster_bosschainsaw",1000.f);store(ev(saw),0x1d0,intern("theboss"));
+  auto holder=monster(22,"monster_generic",100.f);store(ev(holder),0x1d0,intern("fagnerd"));
+  auto bar=&entities[21];*bar={};store(bar,0,0);store(bar,4,421);store(ev(bar),0,intern("cof_bosshealthbar"));store(ev(bar),0x1d0,intern("bossbar"));store(ev(bar),0x1d8,intern("theboss"));
+  // Monster health by party size: the bar's target and a monster_generic keep theirs.
+  cvars["sc_scale"]=1;hostOptions.next=-1;host_options_frame();auto z2=monster(23,"monster_zombie",100.f);scale_frame();
+  assert(load<float>(ev(holder),0x164)==100.f&&load<float>(ev(saw),0x164)==1000.f&&std::fabs(load<float>(ev(z2),0x164)-135.f)<0.01f);cvars["sc_scale"]=0;host_options_frame();
+  // A death before the fight is not a game over; neither does a fall wait out the boss.
+  store(ev(p2),0x174,2);store(ev(p2),0x164,0.f);boss_frame();assert(!bossOver&&!boss_fight());
+  boss_bar_lookup(nullptr,"targetname","bossbar",bar);assert(bossBarSeen&&boss_fight()&&logged("BOSS fight starts")&&bossDownBefore.size()==1);
+  boss_frame();assert(!bossOver);   // down before the bar: the fight goes on
+  store(ev(p2),0x174,0);store(ev(p2),0x164,50.f);boss_frame();assert(!bossOver&&bossDownBefore.empty());   // revived
+  // A player who comes in during the fight is shown the bar (its own Use, which sends it to everyone).
+  used.clear();player(3,300,0);boss_frame();assert(std::count(used.begin(),used.end(),std::string("cof_bosshealthbar"))==1&&logged("BOSS health bar shown to player=3"));
+  boss_frame();assert(std::count(used.begin(),used.end(),std::string("cof_bosshealthbar"))==1);store(&entities[3],0,1);
+  store(ev(p2),0x174,2);store(ev(p2),0x164,0.f);boss_frame();assert(bossOver&&logged("BOSS player died"));
+  // After a load inside the fight (autosave, game over) the used bar (iuser1 1) carries the fight on.
+  coop_map_changed();store(ev(p2),0x174,0);store(ev(p2),0x164,100.f);store(ev(bar),0x248,1);boss_frame();assert(bossBarSeen&&logged("BOSS fight goes on after the load"));
+  coop_map_changed();store(ev(saw),0x174,2);boss_frame();assert(!bossBarSeen);store(ev(saw),0x174,0);   // a dead boss: no fight
+  // Hunted: never on a boss map.
+  qol2_map_changed();cvars["sc_hunted"]=1;now(12.f);hostOptions.next=-1;host_options_frame();qol2_world_spawned();assert(hunt.precached);
+  now(500.f);hunt.crumbs={{10.f,{1200.f,0.f,36.f}}};hunt_frame();now(800.f);hunt_frame();assert(!hunt.who&&hunt.bossMap&&logged("a boss fight is here"));cvars["sc_hunted"]=0;
+  store(saw,0,1);store(holder,0,1);store(bar,0,1);store(z2,0,1);}
+
+ std::puts("PASS v0.10 fixture: options, hardcore, scaling, dodge, ping, scare, run timer, black and white, outline, hunted, bosses");
  return 0;
 }

@@ -64,6 +64,9 @@ void norespawn_frame(Edict* e){
 // those made later). Bosses and the hunted Simon keep theirs (boss bars read the boss's own health).
 // One player: x1.0, nothing changes.
 std::unordered_map<Edict*,int> scaledMonsters;float scaleNext=0;int scaleLogged=-1;
+// v0.10.1 boss review: a boss bar can show a monster_generic that only counts the fight (endings 1-3 "fagnerd",
+// ending 4 "justhealth", fed by the strangle or the Book Simons): those, and any bar's target, keep their health.
+std::set<std::string> scaleBarTargets;bool scaleBarsRead=false;
 int party_size(){int n=0;for(auto e:connected_players())if(live(e))++n;return n<1?1:n;}
 float scale_factor(int players){return 1.f+0.35f*static_cast<float>((players<1?1:players>4?4:players)-1);}
 // Review 2026-11-06: a map state or a save brings monsters back with the health they had (scaled once
@@ -72,11 +75,12 @@ void scale_restored(Edict* e){if(live(e))scaledMonsters[e]=serial(e);}
 void scale_frame(){
  if(!hostOptions.scale||!scoped()||!globals||!engine[72])return;const float now=load<float>(globals,0);if(now<scaleNext&&scaleNext-now<2.f)return;scaleNext=now+0.5f;
  const int players=party_size();const float f=scale_factor(players);if(f<=1.f)return;int count=0;
+ if(!scaleBarsRead){scaleBarsRead=true;Edict* b=nullptr;for(int n=0;n<8;++n){b=find_next(b,"classname","cof_bosshealthbar");if(!b)break;if(auto bv=vars(b)){const char* t=string_at(load<int>(bv,0x1d8));if(t&&*t)scaleBarTargets.insert(t);}}}
  const int max=load<int>(globals,0x94);
  for(int i=load<int>(globals,0x90)+1;i<max;++i){auto e=eng<Edict*(__cdecl*)(int)>(72)(i);auto v=vars(e);if(!v)continue;
   if(!(load<unsigned>(v,0x1a8)&0x20u)||load<float>(v,0x164)<=0||load<float>(v,0x170)==0.f||load<int>(v,0x174)!=0)continue;   // FL_MONSTER, alive, takes damage
   auto& seen=scaledMonsters[e];if(seen==serial(e))continue;seen=serial(e);
-  const char* cls=classname(e);if(std::strncmp(cls,"monster_",8)||!std::strcmp(cls,"monster_booksimonsledgehammer")||std::any_of(std::begin(BossClasses),std::end(BossClasses),[&](const char* b){return !std::strcmp(cls,b);}))continue;
+  const char* cls=classname(e);if(std::strncmp(cls,"monster_",8)||!std::strcmp(cls,"monster_booksimonsledgehammer")||!std::strcmp(cls,"monster_generic")||scaleBarTargets.count(targetname(e))||std::any_of(std::begin(BossClasses),std::end(BossClasses),[&](const char* b){return !std::strcmp(cls,b);}))continue;
   store(v,0x164,load<float>(v,0x164)*f);if(load<float>(v,0x1b4)>0)store(v,0x1b4,load<float>(v,0x1b4)*f);++count;
  }
  if(count&&scaleLogged!=players){scaleLogged=players;char line[140]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] SCALE monster health x%.2f for %d players (%d monster(s) so far)\n",f,players,count);log(line);}
@@ -238,7 +242,7 @@ bool outline_state(void* state,Edict* e,Edict* host){
 // through at least 45 s before, 900+ units from everyone and out of sight, with 60 health. He goes when
 // any player is held by a scene, after 3 min without coming within 700 units, and with the map.
 // Never on the opening maps, during the load wait, with a boss alive or while a boss game over runs.
-struct Hunt {Edict* who=nullptr;int serial=-1;float bornAt=-1,lastNear=-1,next=-1,nextCrumb=0;std::vector<std::pair<float,std::array<float,3>>> crumbs;bool precached=false;int spawned=0;} hunt;
+struct Hunt {bool bossMap=false;Edict* who=nullptr;int serial=-1;float bornAt=-1,lastNear=-1,next=-1,nextCrumb=0;std::vector<std::pair<float,std::array<float,3>>> crumbs;bool precached=false;int spawned=0;} hunt;
 const char* const HuntSounds[]={"weapons/sledgehammer/sledgehammer_hitbody.wav","weapons/flare/flare_burn.wav","weapons/flare/flare_ignite.wav"};
 void hunt_precache(){
  hunt.precached=false;if(!hostOptions.hunted&&cvar_value("sc_hunted")==0)return;const auto dir=game_dir_path();std::error_code error;
@@ -284,7 +288,9 @@ void hunt_frame(){
   if(now-hunt.lastNear>180.f)hunt_remove("he never caught up");
   return;
  }
- if(hunt.next<0)hunt.next=now+150.f;
+ // v0.10.1 boss review: never on a map with a boss fight (a bar), whether its boss is up yet or hidden (ending 4's Book Simons).
+ if(hunt.next<0){hunt.next=now+150.f;hunt.bossMap=find_next(nullptr,"classname","cof_bosshealthbar")!=nullptr;if(hunt.bossMap)log("[STORYCOOP_RC4] HUNTED off on this map: a boss fight is here\n");}
+ if(hunt.bossMap)return;
  if(now<hunt.next||players.empty()||scene||loadWait.armed||bossOver||boss_alive())return;
  hunt.next=now+30.f;   // try again soon if no spot fits
  for(auto it=hunt.crumbs.rbegin();it!=hunt.crumbs.rend();++it){
@@ -309,7 +315,7 @@ void qol2_after_command(Edict* e,const char* command){if(command&&!std::strcmp(c
 void qol2_world_spawned(){if(!scoped())return;ping_precache();hunt_precache();}
 void qol2_frame(){host_options_frame();scale_frame();run_timer_frame();hunt_frame();}
 void qol2_player_frame(Edict* e){if(!live(e)||std::strcmp(classname(e),"player"))return;norespawn_frame(e);if(!scoped())return;dodge_frame(e);catch_up_frame(e);noir_frame(e);}
-void qol2_map_changed(){pingSprite=0;scaledMonsters.clear();scaleNext=0;scaleLogged=-1;dodgeApplied.clear();noirSent.clear();pingUsed.clear();scareUsed.clear();hunt=Hunt{};hostOptions.next=-1;runTimer.last=-1;runTimer.splitDue=-1;runTimer.next=0;}
+void qol2_map_changed(){pingSprite=0;scaledMonsters.clear();scaleBarTargets.clear();scaleBarsRead=false;scaleNext=0;scaleLogged=-1;dodgeApplied.clear();noirSent.clear();pingUsed.clear();scareUsed.clear();hunt=Hunt{};hostOptions.next=-1;runTimer.last=-1;runTimer.splitDue=-1;runTimer.next=0;}
 // v0.10.1 (review): what is kept per player slot goes with the player. netTuned (story-runtime.hpp) asks each
 // slot once per map for its tuning and sc_report: a player who rejoined the same slot on the same map (the
 // crash-rejoin offer) got neither, so his model, language, colour and black and white waited for the next map,

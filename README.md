@@ -20,7 +20,7 @@
 
 ### **[Click here to download Cry of Fear Co-op v0.10.1 for Linux](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.10.1/Cry.of.Fear.Co-op.v0.10.1.Linux.tar.gz)**
 
-v0.10.1 is a small fix update for v0.10: with "Hardcore: no saves" the tape recorder no longer opens the save window, and a player who rejoins on the same map gets their own model and settings right away.
+v0.10.1 is a fix update for v0.10: a death before a boss fight no longer ends the game, a boss fight keeps its health bar after a game over and for players who join during it, and more fixes from a code review (see the release notes).
 
 > [!NOTE]
 > **Linux is supported now.** Cry of Fear runs through Steam Proton, and Linux and Windows players can play together. See the Linux steps below the Windows ones.

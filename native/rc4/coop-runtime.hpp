@@ -535,7 +535,7 @@ void stuck_command(Edict* e,const char* command){
 // he had before the fall (his last carried record) and is moved beside the
 // partner. Nobody alive: nothing happens (game over as before).
 constexpr std::size_t PlayerAutoRevive=0x1f2c;
-bool bossOver=false;bool boss_alive();   // boss section below
+bool bossOver=false;bool boss_alive();bool boss_fight();   // boss section below
 bool fall_reveal(Edict* e);   // Playtest 3 section below
 struct FallBack {int serial=-1;SavedPlayer record;bool have=false;Edict* partner=nullptr;int partnerSerial=-1;float due=-1;};
 std::unordered_map<Edict*,FallBack> fallBacks;
@@ -586,7 +586,7 @@ void fall_frame(Edict* e){
  if(moved){for(int k=0;k<3;++k)store(v,0x20+k*4,0.f);eng<void(__cdecl*)(Edict*,const float*)>(28)(e,at.data());}
  // v0.6: back in 2 s with what he had (see FallBack).
  void* p=nullptr;std::size_t n=0;bool respawn=false;
- if(!bossOver&&!boss_alive()&&player_memory(e,p,n)&&n>PlayerAutoRevive+4){
+ if(!bossOver&&!boss_fight()&&player_memory(e,p,n)&&n>PlayerAutoRevive+4){   // v0.10.1: before a boss fight's bar, a fall respawns as anywhere else
   FallBack b;b.serial=serial(e);b.partner=partner;b.partnerSerial=serial(partner);if(auto r=carry_record(e)){b.record=*r;b.have=true;}
   fallBacks[e]=std::move(b);store(p,PlayerAutoRevive,load<float>(globals,0)+2.f);respawn=true;}
  char line[200]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] FALL player=%d died in a fall zone; body %s player=%d%s\n",eng<int(__cdecl*)(Edict*)>(71)(e),moved?"moved beside":"could not reach",eng<int(__cdecl*)(Edict*)>(71)(partner),respawn?"; respawns there in 2 s":"");log(line);
@@ -966,9 +966,36 @@ bool boss_alive(){
 struct BossSave {bool due=false,done=false;float until=0,next=0;} bossSave;float bossOverAt=-1;
 bool checkpoint_autosave();   // checkpoint-runtime.hpp
 bool hardcore_nosave();   // qol2-runtime.hpp (v0.10): sv_coop_nosave
+// v0.10.1 boss review (docs/BOSS_REVIEW.md): every boss is placed in its map and alive from the load (the
+// Sawer, Carcass, sewer boss and Doctor wait for their script), so boss_alive() alone made a death or a fall
+// ANYWHERE on a boss map a game over, long before the fight. The fight starts with its health bar
+// (cof_bosshealthbar fired, seen here); players already down then do not end it until they are up and fall
+// again. Each player gets the bar: one who joins later is shown it again (the bar's own Use sends it to all).
+bool bossBarSeen=false;Edict* bossBar=nullptr;int bossBarSerial=-1;std::set<std::pair<Edict*,int>> bossDownBefore,bossBarShown;
+bool boss_fight(){return bossBarSeen&&boss_alive();}
 void boss_bar_lookup(Edict* start,const char* key,const char*,Edict* found){
- if(start||bossSave.done||bossSave.due||!scoped()||!globals||!key||std::strcmp(key,"targetname")||!live(found)||std::strcmp(classname(found),"cof_bosshealthbar"))return;
+ if(start||!scoped()||!globals||!key||std::strcmp(key,"targetname")||!live(found)||std::strcmp(classname(found),"cof_bosshealthbar"))return;
+ if(!bossBarSeen){bossBarSeen=true;bossBar=found;bossBarSerial=serial(found);int before=0;
+  for(auto e:connected_players()){bossBarShown.insert({e,serial(e)});auto v=vars(e);if(v&&(load<int>(v,0x174)!=0||load<float>(v,0x164)<=0)){bossDownBefore.insert({e,serial(e)});++before;}}
+  char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] BOSS fight starts on %s (%s)%s\n",map_name(),targetname(found),before?"; players down before it do not end it":"");log(line);}
+ if(bossSave.done||bossSave.due)return;
  bossSave.due=true;bossSave.until=load<float>(globals,0)+30.f;
+}
+// A load inside a fight (the boss autosave after a game over, or a tape save) restores the bar as used (pev->iuser1
+// 1, saved with the entity) and nothing fires it again: the fight goes on, so does its bar and its rules.
+bool bossBarChecked=false;
+void boss_bar_resume(){
+ if(bossBarChecked||bossBarSeen)return;bossBarChecked=true;Edict* b=nullptr;
+ for(int n=0;n<8;++n){b=find_next(b,"classname","cof_bosshealthbar");if(!b)break;auto v=vars(b);if(!v||load<int>(v,0x248)!=1)continue;
+  const char* name=string_at(load<int>(v,0x1d8));Edict* t=name&&*name?find_next(nullptr,"targetname",name):nullptr;auto tv=t?vars(t):nullptr;
+  if(!tv||load<int>(tv,0x174)!=0||load<float>(tv,0x164)<=0)continue;
+  bossBarSeen=true;bossBar=b;bossBarSerial=serial(b);char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] BOSS fight goes on after the load on %s (%s)\n",map_name(),targetname(b));log(line);return;}
+}
+// A player who came in after the bar started (late join, rejoin) is shown it; the bar does nothing once its boss is dead.
+void boss_bar_late(){
+ if(!bossBarSeen||!live(bossBar)||serial(bossBar)!=bossBarSerial||!original[3])return;
+ for(auto e:connected_players()){if(!client_ready(e)||!view_alive(e)||!bossBarShown.insert({e,serial(e)}).second)continue;crumb("boss bar late",bossBar);native<void(__cdecl*)(Edict*,Edict*)>(3)(bossBar,e);
+  char line[120]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] BOSS health bar shown to player=%d (came in during the fight)\n",eng<int(__cdecl*)(Edict*)>(71)(e));log(line);}
 }
 void boss_save_frame(){
  if(!bossSave.due||!scoped()||!globals||bossOver)return;const float now=load<float>(globals,0);
@@ -984,8 +1011,10 @@ void boss_frame(){
  if(bossOver){if(bossOverAt>=0&&now>=bossOverAt){bossOverAt=-1;forcedGameOver=true;std::string map=map_name();change_level(map.data(),nullptr);}return;}
  Edict* grab=find_next(nullptr,"classname","third_person_interaction");const bool grabbing=grab&&live(grab);
  if(!grabbing){
-  bool down=false;for(auto e:connected_players()){auto v=vars(e);if(v&&client_ready(e)&&(load<int>(v,0x174)!=0||load<float>(v,0x164)<=0))down=true;}
-  if(!down||!boss_alive())return;
+  boss_bar_resume();boss_bar_late();
+  bool down=false;for(auto e:connected_players()){auto v=vars(e);if(!v||!client_ready(e))continue;const std::pair<Edict*,int> k{e,serial(e)};
+   if(load<int>(v,0x174)==0&&load<float>(v,0x164)>0){bossDownBefore.erase(k);continue;}if(!bossDownBefore.count(k))down=true;}
+  if(!down||!boss_fight())return;
  }
  bossOver=true;
  static const unsigned char red[4]={220,40,40,255};
@@ -2091,4 +2120,4 @@ void wheelchair_frame(){
   for(int k=0;k<3;++k)store(v,0x20+k*4,load<float>(v,0x20+k*4)*cap/s);
   if(!wheelchairCutLogged){wheelchairCutLogged=true;char line[120]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] WHEELCHAIR speed %.0f held to its cap %.0f\n",s,cap);log(line);}}
 }
-void coop_map_changed(){collision_restore();wardrobeDone=false;teamCards.known.clear();teamCards.dropping.clear();teamCards.floor.clear();teamCards.next=0;staleCards.clear();storyTeleports.clear();climbFollows.clear();storyAnchor={};storyLateDone.clear();arrivalGrace.clear();exitTriggers.clear();bossExitAt=-1;bossSave={};bossOverAt=-1;sceneWatch={};wheelchairCutLogged=false;subtitleMuteUntil=-1;pickupCopies.clear();pickupOwner.clear();pickupOwnerSerial.clear();deployLogged.clear();doorHides.clear();stripClears.clear();fadesDone=false;doorPressUsed.clear();itemCopiesDone=false;pickupOwnersNext=0;forcedVisible.clear();bossOver=false;fallBacks.clear();doorGlobals.clear();doorLocks.clear();trainEscape={};floorWallsDone=false;quickNotices.clear();fallWatch.clear();equipWants.clear();nightmareLogged=false;morphineWatch.clear();prologueSkip={};partyLimitLogged=-1;joinWait={};skipScene={};skipAfter={};skipJump.clear();skipLines=0;evidence_reset();drowned_reset();give_reset();stuckUsed.clear();nightmareRegroup={};nameStates.clear();lastPlaces.clear();sceneSeen.clear();sceneFollowers.clear();idleProbes.clear();doorMusicLines=0;sceneMoveLines=0;}
+void coop_map_changed(){collision_restore();wardrobeDone=false;teamCards.known.clear();teamCards.dropping.clear();teamCards.floor.clear();teamCards.next=0;staleCards.clear();storyTeleports.clear();climbFollows.clear();storyAnchor={};storyLateDone.clear();arrivalGrace.clear();exitTriggers.clear();bossExitAt=-1;bossSave={};bossOverAt=-1;bossBarSeen=false;bossBarChecked=false;bossBar=nullptr;bossBarSerial=-1;bossDownBefore.clear();bossBarShown.clear();sceneWatch={};wheelchairCutLogged=false;subtitleMuteUntil=-1;pickupCopies.clear();pickupOwner.clear();pickupOwnerSerial.clear();deployLogged.clear();doorHides.clear();stripClears.clear();fadesDone=false;doorPressUsed.clear();itemCopiesDone=false;pickupOwnersNext=0;forcedVisible.clear();bossOver=false;fallBacks.clear();doorGlobals.clear();doorLocks.clear();trainEscape={};floorWallsDone=false;quickNotices.clear();fallWatch.clear();equipWants.clear();nightmareLogged=false;morphineWatch.clear();prologueSkip={};partyLimitLogged=-1;joinWait={};skipScene={};skipAfter={};skipJump.clear();skipLines=0;evidence_reset();drowned_reset();give_reset();stuckUsed.clear();nightmareRegroup={};nameStates.clear();lastPlaces.clear();sceneSeen.clear();sceneFollowers.clear();idleProbes.clear();doorMusicLines=0;sceneMoveLines=0;}

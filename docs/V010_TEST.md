@@ -31,3 +31,6 @@ Nothing in v0.10 has run in the game yet. Close Cry of Fear, open "Cry of Fear C
 
 20. Solo: "Hardcore: no saves" on, use a tape recorder as the host: the screen says "Could not save: saving is off on this server", no save window opens and nothing is saved (`Save refused: saving is off on this server`).
 21. Two players: player 2 picks another model (Player Model) and Red as his colour, joins, then closes his game with Task Manager and clicks REJOIN in his launcher while the host stays on the same map. Back in, he has his own model and colour at once (a ping shows his red) and the host log has a new `NET tuned player=2` line for that map.
+22. Bosses (s4_apartmentsick, Sawer): two players; before the arena, player 2 lets a monster or a fall down him: no game over, the host can revive him (`BOSS fight starts` comes only when the Sawer's bar appears). In the fight, player 2 dies: game over, the map restarts at the fight (autosave), the bar is shown again (`BOSS fight goes on after the load`) and a death is a game over again.
+23. During a boss fight, player 2 rejoins (or a third player joins): he sees the boss bar (`BOSS health bar shown to player=...`).
+24. "Harder with more players" on, ending 1-3 strangle or ending 4: the bar empties at the end as in single player. "Hunted" on: the log says `HUNTED off on this map: a boss fight is here` on every boss map.

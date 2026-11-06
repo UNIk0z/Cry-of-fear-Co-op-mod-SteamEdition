@@ -6,6 +6,9 @@ The eight bugs of the v0.10 review pass are in v0.10 already (docs/V010_STATUS.m
 
 ## Fixed in v0.10.1
 
+The second pass (Katz: "review the code from the start ... focus especially on bosses") is docs/BOSS_REVIEW.md: five boss fixes. That pass also read keydoor-, pp- and spray-runtime line by line (no change: the pp renames survive a save through their suffix strip; spray reads every pointer through spray_readable) and the v0.5 map build (its fall-zone change leaves the Doctor's scene death, a cof_killplayer fired by a manager, as in single player). puzzle.cpp, journal.cpp and checkpoint.cpp stay covered by their fixture suites.
+
+
 | Where | What broke | Fix |
 |---|---|---|
 | native/rc4/checkpoint-runtime.hpp recorder_end | With "Hardcore: no saves" (sv_coop_nosave 1) the host's tape recorder still opened the single-player save window; a double click played the native "Saving progress... Saved" sequence over a save the adapter refused. | The recorder says "Could not save: saving is off on this server" and the window never opens. Fixture: test-qol2. |
