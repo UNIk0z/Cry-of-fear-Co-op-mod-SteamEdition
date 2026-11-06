@@ -14,15 +14,15 @@ Nothing in v0.10 has run in the game yet. Close Cry of Fear, open "Cry of Fear C
 8. "Hardcore: no respawn while down" on: let a monster down you. No respawn after 60 s or after the auto respawn time; alone the game's own game over restarts the map. Fall off a ledge into a pit: the fall respawn (2 s) still works.
 9. "Morphine trip time" 10: use morphine; the trip ends after about 10 s.
 10. "No hint pop-ups" on: no "Press K" prompt, no objective pop-up after K, and the game's own hints are gone.
-11. "Hunted" on, start Chapter 1 and play past the first maps (not the opening rooms): about 2.5 min into a story map, "Something is following you." (`HUNTED Book Simon appears at ...`). He walks toward you with the sledgehammer. Kill him (`HUNTED Book Simon is down`) or outrun him for 3 min (`gone (he never caught up)`). Start a cutscene while he is there: he is gone (`gone (a scene started)`). If the log says `HUNTED off on this map: models/booksimon.mdl is missing`, tell me which map.
+11. "Hunted" on, start Chapter 1 and play past the first maps (not the opening rooms): about 2.5 min into a story map, "Something is following you." (`HUNTED Book Simon appears at ...`). He walks toward you with the sledgehammer. Kill him (`HUNTED Book Simon is down`) or outrun him for 3 min (`gone (he never caught up)`). Start a cutscene while he is there: he is gone (`gone (a scene started)`). If the log says `HUNTED off on this map: models/booksimon.mdl is missing`, tell me which map. Leave a map while he is following you and come back to it: he is not there any more (nor after loading a tape save made while he was there).
 
 ## Two players
 
 12. Player 2's SETTINGS colour Red. "Outline far teammates" on: walk apart more than about 10 m; each sees the other glowing (host: red partner; partner: the host's green). Close up the glow goes; in a cutscene it is gone; a downed player has none.
 13. Player 2 presses G: both see the glow and "<name>: here (N m)" in red, each with his own distance. Player 2 presses J near the host: the host hears a laugh, player 2 reads "You scared <host>." Again at once: "Not yet." (`SCARE player=2 scared player=1`).
-14. "Harder with more players" on with 2 players: `SCALE monster health x1.35 for 2 players`. A monster takes more hits than before; a boss does not.
-15. Player 2 joins a running game for the first time while the host carries weapons: player 2 gets those weapons and, if far, is put beside the host (`CATCHUP player=2 joined late: N of the host's weapon(s) given`). He leaves and rejoins: nothing is given again.
+14. "Harder with more players" on with 2 players: `SCALE monster health x1.35 for 2 players`. A monster takes more hits than before; a boss does not. Go to the next map and back: the monsters left there are not tougher than before (no second `SCALE` for them).
+15. Player 2 joins a running game for the first time while the host carries weapons (more than 15 s after the host is in): player 2 gets those weapons and, if far, is put beside the host (`CATCHUP player=2 joined late: N of the host's weapon(s) given`). He leaves and rejoins: nothing is given again. Two players who start a chapter together get no `CATCHUP` line.
 16. Player 2 turns Black and white on: only his picture is grey; the host's stays in colour.
-17. "No respawn while down" on: player 2 goes down and stays down until the host revives him; with both down the game over restarts the map.
+17. "No respawn while down" on: player 2 goes down and stays down until the host revives him; with both down the game over restarts the map. The host goes down, then player 2 leaves the game: the host can respawn again with Space within a minute.
 18. Vote kick: player 2 types `votekick <host name>` in the console; the host is asked to vote (F1 yes, F2 no). Vote no.
 19. Hunted with two players: Simon appears far from both; when he is killed he comes back about 4 min later.

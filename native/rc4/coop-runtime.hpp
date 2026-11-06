@@ -965,12 +965,14 @@ bool boss_alive(){
 // game over restarts at the start of the fight with what everyone had then.
 struct BossSave {bool due=false,done=false;float until=0,next=0;} bossSave;float bossOverAt=-1;
 bool checkpoint_autosave();   // checkpoint-runtime.hpp
+bool hardcore_nosave();   // qol2-runtime.hpp (v0.10): sv_coop_nosave
 void boss_bar_lookup(Edict* start,const char* key,const char*,Edict* found){
  if(start||bossSave.done||bossSave.due||!scoped()||!globals||!key||std::strcmp(key,"targetname")||!live(found)||std::strcmp(classname(found),"cof_bosshealthbar"))return;
  bossSave.due=true;bossSave.until=load<float>(globals,0)+30.f;
 }
 void boss_save_frame(){
  if(!bossSave.due||!scoped()||!globals||bossOver)return;const float now=load<float>(globals,0);
+ if(hardcore_nosave()){bossSave.due=false;bossSave.done=true;log("[STORYCOOP] AUTOSAVE boss fight: saving is off on this server (sv_coop_nosave)\n");return;}   // v0.10 review: no 30 s of refused retries
  if(now>bossSave.until){bossSave.due=false;log("[STORYCOOP] AUTOSAVE boss fight: nobody was free for 30 s, not saved\n");return;}
  const auto players=connected_players();if(players.empty())return;
  for(auto e:players){auto v=vars(e);if(!v||!client_ready(e)||!view_alive(e)||camera_view(e)||lease_camera(e)||(load<unsigned>(v,0x1a8)&FlFrozen))return;}

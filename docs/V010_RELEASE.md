@@ -10,7 +10,7 @@ Everything that changes the game is a host option and is off unless the host tur
 | Outline far teammates (host) | `sc_outline 1`: a teammate more than about 10 m away glows in his colour. Not during cutscenes, not on a downed player. |
 | Harder with more players (host) | `sc_scale 1`: monster health x1.35 for 2 players, x1.70 for 3, x2.05 for 4. Bosses and the hunted Simon keep theirs. Alone: no change. |
 | Hunted (host, experimental) | `sc_hunted 1`: about 2.5 min into a story map, Book Simon with the sledgehammer appears behind the team, at a spot it walked through earlier, far away and out of sight ("Something is following you."). He has 60 health. He leaves when a cutscene starts or if he does not catch up within 3 min, and comes back 4 min later. Never on the opening maps, with a boss alive, or while players load. |
-| Hardcore (host) | "No saves" (`sv_coop_nosave 1`, the game's own setting) and "No respawn while down" (`sc_norespawn 1`: a downed player waits for a revive; with everyone down the game's own game over restarts the map). |
+| Hardcore (host) | "No saves" (`sv_coop_nosave 1`, the game's own setting) and "No respawn while down" (`sc_norespawn 1`: a downed player waits for a revive; with everyone down the game's own game over restarts the map; a player left down with nobody alive to revive him gets the normal respawn back). |
 | Morphine trip time (host) | `sv_morphinetriptime` (the game's own setting, default 35 s). |
 | No hint pop-ups (host) | `sv_disablehints 1` (the game's own setting) also turns off the co-op objective reminder and the "Press K" prompt. |
 | Ping (G) | Marks the spot you look at with a glow; everyone reads "<name>: here (12 m)" in your colour. Once every 2 s. |

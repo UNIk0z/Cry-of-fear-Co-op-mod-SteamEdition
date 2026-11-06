@@ -120,6 +120,7 @@ int main(int argc,char** argv_){
  store(pd(p2),PlayerRespawnDelay,10.f);store(pd(p2),PlayerDeadNotify,10.f);store(pd(p2),PlayerAutoRevive,30.f);norespawn_frame(p2);
  assert(load<float>(pd(p2),PlayerRespawnDelay)>60.f&&load<float>(pd(p2),PlayerDeadNotify)>60.f&&load<float>(pd(p2),PlayerAutoRevive)>600.f);
  fallBacks[p2].serial=serial(p2);store(pd(p2),PlayerAutoRevive,8.f);norespawn_frame(p2);assert(load<float>(pd(p2),PlayerAutoRevive)==8.f);fallBacks.clear();   // a fall respawn keeps its 2 s
+ store(p1,0,1);store(pd(p2),PlayerAutoRevive,8.f);norespawn_frame(p2);assert(load<float>(pd(p2),PlayerAutoRevive)==8.f);store(p1,0,0);   // nobody left to revive him: the game's own respawn
  store(ev(p2),0x174,0);store(ev(p2),0x164,100.f);cvars["sc_norespawn"]=0;now(7.4f);host_options_frame();
 
  // --- #9 Monster health by party size: off, one player, two players, bosses, once each.
@@ -128,6 +129,7 @@ int main(int argc,char** argv_){
  cvars["sc_scale"]=1;now(8.f);host_options_frame();store(p2,0,1);scale_frame();assert(load<float>(ev(z),0x164)==100.f);   // alone: x1.0
  store(p2,0,0);now(8.6f);scale_frame();assert(std::fabs(load<float>(ev(z),0x164)-135.f)<0.01f&&std::fabs(load<float>(ev(z),0x1b4)-135.f)<0.01f&&load<float>(ev(boss),0x164)==1000.f&&logged("SCALE monster health x1.35 for 2 players"));
  now(9.2f);scale_frame();assert(std::fabs(load<float>(ev(z),0x164)-135.f)<0.01f);                                    // once
+ qol2_map_changed();host_options_frame();scale_restored(z);now(9.5f);scale_frame();assert(std::fabs(load<float>(ev(z),0x164)-135.f)<0.01f);   // a revisit or a load restores it scaled: not again
  assert(std::fabs(scale_factor(4)-2.05f)<0.001f&&scale_factor(9)==scale_factor(4));
  cvars["sc_scale"]=0;now(9.8f);host_options_frame();store(z,0,1);store(boss,0,1);
 
@@ -139,10 +141,12 @@ int main(int argc,char** argv_){
  ping_precache();assert(pingSprite==71&&models.back()=="sprites/glow01.spr");sent.clear();now(20.f);
  store(ev(p1),0x178,0.f);store(ev(p1),0x17c,0.f);store(ev(p1),0x180,28.f);store(ev(p1),0x74,0.f);store(ev(p1),0x78,0.f);   // eye 28 up, looking along +x
  assert(qol2_client_command(p1,"sc_ping"));
- {const Sent* g=nullptr;for(const auto& m:sent)if(m.type==23&&m.dest==2)g=&m;assert(g&&g->dest==2&&g->bytes.front()==23&&g->coords.size()==3&&g->coords[0]>590.f&&g->coords[0]<601.f&&std::fabs(g->coords[2]-64.f)<0.5f);}
+ {const Sent* g=nullptr;for(const auto& m:sent)if(m.type==23&&m.dest==2)g=&m;assert(g&&g->dest==2&&(g->bytes==std::vector<int>{23,71,30,30,220})&&g->coords.size()==3&&g->coords[0]>590.f&&g->coords[0]<601.f&&std::fabs(g->coords[2]-64.f)<0.5f);}   // 3 s
  {int texts=0;for(const auto& s:sent)if(s.type==23&&!s.texts.empty()){++texts;assert(s.texts[0].rfind("Katz: here (",0)==0);}assert(texts==2);}
  sent.clear();now(21.f);qol2_client_command(p1,"sc_ping");assert(sent.empty());   // cooldown
  now(23.f);store(ev(p1),0x174,2);qol2_client_command(p1,"sc_ping");assert(sent.empty());store(ev(p1),0x174,0);  // not while down
+ sent.clear();now(25.f);store(&entities[5],0,0);store(&entities[5],4,9);view_seen(&entities[5],p2);assert(qol2_client_command(p1,"sc_ping"));   // a teammate in a scene gets no text
+ {int texts=0;for(const auto& s:sent)if(s.type==23&&!s.texts.empty())++texts;assert(texts==1);}clientViews.erase(p2);store(&entities[5],0,1);
 
  // --- #18 Scare: a laugh at the nearest teammate, 20 s cooldown, alone nobody.
  sounds.clear();lines.clear();now(30.f);assert(qol2_client_command(p1,"sc_scare")&&sounds.size()==1&&sounds[0]=="2:0:ambience/laugh1.wav"&&logged("CLIENT1:You scared Bob."));
@@ -157,13 +161,14 @@ int main(int argc,char** argv_){
  message_begin(1,82,nullptr,p2);write_string("Chapter 2");write_string("Who is that doctor?");message_end();assert(runTimer.shown=="Chapter 2: run 1:02:05 (last chapter 1:02:05)");
  now(5.f);run_timer_frame();now(8.5f);run_timer_frame();{int shown=0;for(const auto& s:sent)if(s.type==23&&!s.texts.empty()&&s.texts[0]==runTimer.shown)++shown;assert(shown==2);}
  message_begin(1,82,nullptr,p1);write_string("Game over");message_end();assert(runTimer.title=="Chapter 2");
+ now(70.f);message_begin(1,82,nullptr,p1);write_string("Chapter 2");message_end();assert(runTimer.splitDue<0&&runTimer.chapterStart==3725);   // the same card after a game over restart: no new split
  std::filesystem::create_directories(dir/"storycoop_saves");run_timer_save(2);assert(read(dir/"storycoop_saves"/"slot2.cofrun")=="3725"&&run_timer_saved(2)==3725&&run_timer_saved(3)==0);
  cvars["sc_timer"]=2;now(9.f);host_options_frame();sent.clear();now(9.5f);run_timer_frame();{const Sent* t=last_type(23);assert(t&&t->texts.size()==1&&t->texts[0]=="1:02:05");}
  cvars["sc_timer"]=0;now(10.f);host_options_frame();
 
  // --- #35 Black and white for the player who chose it: sent once per map, and kept on.
- sent.clear();noir_frame(p2);noir_frame(p2);noir_frame(p1);assert(count_type(81)==1&&last_type(81)->to==p2&&last_type(81)->bytes==std::vector<int>{1});
- message_begin(1,81,nullptr,p2);write_byte(0);message_end();assert(last_type(81)->bytes==std::vector<int>{1});   // a scene's "off" stays on for him
+ sent.clear();noir_frame(p2);noir_frame(p2);noir_frame(p1);assert(count_type(81)==1&&last_type(81)->to==p2&&last_type(81)->bytes==std::vector<int>{255});   // full strength
+ message_begin(1,81,nullptr,p2);write_byte(0);message_end();assert(last_type(81)->bytes==std::vector<int>{255});   // a scene's "off" stays on for him
  message_begin(1,81,nullptr,p1);write_byte(0);message_end();assert(last_type(81)->bytes==std::vector<int>{0});   // the others as the game says
 
  // --- #10/#30 Outline: far teammates only, in their colour, not in scenes.
@@ -182,6 +187,7 @@ int main(int argc,char** argv_){
  hunt.crumbs={{10.f,{1200.f,0.f,36.f}},{12.f,{-1200.f,0.f,36.f}}};now(100.f);hunt_frame();assert(!hunt.who);   // first visit: waits 150 s
  now(260.f);hunt_frame();assert(hunt.who&&live(hunt.who)&&std::fabs(load<float>(ev(hunt.who),8)-1200.f)<0.1f&&logged("HUNTED Book Simon appears at 1200 0 36"));
  {const Sent* t=last_type(77);assert(t&&t->texts==std::vector<std::string>{"Something is following you."});}
+ assert(hunt_entity(hunt.who)&&!hunt_entity(z)&&!hunt_entity(p1));   // never kept in a map state or a save (state_capture)
  // A scene: he goes, and comes back no sooner than 4 min later.
  store(&entities[5],0,0);store(&entities[5],4,9);view_seen(&entities[5],p2);now(270.f);hunt_frame();assert(!hunt.who&&logged("HUNTED Book Simon gone (a scene started)"));clientViews.erase(p2);store(&entities[5],0,1);
  now(300.f);hunt_frame();assert(!hunt.who);

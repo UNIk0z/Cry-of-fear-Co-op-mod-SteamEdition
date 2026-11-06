@@ -37,6 +37,23 @@ v0.10 keeps all of it unchanged; V09_PARENT in the packager is the Stability Fix
 
 Rejected by Katz and not built: regroup vote (#2), voice callouts (#41), ready-up lobby (#43), look-at names in scenes.
 
+## Review fixes (2026-11-06, before release)
+
+A second pass over the v0.10 diff, checked against the decompile. All in the v0.10 packages now:
+
+| Where | What was wrong | Fix |
+|---|---|---|
+| state-runtime.hpp state_capture | The map state keeps every live runtime `monster_*`. A hunting Simon alive at a level change or a tape save came back on the revisit or load, untracked: never sent away by scenes, a second one spawned beside him. | The hunter (`sc10_hunter`) is never kept. |
+| qol2 scale_frame, state_activate | A revisit or a save load restores monsters with their saved (already scaled) health, and the scaled list starts empty each map: x1.35 again on every revisit. | Monsters the map state restores count as scaled. |
+| qol2 noir_frame / BlackWhite hook | The BlackWhite byte is a strength (client gl_postprocess.cpp: grey = byte / 255). We sent 1: black and white was invisible, and the story's own grey scenes were cut to 1/255 for that player. | 255. |
+| qol2 norespawn_frame | With "no respawn while down", a downed player whose last living teammate left could never respawn: the game ends the map when the last living player dies, not when one leaves. | The hold applies only while a teammate is alive to revive him. |
+| qol2 ping_command | TE_GLOWSPRITE's first byte is life in 0.1 s: the glow lasted 0.6 s. Ping also ran on the opening maps with the previous map's sprite index, and its text went over the skip prompt of a teammate in a cutscene. | Life 3 s; story maps only; the sprite index is cleared at each map change; no text to a player in a scene. |
+| qol2 catch_up_frame | Every player's carry record exists once settled, so catch-up gave the host's weapons to any player with none on his first map, including players who started the game together. | Only a player ready more than 15 s after the first one (the objective reminder's "joined late"). |
+| qol2 run_timer_title | A game over restarts the map and its chapter card fires again: a second split, and the chapter time started over. | The same card twice is not a new chapter. |
+| coop-runtime boss_save_frame | With no saves, the boss autosave was refused and retried every 2 s for 30 s (log noise). | Skipped once with one log line. |
+
+Checked and fine: entvars/entity_state offsets (CoF adds 4 bytes after light_level, so v_angle 0x74 and health 0x164 are right), glow shell 19 drawn by the client, Book Simon precaches only his model (we precache it), keeps the health keyvalue and gets AI from DispatchSpawn like a monstermaker's monster; his `message` damage relay finds nothing with an empty name; the game's own game over covers a solo host who goes down; the cof_reducedlight defaults (0.23 0.23 0.26, 60); installer upgrade/uninstall paths and Linux parity; launcher version compare.
+
 ## Engine use
 
 No detours and no new calls into game code: engine functions, the entity API exports (Spawn, KeyValue, Use as before), entity variables, two known player fields (dodge flag, respawn timers) and messages. Options are read every 0.5 s; storycoop_server.cfg runs at each map start.

@@ -45,12 +45,15 @@ std::array<unsigned char,3> player_colour(int index){
 // m_flDeadAutoReviveTime +0x1F2C (sv_auto_respawn_time)) are pushed ahead while a player is down, so only
 // a revive brings him back; with everyone down the game's own game over restarts the map. A fall
 // respawn (v0.6) keeps its 2 s. Morphine trip time is the game's sv_morphinetriptime.
+// Review 2026-11-06: only while a teammate is alive to revive him. The game ends the map when the last
+// living player dies, not when he leaves: a player left alone and down gets the game's own respawn back.
 bool hardcore_nosave(){return cvar_value("sv_coop_nosave")!=0;}
 constexpr std::size_t PlayerDeadNotify=0x3d0,PlayerRespawnDelay=0x3d4;
 void norespawn_frame(Edict* e){
  if(!hostOptions.norespawn||!scoped()||!globals)return;auto v=vars(e);void* p=nullptr;std::size_t n=0;if(!v||!player_memory(e,p,n))return;
  if(load<int>(v,0x174)==0&&load<float>(v,0x164)>0)return;
  auto fb=fallBacks.find(e);if(fb!=fallBacks.end()&&fb->second.serial==serial(e))return;
+ bool reviver=false;for(auto o:connected_players())if(o!=e&&view_alive(o))reviver=true;if(!reviver)return;
  const float now=load<float>(globals,0);
  for(std::size_t at:{PlayerDeadNotify,PlayerRespawnDelay})if(load<float>(p,at)<now+30.f)store(p,at,now+60.f);
  const float revive=load<float>(p,PlayerAutoRevive);if(revive!=0.f&&revive<now+300.f)store(p,PlayerAutoRevive,now+600.f);
@@ -63,6 +66,9 @@ void norespawn_frame(Edict* e){
 std::unordered_map<Edict*,int> scaledMonsters;float scaleNext=0;int scaleLogged=-1;
 int party_size(){int n=0;for(auto e:connected_players())if(live(e))++n;return n<1?1:n;}
 float scale_factor(int players){return 1.f+0.35f*static_cast<float>((players<1?1:players>4?4:players)-1);}
+// Review 2026-11-06: a map state or a save brings monsters back with the health they had (scaled once
+// already); state_activate marks them so a revisit or a load does not scale them again.
+void scale_restored(Edict* e){if(live(e))scaledMonsters[e]=serial(e);}
 void scale_frame(){
  if(!hostOptions.scale||!scoped()||!globals||!engine[72])return;const float now=load<float>(globals,0);if(now<scaleNext&&scaleNext-now<2.f)return;scaleNext=now+0.5f;
  const int players=party_size();const float f=scale_factor(players);if(f<=1.f)return;int count=0;
@@ -97,6 +103,9 @@ std::set<std::string> caughtUp;
 void catch_up_frame(Edict* e){
  if(!scoped()||!globals||!client_ready(e)||!view_alive(e)||checkpoint_host(e)||in_scene(e)||!carry_settled(e))return;
  const auto key=pref_key(e);if(caughtUp.count(key))return;caughtUp.insert(key);
+ // Review 2026-11-06: only a player who got here more than 15 s after the first (the objective's own
+ // "joined late"); the players who start a game together get the story's weapons from the story.
+ {auto late=lateObjectives.find(e);if(late==lateObjectives.end()||late->second.serial!=serial(e)||late->second.due<0)return;}
  if(carry_record(e)&&!carry_record(e)->weapons.empty())return;   // he had his own (rejoin, map change)
  Edict* host=eng<Edict*(__cdecl*)(int)>(72)(1);if(!checkpoint_host(host)||!view_alive(host))return;
  SavedPlayer have,want;if(!capture_player(e,have,false)||!capture_player(host,want,false)||want.weapons.empty())return;
@@ -111,7 +120,8 @@ void catch_up_frame(Edict* e){
 // --- #8 Ping ------------------------------------------------------------------------------
 // "sc_ping" (G): a glow at the spot the player looks at (TE_GLOWSPRITE with the game's own
 // sprites/glow01.spr, precached on story maps) for 3 s, and "<name>: here (12 m)" to everyone, in the
-// pinging player's colour. Once per 2 s; not while down or in a scene.
+// pinging player's colour. Once per 2 s; not while down or in a scene. TE_GLOWSPRITE bytes (engine CL_TENT.C
+// 2479): life in 0.1 s, scale in 0.1, brightness. Story maps only: the sprite is precached there.
 int pingSprite=0;std::unordered_map<Edict*,float> pingUsed;
 void ping_precache(){pingSprite=engine[0]?eng<int(__cdecl*)(const char*)>(0)("sprites/glow01.spr"):0;}
 std::array<float,3> eye_forward(void* v){
@@ -119,7 +129,7 @@ std::array<float,3> eye_forward(void* v){
  return {std::cos(pitch)*std::cos(yaw),std::cos(pitch)*std::sin(yaw),-std::sin(pitch)};
 }
 bool ping_command(Edict* e){
- auto v=vars(e);if(!(scoped()||opening())||!globals||!v||!engine[31]||!engine[46])return true;
+ auto v=vars(e);if(!scoped()||!globals||!v||!engine[31]||!engine[46])return true;
  const float now=load<float>(globals,0);auto& used=pingUsed[e];if(used>now)used=0;if(used&&now-used<2.f)return true;
  if(!view_alive(e)||in_scene(e))return true;used=now;
  const std::array<float,3> eye{load<float>(v,8)+load<float>(v,0x178),load<float>(v,12)+load<float>(v,0x17c),load<float>(v,16)+load<float>(v,0x180)};const auto f=eye_forward(v);
@@ -128,9 +138,9 @@ bool ping_command(Edict* e){
  if(t.fraction>=1.f||t.allSolid)return true;
  const std::array<float,3> at{t.end[0]-f[0]*8.f,t.end[1]-f[1]*8.f,t.end[2]-f[2]*8.f};
  const int index=eng<int(__cdecl*)(Edict*)>(71)(e);const auto c=player_colour(index);
- if(pingSprite>0){eng<void(__cdecl*)(int,int,const float*,Edict*)>(46)(2,23,nullptr,nullptr);eng<void(__cdecl*)(int)>(48)(23);for(float x:at)eng<void(__cdecl*)(float)>(53)(x);eng<void(__cdecl*)(int)>(50)(pingSprite);for(int b:{6,30,220})eng<void(__cdecl*)(int)>(48)(b);eng<void(__cdecl*)()>(47)();}
+ if(pingSprite>0){eng<void(__cdecl*)(int,int,const float*,Edict*)>(46)(2,23,nullptr,nullptr);eng<void(__cdecl*)(int)>(48)(23);for(float x:at)eng<void(__cdecl*)(float)>(53)(x);eng<void(__cdecl*)(int)>(50)(pingSprite);for(int b:{30,30,220})eng<void(__cdecl*)(int)>(48)(b);eng<void(__cdecl*)()>(47)();}
  const std::string name=player_name(e);const unsigned char colour[4]={c[0],c[1],c[2],255};
- for(auto o:connected_players()){auto q=vars(o);if(!q||!client_ready(o))continue;float d=0;for(int k=0;k<3;++k){const float x=load<float>(q,8+k*4)-at[k];d+=x*x;}
+ for(auto o:connected_players()){auto q=vars(o);if(!q||!client_ready(o)||in_scene(o))continue;float d=0;for(int k=0;k<3;++k){const float x=load<float>(q,8+k*4)-at[k];d+=x*x;}
   char text[96]{};std::snprintf(text,sizeof(text),"%s: here (%d m)",name.c_str(),static_cast<int>(std::sqrt(d)/40.f+0.5f));hud_text(o,3,-1.f,0.32f,colour,2.f,text,0.f);}
  char line[120]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] PING player=%d at %.0f %.0f %.0f\n",index,at[0],at[1],at[2]);log(line);
  return true;
@@ -179,7 +189,7 @@ void run_timer_frame(){
 // From the message hooks: the first string of a Chapter message (cof_chapter, effects.cpp 9234) or a Credits message.
 void run_timer_title(const char* title){
  if(!title||!*title||!std::strcmp(title,"Game over")||!globals||!campaign_map())return;const float now=load<float>(globals,0);
- if(runTimer.title==title&&now-runTimer.titleAt<30.f&&now>=runTimer.titleAt)return;runTimer.title=title;runTimer.titleAt=now;
+ if(runTimer.title==title)return;runTimer.title=title;runTimer.titleAt=now;   // the same card again (game over restart): no new split
  const double chapter=runTimer.seconds-runTimer.chapterStart;runTimer.chapterStart=runTimer.seconds;
  runTimer.shown=std::string(title)+": run "+run_clock(runTimer.seconds)+(chapter>=1.0?" (last chapter "+run_clock(chapter)+")":"");runTimer.splitDue=now+7.f;
  char line[200]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] TIMER %s at %s\n",title,run_clock(runTimer.seconds).c_str());log(line);
@@ -188,12 +198,13 @@ void run_timer_credits(){if(!globals||!scoped())return;const float now=load<floa
 
 // --- #35 Black and white (each player's own choice) -------------------------------------------
 // The game's BlackWhite message (player.cpp 9392; client hud_msg.cpp 882) for that player only: sent
-// when he is ready on each map, and kept on when a scene's own message would turn it off.
+// when he is ready on each map, and kept on when a scene's own message would turn it off. The byte is the
+// strength (client gl_postprocess.cpp 45: grayscale = byte / 255; VidInit clears it each map): 255 = full.
 std::unordered_map<Edict*,int> noirSent;
 bool noir_for(Edict* e){if(!live(e))return false;auto it=playerPrefs.find(eng<int(__cdecl*)(Edict*)>(71)(e));return it!=playerPrefs.end()&&it->second.noir;}
 void noir_frame(Edict* e){
  if(blackWhiteMessage<=0||!(scoped()||opening())||!client_ready(e)||!noir_for(e)||!engine[46])return;auto& sent=noirSent[e];if(sent==serial(e))return;sent=serial(e);
- eng<void(__cdecl*)(int,int,const float*,Edict*)>(46)(1,blackWhiteMessage,nullptr,e);eng<void(__cdecl*)(int)>(48)(1);eng<void(__cdecl*)()>(47)();
+ eng<void(__cdecl*)(int,int,const float*,Edict*)>(46)(1,blackWhiteMessage,nullptr,e);eng<void(__cdecl*)(int)>(48)(255);eng<void(__cdecl*)()>(47)();
 }
 
 // --- Message hooks (adapter.cpp message_begin / write_byte / write_string) ----------------
@@ -203,7 +214,7 @@ void qol2_wire_begin(int dest,int type,Edict* e){
  else if(chapterMessage>0&&type==chapterMessage&&(dest==1||dest==2))qol2Wire.kind=2;else if(creditsMessage>0&&type==creditsMessage)qol2Wire.kind=3;
  qol2Wire.to=e;if(qol2Wire.kind==3)run_timer_credits();
 }
-int qol2_wire_byte(int value){return qol2Wire.kind==1?1:value;}
+int qol2_wire_byte(int value){return qol2Wire.kind==1?255:value;}
 void qol2_wire_string(const char* s){if(qol2Wire.kind==2&&qol2Wire.strings++==0)run_timer_title(s);}
 
 // --- #10 / #30 Teammate outline in each player's colour ---------------------------------------
@@ -236,6 +247,9 @@ void hunt_precache(){
  for(const char* s:HuntSounds){std::error_code e2;if(std::filesystem::is_regular_file(dir/L"sound"/std::filesystem::path(s),e2))eng<int(__cdecl*)(const char*)>(1)(s);}
  hunt.precached=true;
 }
+// Review 2026-11-06: the map state (state_capture) keeps every live runtime monster; the hunter is not
+// one of the map's, so a level change or a tape save never keeps him.
+bool hunt_entity(Edict* e){auto v=e?vars(e):nullptr;return v&&!std::strcmp(classname(e),"monster_booksimonsledgehammer")&&!std::strcmp(targetname(e),"sc10_hunter");}
 bool hunt_alive(){auto v=hunt.who?vars(hunt.who):nullptr;return v&&serial(hunt.who)==hunt.serial&&!std::strcmp(classname(hunt.who),"monster_booksimonsledgehammer")&&load<float>(v,0x164)>0&&load<int>(v,0x174)==0;}
 void hunt_remove(const char* why){
  Edict* host=globals&&engine[72]?eng<Edict*(__cdecl*)(int)>(72)(1):nullptr;
@@ -295,6 +309,6 @@ void qol2_after_command(Edict* e,const char* command){if(command&&!std::strcmp(c
 void qol2_world_spawned(){if(!scoped())return;ping_precache();hunt_precache();}
 void qol2_frame(){host_options_frame();scale_frame();run_timer_frame();hunt_frame();}
 void qol2_player_frame(Edict* e){if(!live(e)||std::strcmp(classname(e),"player"))return;norespawn_frame(e);if(!scoped())return;dodge_frame(e);catch_up_frame(e);noir_frame(e);}
-void qol2_map_changed(){scaledMonsters.clear();scaleNext=0;scaleLogged=-1;dodgeApplied.clear();noirSent.clear();pingUsed.clear();scareUsed.clear();hunt=Hunt{};hostOptions.next=-1;runTimer.last=-1;runTimer.splitDue=-1;runTimer.next=0;}
+void qol2_map_changed(){pingSprite=0;scaledMonsters.clear();scaleNext=0;scaleLogged=-1;dodgeApplied.clear();noirSent.clear();pingUsed.clear();scareUsed.clear();hunt=Hunt{};hostOptions.next=-1;runTimer.last=-1;runTimer.splitDue=-1;runTimer.next=0;}
 void qol2_disconnect(Edict* e){dodgeApplied.erase(e);noirSent.erase(e);pingUsed.erase(e);scareUsed.erase(e);if(live(e))playerPrefs.erase(eng<int(__cdecl*)(Edict*)>(71)(e));}
 void qol2_new_game(){caughtUp.clear();}

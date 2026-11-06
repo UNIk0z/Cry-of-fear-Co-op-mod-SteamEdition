@@ -93,6 +93,7 @@ bool state_doomed(Edict* e){auto p=vars(e);return !p||(load<unsigned>(p,0x1a8)&F
 // entity_retire): it also leaves Spirit's assist list and is not Activated.
 void state_kill(Edict* e){entity_retire(e);}
 std::string state_label(const std::string& key){const auto a=key.find('|'),b=a==std::string::npos?a:key.find('|',a+1);if(b==std::string::npos)return key.substr(0,40);const std::string name=key.substr(a+1,b-a-1);return name.empty()?key.substr(0,a):name;}
+bool hunt_entity(Edict* e);void scale_restored(Edict* e);   // qol2-runtime.hpp (v0.10 review): hunted Simon, monster scaling
 bool state_capture(MapState& out,std::string& why){
  if(!original[7]||!globals||!engine[72]||!engine[67]){why="save callback unavailable";return false;}
  const int clients=load<int>(globals,0x90),maxEntities=load<int>(globals,0x94);
@@ -113,7 +114,7 @@ bool state_capture(MapState& out,std::string& why){
  for(int i=clients+1;i<maxEntities;++i){
   auto e=eng<Edict*(__cdecl*)(int)>(72)(i);if(!e||!live(e)||known.count(e)||state_doomed(e))continue;
   const std::string type=classname(e);auto p=vars(e);
-  if(type.rfind("monster_",0)!=0||state_client(load<Edict*>(p,0x19c))||state_client(load<Edict*>(p,0x198)))continue;
+  if(type.rfind("monster_",0)!=0||state_client(load<Edict*>(p,0x19c))||state_client(load<Edict*>(p,0x198))||hunt_entity(e))continue;
   list.push_back({e,"new:"+type,type,false});++created;
  }
  std::vector<unsigned char> buffer(StateBuffer);std::vector<char*> tokens(StateTokens,nullptr);std::vector<SaveTable> table(list.size());
@@ -208,7 +209,7 @@ void state_activate(){
   const int result=native<int(__cdecl*)(Edict*,SaveData*,int)>(8)(e,&data,0);
   if(result<0||!live(e)){if(live(e))state_kill(e);++deleted;continue;}
   if(auto p=vars(e)){const std::array<float,3> at{load<float>(p,8),load<float>(p,12),load<float>(p,16)};eng<void(__cdecl*)(Edict*,const float*)>(28)(e,at.data());}
-  ++restored;
+  scale_restored(e);++restored;
  }
  char line[300]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MAPSTATE restored %s on %s: restored=%d removed=%d recreated=%d kept-as-served=%d unmatched=%d create-failed=%d deleted-by-game=%d\n",state_source(map_name()).c_str(),map_name(),restored,removed,created,kept,unmatched,failed,deleted);log(line);crumb("mapstate done");
 }
