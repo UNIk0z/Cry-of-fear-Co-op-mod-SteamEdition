@@ -173,11 +173,6 @@ Every bug report needs the **log file**. That's how we can see what happened.
 - A crawler enemy is missing in the subway (s4_subtunnel2), and crouching on a save
   station jitters.
 - Pressing R while typing in the chat during a cutscene counts as a skip vote.
-- The v0.9 features (unstuck, player list tags, settings, subtitles per player,
-  rejoin) and the v0.10 features (host options, Hunted, ping, scare, colours) have
-  not been played in the game yet. Please report what breaks.
-- RebuiltSimon works with co-op from v0.10.2 (its crash right after joining is fixed). Other
-  add-ons in `cryoffear/addons`: if the game crashes, try without them.
 
 ## Credits
 
