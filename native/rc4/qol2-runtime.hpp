@@ -10,17 +10,20 @@ cvar_t scaleCvar{const_cast<char*>("sc_scale"),const_cast<char*>("0"),0,0.f,null
 cvar_t outlineCvar{const_cast<char*>("sc_outline"),const_cast<char*>("0"),0,0.f,nullptr};
 cvar_t timerCvar{const_cast<char*>("sc_timer"),const_cast<char*>("0"),0,0.f,nullptr};
 cvar_t norespawnCvar{const_cast<char*>("sc_norespawn"),const_cast<char*>("0"),0,0.f,nullptr};
+cvar_t noteleportsCvar{const_cast<char*>("sc_noteleports"),const_cast<char*>("0"),0,0.f,nullptr};   // v0.10.2
 // Each player's own game (storycoop_comfort.cfg, SETTINGS in the launcher); sent to the host with sc_mdl.
 cvar_t noirCvar{const_cast<char*>("sc_noir"),const_cast<char*>("0"),0,0.f,nullptr};
 cvar_t colourCvar{const_cast<char*>("sc_color"),const_cast<char*>("0"),0,0.f,nullptr};
-void __cdecl qol2_register(){if(!engine[56])return;for(cvar_t* c:{&huntedCvar,&scaleCvar,&outlineCvar,&timerCvar,&norespawnCvar,&noirCvar,&colourCvar})eng<void(__cdecl*)(cvar_t*)>(56)(c);}
+void __cdecl qol2_register(){if(!engine[56])return;for(cvar_t* c:{&huntedCvar,&scaleCvar,&outlineCvar,&timerCvar,&norespawnCvar,&noteleportsCvar,&noirCvar,&colourCvar})eng<void(__cdecl*)(cvar_t*)>(56)(c);}
 float cvar_value(const char* name){return engine[57]?eng<float(__cdecl*)(const char*)>(57)(name):0.f;}
-struct HostOptions {int hunted=0,scale=0,outline=0,timer=0,norespawn=0,nosave=0,nohints=0;float next=-1;} hostOptions;
+struct HostOptions {int hunted=0,scale=0,outline=0,timer=0,norespawn=0,nosave=0,nohints=0,noteleports=0;float next=-1;} hostOptions;
 void host_options_frame(){
  if(!globals)return;const float now=load<float>(globals,0);if(hostOptions.next>=0&&now<hostOptions.next&&hostOptions.next-now<1.f)return;hostOptions.next=now+0.5f;
  hostOptions.hunted=cvar_value("sc_hunted")!=0;hostOptions.scale=cvar_value("sc_scale")!=0;hostOptions.outline=cvar_value("sc_outline")!=0;hostOptions.timer=static_cast<int>(cvar_value("sc_timer"));
  hostOptions.norespawn=cvar_value("sc_norespawn")!=0;hostOptions.nosave=cvar_value("sv_coop_nosave")!=0;hostOptions.nohints=cvar_value("sv_disablehints")!=0;
+ hostOptions.noteleports=cvar_value("sc_noteleports")!=0;
 }
+bool teleports_off(){return hostOptions.noteleports!=0;}
 // sv_disablehints (the game's own "no hints" setting) also turns off the co-op key prompt and objective pop-ups.
 bool hints_off(){return hostOptions.nohints!=0;}
 // Each player's colour and black-and-white choice (sc_mdl words 4 and 5; older games send neither).
@@ -304,6 +307,97 @@ void hunt_frame(){
  }
 }
 
+// --- v0.10.2: playtest of 2026-11-06 (docs/V0102_RELEASE.md) -------------------------------------
+// 1. A co-op level-change door opens for whoever uses it (Katz: "door skip from single player must work in
+// co-op instead of waiting for all players"; clips 1 and 5 show "Please wait until everyone is ready!").
+// CInterDoorCoopChangeLevel::Use (decomp CoF_InterDoorCoop.cpp 879) refuses unless its target
+// trigger_coop_changelevel has iuser1 1, which CTriggerCoopChangelevel::InsideThink (triggers.cpp 6617)
+// sets only while every live player stands inside it. Single player never waits, and the door already
+// fades, freezes and carries every player to the next map's co-op spawns. After the zone's own think
+// its iuser1 (entvars +0x248) is 1.
+bool doorWaitLogged=false;
+void door_ready_after_think(Edict* e){
+ auto v=vars(e);if(!v||std::strcmp(classname(e),"trigger_coop_changelevel")||load<int>(v,0x248)==1)return;
+ store<int>(v,0x248,1);
+ if(!doorWaitLogged){doorWaitLogged=true;log("[STORYCOOP_RC4] DOORS a co-op level-change door opens for any player, as in single player\n");}
+}
+// 2. The Carcass crash (Katz: "2 carcass crashed the second player's game"; tester log 2026-11-02 s4_roofs2_e0:
+// CRASH at hl.dll+0xC8706, CHalfLifeMultiplay::FPlayerCanTakeDamage+6, read 0, with "touch 363 roofboss_head"
+// right after the multikill2 skip). CRoofBossHead::DieTouch (decomp cof_roofboss.cpp 350) hurts the player
+// with VARS(pev->owner) as the attacker. When the Carcass is gone (the skipped scene removes it) a head still
+// in the air has a freed owner: CBaseEntity::Instance gives NULL and the multiplayer rules read
+// pAttacker->IsPlayer() (single player's rules never look). Whatever touches a player while its owner
+// (entvars +0x19C) is freed now has the world as its owner.
+std::set<std::string> orphanLogged;
+void orphan_owner_touch(Edict* e,Edict* other){
+ auto v=vars(e);if(!v||!live(other)||std::strcmp(classname(other),"player"))return;
+ Edict* owner=load<Edict*>(v,0x19c);if(!owner||(live(owner)&&engine[64]&&eng<void*(__cdecl*)(Edict*)>(64)(owner)))return;
+ Edict* world=engine[72]?eng<Edict*(__cdecl*)(int)>(72)(0):nullptr;if(!world||owner==world)return;
+ store(v,0x19c,world);
+ if(orphanLogged.insert(classname(e)).second&&orphanLogged.size()<16){char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] TOUCH %.40s hit a player after its owner was gone: the world is its owner now\n",classname(e));log(line);}
+}
+// 3. Copies of a pickup with a group (pickup_group, coop-runtime.hpp) are not solid in any player's game
+// either, as the host's player movement treats them. SOLID_BBOX is 2; entity_state solid is +0x3A.
+void pickup_unblocking(void* state,Edict* e){auto v=vars(e);if(v&&load<int>(v,0x244)!=0&&load<int>(v,0x10c)==2)store<short>(state,0x3a,0);}
+// 4. A key that lies inside a door can be taken (tester: "fuses sometimes can't be picked up when inside
+// something (school, station door)"). CBasePlayer::PlayerUse (decomp player.cpp) first uses whatever its
+// 64-unit trace from the eyes hits; only when that is not usable does it look for things around the player.
+// A usable door around the key took every E. While the native PreThink runs (useTracePhase, adapter.cpp),
+// that trace is given the key instead when the trace hits a brush entity (func_*) and a key the player may
+// take lies inside that entity's box, within 16 units of the line of sight.
+bool useTracePhase=false;int useTraceLines=0;
+void use_trace_redirect(const float* a,const float* b,Edict* player,void* tr){
+ Edict* hit=load<Edict*>(tr,0x30);if(!hit||!scoped()||!live(hit)||eng<int(__cdecl*)(Edict*)>(71)(hit)<=0||std::strncmp(classname(hit),"func_",5))return;
+ auto hv=vars(hit);if(!hv)return;float dir[3]{},len2=0;for(int j=0;j<3;++j){dir[j]=b[j]-a[j];len2+=dir[j]*dir[j];}if(len2<1.f||len2>128.f*128.f)return;
+ Edict* best=nullptr;float bestT=0;Edict* k=nullptr;
+ for(int n=0;n<256;++n){k=find_next(k,"classname","item_key");if(!k)break;auto kv=vars(k);if(!kv||load<int>(kv,0x10c)==0||(load<unsigned>(kv,0x118)&0x80u))continue;
+  if(pickup_blocked(k,player)||pickup_hidden(eng<int(__cdecl*)(Edict*)>(71)(k),k,player))continue;
+  float c[3]{};bool inside=true;for(int j=0;j<3;++j){c[j]=(load<float>(kv,0xc4+j*4)+load<float>(kv,0xd0+j*4))*0.5f;if(c[j]<load<float>(hv,0xc4+j*4)-4.f||c[j]>load<float>(hv,0xd0+j*4)+4.f)inside=false;}
+  if(!inside)continue;float t=0;for(int j=0;j<3;++j)t+=(c[j]-a[j])*dir[j];t/=len2;if(t<0.f||t>1.f)continue;
+  float d2=0;for(int j=0;j<3;++j){const float x=a[j]+dir[j]*t-c[j];d2+=x*x;}if(d2>16.f*16.f)continue;
+  if(!best||t<bestT){best=k;bestT=t;}}
+ if(!best)return;store(tr,0x30,best);store(tr,0x10,bestT);for(int j=0;j<3;++j)store(tr,0x14+j*4,a[j]+dir[j]*bestT);
+ if(useTraceLines<20){++useTraceLines;auto bv=vars(best);char line[200]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] USE player=%d takes %.60s from inside %.40s\n",eng<int(__cdecl*)(Edict*)>(71)(player),bv?string_at(load<int>(bv,0x1d8)):"",classname(hit));log(line);}
+}
+void __cdecl trace_line(const float* a,const float* b,int noMonsters,Edict* skip,void* tr){
+ eng<void(__cdecl*)(const float*,const float*,int,Edict*,void*)>(31)(a,b,noMonsters,skip,tr);
+ if(useTracePhase&&!noMonsters&&skip&&skip==pickupActor&&tr&&a&&b)use_trace_redirect(a,b,skip,tr);
+}
+// 5. The phone dies for every player (tester: "host phone battery never ran out for the friend but did for
+// the host"). cof_phonedisable (decomp effects.cpp 8595) disables the phone of UTIL_FindEntityByClassname
+// (NULL,"player"), the first player only. When a settled player's m_iPhoneDisabled (+0x1F14) turns 1, the
+// game's own cof_phonedisable is used again for each other player with a working phone, "the player" being
+// that player (acting_override). A battery fixes each phone on its own (CMobile::FixBattery), as before.
+std::map<std::pair<Edict*,int>,int> phoneSeen;float phoneNext=0;
+void phone_frame(){
+ if(!scoped()||!globals||loadingCheckpoint||!original[3])return;const float now=load<float>(globals,0);if(now<phoneNext&&phoneNext-now<1.f)return;phoneNext=now+0.5f;
+ const auto players=connected_players();int died=0;
+ for(auto e:players){void* p=nullptr;std::size_t n=0;if(!player_memory(e,p,n)||!carry_settled(e))continue;const int d=load<int>(p,0x1f14);const std::pair<Edict*,int> key{e,serial(e)};auto it=phoneSeen.find(key);if(it!=phoneSeen.end()&&it->second==0&&d==1)died=eng<int(__cdecl*)(Edict*)>(71)(e);phoneSeen[key]=d;}
+ if(!died)return;
+ for(auto o:players){void* p=nullptr;std::size_t n=0;if(!player_memory(o,p,n)||!carry_settled(o)||load<int>(p,0x1f14)!=0)continue;
+  actingPlayer=o;helper_use("cof_phonedisable","targetname","sc4_phonedisable",o);actingPlayer=nullptr;const int d=load<int>(p,0x1f14);phoneSeen[{o,serial(o)}]=d;
+  char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] PHONE died for player=%d: %s for player=%d\n",died,d?"also":"not (no working phone)",eng<int(__cdecl*)(Edict*)>(71)(o));log(line);}
+}
+// 6. RebuiltSimon (cryoffear\addons\RebuiltSimonCoFManager.dll, source https://github.com/cd-n0/RebuiltSimon
+// read 2026-11-07, Features/Cheats/disable_stamina.c): its HUD_Frame hook writes
+// ((simon_t*)(*sv_player)->pvPrivateData)->infinite_stamina (+0x21E8) every frame in game. sv_player (hw.dll
+// 0250E07C) is set only when the local server runs a player's commands (sv_user.c 1987) and never cleared.
+// A joining player runs no server: sv_player still points at the menu map's edict, whose private data the
+// shutdown freed (Host_ShutdownServer, host.c 778) and whose memory the next map reuses, or is NULL when the
+// game started straight into a server. That write is the crash in RebuiltSimonCoFManager.dll right after
+// connecting (docs/V08_STATUS.md, +0x3C6B on a joining player), or a stray write into the new map. At boot
+// (if NULL) and at the end of every local server, sv_player points at a blank player of the adapter's own;
+// the engine sets sv_player before it reads it again. Only for the pinned hw.dll (SprayHwSha).
+constexpr std::uint32_t RsSvPlayerVa=0x0250E07C;
+alignas(16) unsigned char rsBlankEdict[0x400]{};alignas(16) unsigned char rsBlankPrivate[0x3000]{};int rsGuard=0;
+void rs_guard(bool force){
+ if(rsGuard<0)return;HMODULE hw=GetModuleHandleW(L"hw.dll");if(!hw)return;
+ if(!rsGuard){wchar_t file[MAX_PATH]{};rsGuard=GetModuleFileNameW(hw,file,MAX_PATH)&&sha_file(file)==SprayHwSha?1:-1;if(rsGuard<0){log("[STORYCOOP_RC4] ADDON guard off: this hw.dll is not the pinned one\n");return;}}
+ auto& player=*reinterpret_cast<unsigned char**>(reinterpret_cast<unsigned char*>(hw)+(RsSvPlayerVa-SprayHwBase));
+ if(player==rsBlankEdict||(!force&&player))return;
+ std::memset(rsBlankPrivate,0,sizeof(rsBlankPrivate));store<void*>(rsBlankEdict,0x7c,rsBlankPrivate);player=rsBlankEdict;
+}
+
 // --- Wiring ----------------------------------------------------------------------------
 bool qol2_client_command(Edict* e,const char* command){
  if(!command)return false;
@@ -313,9 +407,10 @@ bool qol2_client_command(Edict* e,const char* command){
 }
 void qol2_after_command(Edict* e,const char* command){if(command&&!std::strcmp(command,"dodgetoggle"))dodge_noted(e);}
 void qol2_world_spawned(){if(!scoped())return;ping_precache();hunt_precache();}
-void qol2_frame(){host_options_frame();scale_frame();run_timer_frame();hunt_frame();}
+void qol2_frame(){host_options_frame();scale_frame();run_timer_frame();hunt_frame();phone_frame();}
 void qol2_player_frame(Edict* e){if(!live(e)||std::strcmp(classname(e),"player"))return;norespawn_frame(e);if(!scoped())return;dodge_frame(e);catch_up_frame(e);noir_frame(e);}
-void qol2_map_changed(){pingSprite=0;scaledMonsters.clear();scaleBarTargets.clear();scaleBarsRead=false;scaleNext=0;scaleLogged=-1;dodgeApplied.clear();noirSent.clear();pingUsed.clear();scareUsed.clear();hunt=Hunt{};hostOptions.next=-1;runTimer.last=-1;runTimer.splitDue=-1;runTimer.next=0;}
+void qol2_map_changed(){pingSprite=0;scaledMonsters.clear();scaleBarTargets.clear();scaleBarsRead=false;scaleNext=0;scaleLogged=-1;dodgeApplied.clear();noirSent.clear();pingUsed.clear();scareUsed.clear();hunt=Hunt{};hostOptions.next=-1;runTimer.last=-1;runTimer.splitDue=-1;runTimer.next=0;
+ doorWaitLogged=false;phoneSeen.clear();phoneNext=0;cardLockNames.clear();rs_guard(true);}
 // v0.10.1 (review): what is kept per player slot goes with the player. netTuned (story-runtime.hpp) asks each
 // slot once per map for its tuning and sc_report: a player who rejoined the same slot on the same map (the
 // crash-rejoin offer) got neither, so his model, language, colour and black and white waited for the next map,

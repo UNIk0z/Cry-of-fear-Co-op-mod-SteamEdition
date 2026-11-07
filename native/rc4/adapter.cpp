@@ -126,6 +126,7 @@ void vehicle_evidence(Edict* e,const char* phase,int host,int packed){
  std::snprintf(s,sizeof(s),"[STORYCOOP_RC4] VEHICLE_STATE phase=%s entity=%d host=%d packed=%d name=%s model=%s modelindex=%d origin=%.1f,%.1f,%.1f speed=%.1f effects=%x rendermode=%d renderamt=%.1f flags=%x group=%x time=%.2f\n",phase,eng<int(__cdecl*)(Edict*)>(71)(e),host,packed,targetname(e),string_at(load<int>(p,0xb8)),load<int>(p,0xb4),load<float>(p,8),load<float>(p,12),load<float>(p,16),load<float>(p,0x1fc),load<unsigned>(p,0x118),load<int>(p,0x14c),load<float>(p,0x150),load<unsigned>(p,0x1a8),load<unsigned>(p,0x244),load<float>(globals,0));log(s);
 }
 bool pickup_hidden(int number,Edict* e,Edict* host);bool pickup_blocked(Edict* pickup,Edict* player);   // coop-runtime.hpp (v0.8)
+void pickup_unblocking(void* state,Edict* e);   // qol2-runtime.hpp (v0.10.2)
 bool collision_off();   // coop-runtime.hpp (v0.5 host setup)
 bool outline_state(void* state,Edict* e,Edict* host);   // qol2-runtime.hpp (v0.10)
 bool player_force_visible(Edict* e,Edict* host);void player_forced_log(Edict* e,Edict* host,bool shown);   // coop-runtime.hpp (v0.6)
@@ -160,6 +161,7 @@ int __cdecl full_pack(void* state,int number,Edict* e,Edict* host,int flags,int 
  if(result&&hide&&state)store(state,0x3c,load<unsigned>(state,0x3c)|0x80u);
  if(result&&player&&state&&collision_off())store<short>(state,0x3a,0);   // v0.5 E2: collision off
  if(result&&player&&state&&!hide)outline_state(state,e,host);   // v0.10: far teammates outlined (sc_outline)
+ if(result&&!player&&state)pickup_unblocking(state,e);   // v0.10.2: pickup copies block nobody
  return result;
 }
 void __cdecl visibility(Edict* view,Edict* client,unsigned char** pvs,unsigned char** pas){
@@ -454,7 +456,7 @@ int __cdecl spawn(Edict* e){
  }
  return result;
 }
-void __cdecl think(Edict* e){crumb("think",e);firstPlayerLookup=false;if(!scoped()){opening_think_evidence(e);native<void(__cdecl*)(Edict*)>(2)(e);return;}auto decision=puzzle_before_think(e);if(decision==PuzzleDecision::Block)return;drowned_begin(e);Edict* acting=barPlayer&&serial(barPlayer)==barPlayerSerial&&!std::strncmp(classname(e),"cof_puzzlebar",13)?barPlayer:roofboss_enemy(e);if(!acting)acting=strangle_activator(e);const bool bar=acting!=nullptr;if(bar)actingPlayer=acting;native<void(__cdecl*)(Edict*)>(2)(e);if(bar)actingPlayer=nullptr;drowned_end();firstPlayerLookup=false;if(decision==PuzzleDecision::ForwardOwned)puzzle_after_think();give_flush();}
+void __cdecl think(Edict* e){crumb("think",e);firstPlayerLookup=false;if(!scoped()){opening_think_evidence(e);native<void(__cdecl*)(Edict*)>(2)(e);return;}auto decision=puzzle_before_think(e);if(decision==PuzzleDecision::Block)return;drowned_begin(e);Edict* acting=barPlayer&&serial(barPlayer)==barPlayerSerial&&!std::strncmp(classname(e),"cof_puzzlebar",13)?barPlayer:roofboss_enemy(e);if(!acting)acting=strangle_activator(e);const bool bar=acting!=nullptr;if(bar)actingPlayer=acting;native<void(__cdecl*)(Edict*)>(2)(e);if(bar)actingPlayer=nullptr;drowned_end();door_ready_after_think(e);firstPlayerLookup=false;if(decision==PuzzleDecision::ForwardOwned)puzzle_after_think();give_flush();}
 void __cdecl put(Edict* e){crumb("putinserver",e);native<void(__cdecl*)(Edict*)>(18)(e);void* p=nullptr;std::size_t n=0;if(scoped()&&player_memory(e,p,n))puzzle_on_player_initialized(e,p,n);}
 void __cdecl client_command(Edict* e){
  crumb("command",e);
@@ -515,7 +517,7 @@ void __cdecl command_start(const Edict* actor,const void* command,unsigned int s
 }
 // Ladder reservations are refreshed after each player's think as well as at
 // StartFrame, so a second player's Use later in the same frame sees the lock.
-void __cdecl prethink(Edict* e){crumb("prethink",e);objective_share();deploy_guard(e);ladder_wait_frame(e);pickupActor=e;native<void(__cdecl*)(Edict*)>(23)(e);pickupActor=nullptr;collision_hold(e);strip_clear_frame(e);idle_stage(e,1);down_frame(e);fall_frame(e);scene_teleport_frame(e);model_frame(e);name_frame(e);light_frame(e);camera_frame(e);camera_join(e);checkpoint_player_frame(e);restore(e);quick_notice_frame(e);carry_frame(e);stale_cards_frame(e);arrival_frame(e);story_late_frame(e);objective_late_frame(e);unstuck_hint_frame(e);qol2_player_frame(e);equip_frame(e);nightmare_frame(e);morphine_frame(e);limp_frame(e);give_owed_frame(e);rejoin_frame(e);ladder_frame();boat_frame(e);idle_stage(e,2);collision_pre(e);}
+void __cdecl prethink(Edict* e){crumb("prethink",e);objective_share();deploy_guard(e);ladder_wait_frame(e);pickupActor=e;useTracePhase=true;native<void(__cdecl*)(Edict*)>(23)(e);useTracePhase=false;pickupActor=nullptr;collision_hold(e);strip_clear_frame(e);idle_stage(e,1);down_frame(e);fall_frame(e);scene_teleport_frame(e);model_frame(e);name_frame(e);light_frame(e);camera_frame(e);camera_join(e);checkpoint_player_frame(e);restore(e);quick_notice_frame(e);carry_frame(e);stale_cards_frame(e);arrival_frame(e);story_late_frame(e);objective_late_frame(e);unstuck_hint_frame(e);qol2_player_frame(e);equip_frame(e);nightmare_frame(e);morphine_frame(e);limp_frame(e);give_owed_frame(e);rejoin_frame(e);ladder_frame();boat_frame(e);idle_stage(e,2);collision_pre(e);}
 // v0.1: the inventory carry reads every player when a level change is asked
 // for (see carry_level_change), then the engine's own ChangeLevel runs.
 // v0.3: the Drowned's victim lookup (see drowned_index in coop-runtime.hpp).
@@ -531,7 +533,7 @@ void __cdecl postthink(Edict* e){crumb("postthink",e);collision_restore();idle_s
 void __cdecl disconnect(Edict* e){qol_disconnect(e);qol2_disconnect(e);pauseState.othersOpen=false;ladder_left(e);carry_departing(e);stuckUsed.erase(e);codeLayouts.erase(note_connection(e));camera_forget(e);boatDrivers.erase(e);checkpoint_disconnect(e);}
 // v0.3 crash report: Use/Touch only leave a breadcrumb, then the game's own.
 void __cdecl dispatch_use(Edict* e,Edict* other){crumb("use",e);if(scoped()&&pickup_blocked(e,other))return;native<void(__cdecl*)(Edict*,Edict*)>(3)(e,other);}
-void __cdecl dispatch_touch(Edict* e,Edict* other){crumb("touch",e);if(scoped()){if(pickup_blocked(e,other)||arrival_touch_blocked(e,other))return;pp_touch(e,other);train_escape_touch(e,other);if(collision_touch_blocked(e,other))return;}native<void(__cdecl*)(Edict*,Edict*)>(4)(e,other);}
+void __cdecl dispatch_touch(Edict* e,Edict* other){crumb("touch",e);if(scoped()){if(pickup_blocked(e,other)||arrival_touch_blocked(e,other))return;orphan_owner_touch(e,other);pp_touch(e,other);train_escape_touch(e,other);if(collision_touch_blocked(e,other))return;}native<void(__cdecl*)(Edict*,Edict*)>(4)(e,other);}
 void wrap(Table& t){
  original=t;
  t[0]=reinterpret_cast<void*>(&game_init);t[1]=reinterpret_cast<void*>(&spawn);t[2]=reinterpret_cast<void*>(&think);
@@ -556,6 +558,7 @@ extern "C" void __stdcall GiveFnptrsToDll(void* table,void* globals){
  forwardEngine[46]=reinterpret_cast<void*>(&message_begin);forwardEngine[47]=reinterpret_cast<void*>(&message_end);
  forwardEngine[48]=reinterpret_cast<void*>(&write_byte);forwardEngine[50]=reinterpret_cast<void*>(&write_short);forwardEngine[54]=reinterpret_cast<void*>(&write_string);
  forwardEngine[90]=reinterpret_cast<void*>(&random_long);
+ forwardEngine[31]=reinterpret_cast<void*>(&trace_line);rs_guard(false);   // v0.10.2
  forwardEngine[6]=reinterpret_cast<void*>(&change_level);
  forwardEngine[72]=reinterpret_cast<void*>(&entity_of_index);
  forwardEngine[39]=reinterpret_cast<void*>(&server_command_hook);

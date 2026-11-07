@@ -337,6 +337,7 @@ void __cdecl door_music_command(){
 // to them (find_landing + teleport_to, as "stuck"), and a player left inside
 // the jumper's hull is moved aside. Door relocations and map arrivals happen
 // without a scene camera and are not touched; the camera itself is untouched.
+bool teleports_off();   // v0.10.2 sc_noteleports (qol2-runtime.hpp)
 struct LastPlace {int serial=-1;float x=0,y=0,z=0,ignoreUntil=0;bool known=false;};
 std::unordered_map<Edict*,LastPlace> lastPlaces;int sceneMoveLines=0;
 // v0.4 (Katz, v0.3 playtest: P2 in a dark box after "the door to the right
@@ -402,7 +403,7 @@ void scene_teleport_frame(Edict* e){
   auto o=eng<Edict*(__cdecl*)(int)>(72)(i);auto q=vars(o);if(o==e||!q||!live(o)||std::strcmp(classname(o),"player")||!view_alive(o))continue;
   const bool follower=following(o);if(!follower&&(!camera||scene_watched(o,now)!=camera))continue;
   const float ox=load<float>(q,8)-x,oy=load<float>(q,12)-y,oz=load<float>(q,16)-z;
-  const bool inside=ox*ox+oy*oy<32.f*32.f&&std::fabs(oz)<72.f,distant=ox*ox+oy*oy+oz*oz>200.f*200.f;if(!inside&&!distant)continue;
+  const bool inside=ox*ox+oy*oy<32.f*32.f&&std::fabs(oz)<72.f,distant=ox*ox+oy*oy+oz*oz>200.f*200.f;if(!inside&&(!distant||teleports_off()))continue;
   const std::array<float,3> before{load<float>(q,8),load<float>(q,12),load<float>(q,16)};const float beforeYaw=load<float>(q,0x54);
   std::array<float,3> at{};
   if(find_landing({x,y,z},o,at)&&teleport_to(o,at,load<float>(v,0x54))){
@@ -484,6 +485,19 @@ void idle_command(Edict* e,const void* command){
 // while dead; once per 15 s.
 std::unordered_map<Edict*,float> stuckUsed;
 bool player_ready_for_move(Edict* e){auto v=vars(e);return v&&live(e)&&!std::strcmp(classname(e),"player")&&load<int>(v,0x174)==0&&load<float>(v,0x164)>0&&!(load<unsigned>(v,0x1a8)&0x100000u)&&!camera_view(e);}
+// v0.10.2 (clip 4 "wrong direction"): a story teleport's partners face the way the map's destination
+// faces. The moved player's own angles are his old view again one frame later: the engine sends the
+// new view (svc_setangle) and clears fixangle at the end of the frame, and his next commands, sent
+// before his game got it, still carry the old angles (sv_user.c 939/1050).
+constexpr float NoYaw=1e9f;
+bool move_beside_yaw(Edict* who,Edict* anchor,float yaw){
+ auto a=vars(anchor),w=vars(who);if(!a||!w)return false;std::array<float,3> at{};
+ if(!find_landing({load<float>(a,8),load<float>(a,12),load<float>(a,16)},who,at))return false;
+ return teleport_to(who,at,yaw<NoYaw*0.5f?yaw:load<float>(a,0x54));
+}
+// v0.10.2 (tester, more.txt: "make a thing so we can turn off the teleports after cutscenes and map changes"):
+// sc_noteleports 1 (host, storycoop_server.cfg) leaves the partners where they are after a scene or a
+// story teleport, and a player who loads later is not brought to the one the story moved. qol2-runtime.hpp.
 bool move_beside(Edict* who,Edict* anchor){
  auto a=vars(anchor),w=vars(who);if(!a||!w)return false;std::array<float,3> at{};
  if(!find_landing({load<float>(a,8),load<float>(a,12),load<float>(a,16)},who,at))return false;
@@ -672,6 +686,14 @@ void pickup_masks(std::map<std::string,unsigned>& out){
   for(int k=0;k<PickupSlots;++k)if(c.e[k]&&pickup_gone(c.e[k],c.serial[k]))mask|=1u<<k;
   out[spawnRecords[i].key]=mask;}
 }
+// v0.10.2 (Katz: "save station block collision pushes the player"; clip 3 beside a tape recorder): item_key
+// pickups such as the cassette tapes are SOLID_BBOX (decomp CoF_KeyItem.cpp 157). The other slots' copies
+// were hidden from a player but solid on the host, so the host's movement stopped him where his own game
+// saw nothing: the push. Each copy now has a group (entvars groupinfo +0x244). Player movement skips
+// grouped entities while the player has no group (hw SV_AddLinksToPM, sv_user.c 583), so a copy no longer
+// blocks anyone; traces, E and touches still find it, and full_pack sends grouped entities not solid, so no
+// game predicts a block either (pickup_unblocking, qol2-runtime.hpp).
+void pickup_group(Edict* e,int slot){auto v=vars(e);if(v)store<int>(v,0x244,slot>=0?(1<<(slot&7)):0);}
 bool itemCopiesDone=false;float pickupOwnersNext=0;
 void item_copies_frame(){
  if(!scoped()||!globals||!engine[23]||!engine[67]||!original[1]||!original[6])return;
@@ -695,11 +717,11 @@ void item_copies_frame(){
   for(int k=0;k<slots;++k){if(taken&(1u<<k))continue;Edict* e=nullptr;
    if(here&&!originalUsed){e=r.e;originalUsed=true;}
    else {if(used+made>=maxEdicts-96){++noRoom;missing=true;continue;}e=pickup_spawn(r);if(!e){++noRoom;missing=true;continue;}++made;}
-   c.e[k]=e;c.serial[k]=serial(e);const int n=eng<int(__cdecl*)(Edict*)>(71)(e);if(n>=0&&n<=maxEdicts){pickupOwner[n]=k+1;pickupOwnerSerial[n]=serial(e);}
+   c.e[k]=e;c.serial[k]=serial(e);const int n=eng<int(__cdecl*)(Edict*)>(71)(e);if(n>=0&&n<=maxEdicts){pickupOwner[n]=k+1;pickupOwnerSerial[n]=serial(e);pickup_group(e,k);}
   }
   // Review 2026-11-04: a slot whose copy could not be made (edict limit) would have no pickup there at all;
   // the map's own one is then everybody's again, first come first served, as before v0.8.
-  if(missing&&originalUsed){const int n=eng<int(__cdecl*)(Edict*)>(71)(r.e);if(n>=0&&n<=maxEdicts)pickupOwner[n]=0;}
+  if(missing&&originalUsed){const int n=eng<int(__cdecl*)(Edict*)>(71)(r.e);if(n>=0&&n<=maxEdicts)pickupOwner[n]=0;pickup_group(r.e,-1);}
   if(here&&!originalUsed){entity_retire(r.e);++finished;}
   pickupCopies[i]=c;++pickups;
  }
@@ -1914,6 +1936,28 @@ void team_give(Edict* to,const std::string& card,int want){
   std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] KEYITEM %.60s %s player=%d\n",card.c_str(),ok?"also given to":"could not be given to",index);log(line);if(!ok)break;}
  team_known_add(to,card,card_count(team_cards_of(to),card)-before);
 }
+// v0.10.2 (Katz's item 6; tester log 2026-11-03, s4_subway2st1_e1: "KEYITEM inventoryitems/fuse.txt used by
+// player=2: taken from 1 other player(s)", then player 1 at the second fuse socket buttkuk2 with no fuse):
+// the metro door has two sockets, one fuse each. A use now takes the card from the others only when no
+// lock for it is left on the map. While another socket still waits, the others keep theirs: a team may
+// fill both sockets with the copies of one fuse, but is never left with none.
+std::map<std::string,std::string> cardLockNames;
+const std::string& card_lock_name(const std::string& card){
+ auto it=cardLockNames.find(card);if(it!=cardLockNames.end())return it->second;
+ std::string name;const auto dir=game_dir_path();
+ if(!dir.empty()){std::ifstream f(dir/card,std::ios::binary);std::string text((std::istreambuf_iterator<char>(f)),std::istreambuf_iterator<char>());if(text.size()<=65536)name=half_value(text,"map_name");}
+ if(name.empty()){const auto s=card.find_last_of('/');name=card.substr(s==std::string::npos?0:s+1);const auto d=name.rfind('.');if(d!=std::string::npos)name.resize(d);}
+ return cardLockNames[card]=name;
+}
+int card_locks_left(const std::string& card){
+ const std::string& name=card_lock_name(card);if(name.empty())return 0;int left=0;
+ for(const auto& [ent,r]:lockRecords){
+  if(serial(ent)!=r.serial||_stricmp(r.key.c_str(),name.c_str()))continue;
+  // CBaseButton::m_isLocked (+0x180, the pinned hl.dll's save table entry at 102116C0) is cleared by UnlockDoor.
+  if(r.type=="func_button"||r.type=="func_rot_button"){void* p=engine[64]?eng<void*(__cdecl*)(Edict*)>(64)(ent):nullptr;if(!p||!load<unsigned char>(p,0x180))continue;}
+  ++left;}
+ return left;
+}
 bool team_settled(Edict* e){return client_ready(e)&&carry_settled(e)&&view_alive(e)&&!departedPlayers.count(player_identity(e))&&!(bagLoss.active&&!bagLoss.wiped.count({e,serial(e)}));}
 void team_cards_frame(){
  if(!scoped()||!globals)return;const float time=load<float>(globals,0);if(time<teamCards.next&&time>=teamCards.next-1.f)return;teamCards.next=time+0.1f;
@@ -1930,6 +1974,7 @@ void team_cards_frame(){
    if(is>was){teamCards.declined[player_identity(e)].erase(c);int fresh=is-was;auto& onFloor=teamCards.floor[c];const int back=(std::min)(fresh,onFloor);onFloor-=back;fresh-=back;
     for(auto o:players)if(o!=e&&team_settled(o))team_give(o,c,(std::max)(is,card_count(team_cards_of(o),c)+fresh));continue;}
    if(dropped){teamCards.declined[player_identity(e)].insert(c);teamCards.floor[c]+=was-is;std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] KEYITEM %.60s dropped by player=%d; the others keep theirs\n",c.c_str(),index);log(line);continue;}
+   if(const int locks=card_locks_left(c);locks>0){std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] KEYITEM %.60s used by player=%d: %d more lock(s) for it on this map, the others keep theirs\n",c.c_str(),index,locks);log(line);continue;}
    int taken=0;for(auto o:players){if(o==e)continue;const int had=card_count(team_cards_of(o),c),keep=(std::max)(0,had-(was-is));for(int guard=0;guard<6&&card_count(team_cards_of(o),c)>keep;++guard){if(!helper_use("cof_clearitems","message",c,o))break;++taken;}team_known_add(o,c,card_count(team_cards_of(o),c)-had);}
    for(auto& [identity,set]:teamCards.declined)set.erase(c);
    std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] KEYITEM %.60s used by player=%d: taken from %d other player(s)\n",c.c_str(),index,taken);log(line);
@@ -1974,7 +2019,7 @@ bool inventory_quiet_for(Edict* e){return restoreQuiet>0||(scoped()&&!carry_sett
 // still loading is brought there when he is ready (story_late_frame).
 struct StoryTeleport {std::string name,dest;int frames=0;};
 std::vector<StoryTeleport> storyTeleports;
-struct StoryAnchor {Edict* who=nullptr;int serial=-1;float at=-100;} storyAnchor;
+struct StoryAnchor {Edict* who=nullptr;int serial=-1;float at=-100,yaw=NoYaw;} storyAnchor;
 std::set<std::pair<Edict*,int>> storyLateDone;std::unordered_map<Edict*,float> arrivalGrace;
 // Sawer's death (Playtest 3000 clip 5 "after sawer death just stuck in a black box"): teleportusus puts
 // the players in a shaft on the func_wall_toggle "walle", which falls away under them at 16.9 s into
@@ -1995,7 +2040,7 @@ void story_teleport_lookup(Edict* start,const char* key,const char* value,Edict*
 // and then put back at the ladder's end: LadderThink (decomp CoF_Ladder.cpp 365/396) sets his origin to the
 // top or bottom entity when the climb ends. He is now left on the ladder and moved beside the same player
 // once his climb is over (no climb camera, controls back), within 60 s.
-struct ClimbFollow {int serial=-1;Edict* leader=nullptr;int leaderSerial=-1;float until=0,atLeast=0;};
+struct ClimbFollow {int serial=-1;Edict* leader=nullptr;int leaderSerial=-1;float until=0,atLeast=0,yaw=NoYaw;};
 std::unordered_map<Edict*,ClimbFollow> climbFollows;
 bool climbing(Edict* e){void* p=nullptr;std::size_t n=0;if(!player_memory(e,p,n))return false;auto c=ladder_tracked(load<std::uint32_t>(p,PlayerScene));return c&&ladder_is_camera(c);}
 void climb_follow_frame(){
@@ -2005,7 +2050,7 @@ void climb_follow_frame(){
   if(!v||serial(o)!=f.serial||now>f.until||!live(f.leader)||serial(f.leader)!=f.leaderSerial||!view_alive(f.leader)){it=climbFollows.erase(it);continue;}
   if(climbing(o)||!view_alive(o)||(load<unsigned>(v,0x1a8)&FlFrozen)){++it;continue;}
   it=climbFollows.erase(it);auto a=vars(f.leader);float d=0;for(int k=0;k<3;++k){const float x=load<float>(a,8+k*4)-load<float>(v,8+k*4);d+=x*x;}if(d<f.atLeast*f.atLeast)continue;
-  const bool moved=move_beside(o,f.leader);if(moved){auto& l=lastPlaces[o];l.serial=serial(o);l.x=load<float>(v,8);l.y=load<float>(v,12);l.z=load<float>(v,16);l.known=true;l.ignoreUntil=now+1.f;}
+  const bool moved=move_beside_yaw(o,f.leader,f.yaw);if(moved){auto& l=lastPlaces[o];l.serial=serial(o);l.x=load<float>(v,8);l.y=load<float>(v,12);l.z=load<float>(v,16);l.known=true;l.ignoreUntil=now+1.f;}
   char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] STORYTELEPORT player=%d off the ladder: %s player=%d\n",eng<int(__cdecl*)(Edict*)>(71)(o),moved?"moved beside":"no free spot beside",eng<int(__cdecl*)(Edict*)>(71)(f.leader));log(line);
  }
 }
@@ -2013,12 +2058,12 @@ void story_body_move(Edict* o,Edict* leader){
  auto a=vars(leader),q=vars(o);if(!a||!q)return;std::array<float,3> at{};if(!find_landing({load<float>(a,8),load<float>(a,12),load<float>(a,16)},o,at))return;
  for(int k=0;k<3;++k)store(q,0x20+k*4,0.f);eng<void(__cdecl*)(Edict*,const float*)>(28)(o,at.data());
 }
-int story_gather(Edict* leader,float atLeast,int& failed){
- int moved=0;const float now=load<float>(globals,0);auto a=vars(leader);if(!a)return 0;
+int story_gather(Edict* leader,float atLeast,int& failed,float yaw=NoYaw){
+ int moved=0;const float now=load<float>(globals,0);auto a=vars(leader);if(!a||teleports_off())return 0;
  for(auto o:connected_players()){auto q=vars(o);if(o==leader||!q||!client_ready(o))continue;float d=0;for(int k=0;k<3;++k){const float x=load<float>(a,8+k*4)-load<float>(q,8+k*4);d+=x*x;}if(d<atLeast*atLeast)continue;
   if(!view_alive(o)){story_body_move(o,leader);continue;}
-  if(climbing(o)){climbFollows[o]={serial(o),leader,serial(leader),now+60.f,atLeast};++moved;continue;}
-  if(move_beside(o,leader)){auto& l=lastPlaces[o];auto n=vars(o);l.serial=serial(o);l.x=load<float>(n,8);l.y=load<float>(n,12);l.z=load<float>(n,16);l.known=true;l.ignoreUntil=now+1.f;++moved;}else ++failed;}
+  if(climbing(o)){climbFollows[o]={serial(o),leader,serial(leader),now+60.f,atLeast,yaw};++moved;continue;}
+  if(move_beside_yaw(o,leader,yaw)){auto& l=lastPlaces[o];auto n=vars(o);l.serial=serial(o);l.x=load<float>(n,8);l.y=load<float>(n,12);l.z=load<float>(n,16);l.known=true;l.ignoreUntil=now+1.f;++moved;}else ++failed;}
  return moved;
 }
 void story_teleport_frame(){
@@ -2031,7 +2076,7 @@ void story_teleport_frame(){
   Edict* leader=nullptr;float best=0;
   for(auto e:connected_players()){auto v=vars(e);if(!v||!view_alive(e))continue;float d=0;for(int k=0;k<3;++k){const float x=load<float>(v,8+k*4)-(load<float>(dv,8+k*4)+(k==2?37.f:0.f));d+=x*x;}if(d<128.f*128.f&&(!leader||d<best)){leader=e;best=d;}}
   if(!leader){if(++it->frames>=3)it=storyTeleports.erase(it);else ++it;continue;}
-  int failed=0;const int moved=story_gather(leader,160.f,failed);storyAnchor={leader,serial(leader),load<float>(globals,0)};
+  const float yaw=load<float>(dv,0x54);int failed=0;const int moved=story_gather(leader,160.f,failed,yaw);storyAnchor={leader,serial(leader),load<float>(globals,0),yaw};
   char line[200]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] STORYTELEPORT %.40s moved player=%d; partners moved=%d failed=%d\n",it->name.c_str(),eng<int(__cdecl*)(Edict*)>(71)(leader),moved,failed);log(line);
   it=storyTeleports.erase(it);
  }
@@ -2058,9 +2103,9 @@ void story_late_frame(Edict* e){
  const float now=load<float>(globals,0);arrivalGrace[e]=now+3.f;
  if(e==storyAnchor.who)return;
  if(!live(storyAnchor.who)||serial(storyAnchor.who)!=storyAnchor.serial||now-storyAnchor.at>120.f||!view_alive(storyAnchor.who)){if(hub_arrival(e))storyAnchor={e,serial(e),now};return;}
- if(!view_alive(e))return;
+ if(!view_alive(e)||teleports_off())return;
  auto a=vars(storyAnchor.who),b=vars(e);float d=0;for(int k=0;k<3;++k){const float x=load<float>(a,8+k*4)-load<float>(b,8+k*4);d+=x*x;}if(d<256.f*256.f)return;
- const bool moved=move_beside(e,storyAnchor.who);char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] STORYTELEPORT player=%d arrived late: %s\n",eng<int(__cdecl*)(Edict*)>(71)(e),moved?"moved beside the player the story moved":"no free spot");log(line);
+ const bool moved=move_beside_yaw(e,storyAnchor.who,storyAnchor.yaw);char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] STORYTELEPORT player=%d arrived late: %s\n",eng<int(__cdecl*)(Edict*)>(71)(e),moved?"moved beside the player the story moved":"no free spot");log(line);
 }
 // Trigger touches during the load wait start nothing (a scene or a teleport waits for everyone); a
 // trigger that leads to another level does nothing for a player's first 3 s on the map, so a key held
@@ -2071,13 +2116,25 @@ bool trigger_is_exit(Edict* t){
  auto v=vars(t);const char* target=v?string_at(load<int>(v,0x1cc)):nullptr;std::set<std::string> seen;
  const bool exit=!std::strcmp(classname(t),"trigger_changelevel")||(target&&*target&&exit_reaches(target,0,seen));exitTriggers[t]={serial(t),exit};return exit;
 }
+// v0.10.2 (Katz's clip 5 "weird loop on map change"; tester log 2026-11-03: s4_hamn2_e0 -> s4_hamn3_e1 ->
+// s4_hamn2_e0 three times, each "CARRY level change" in the frame the load wait let go). The co-op spawns of
+// s4_hamn2_e0 (-1658 2021 -672 ...) stand in trigger_once *51, the way back to s4_hamn3, and the 3 s had run
+// out while the load wait held the first player in. An exit a player touches while he cannot use it yet (the
+// load wait or his first 3 s) now stays shut for him until he has left it: no touch for 1 s.
+std::map<std::pair<Edict*,int>,std::map<Edict*,float>> exitsArrivedIn;
 bool arrival_touch_blocked(Edict* trigger,Edict* other){
  if(!globals||!live(other)||!live(trigger)||std::strcmp(classname(other),"player"))return false;
  const char* type=classname(trigger);if(std::strncmp(type,"trigger_",8)||!std::strcmp(type,"trigger_hurt"))return false;
- if(loadWait.armed)return true;
+ const float now=load<float>(globals,0);
  // Not settled yet counts from the map's start, so a player whose inventory never comes back still has the exits after 20 s.
- const float now=load<float>(globals,0);auto g=arrivalGrace.find(other);if(now>=(g!=arrivalGrace.end()?g->second:checkpointMapTime+20.f))return false;
- return trigger_is_exit(trigger);
+ auto g=arrivalGrace.find(other);const bool early=loadWait.armed||now<(g!=arrivalGrace.end()?g->second:checkpointMapTime+20.f);
+ if(!trigger_is_exit(trigger))return loadWait.armed;
+ auto& inside=exitsArrivedIn[{other,serial(other)}];auto it=inside.find(trigger);
+ if(early){inside[trigger]=now;return true;}
+ if(it==inside.end())return false;
+ if(now-it->second<1.f&&now>=it->second){it->second=now;return true;}
+ inside.erase(it);char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] ARRIVAL player=%d left the exit he arrived in; it works for him again\n",eng<int(__cdecl*)(Edict*)>(71)(other));log(line);
+ return false;
 }
 // --- When a scene ends (v0.8, Katz's items 9 and 11) -------------------------------------------
 // "After every cutscene all players must teleport to where the triggering player is": a scene's
@@ -2120,4 +2177,4 @@ void wheelchair_frame(){
   for(int k=0;k<3;++k)store(v,0x20+k*4,load<float>(v,0x20+k*4)*cap/s);
   if(!wheelchairCutLogged){wheelchairCutLogged=true;char line[120]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] WHEELCHAIR speed %.0f held to its cap %.0f\n",s,cap);log(line);}}
 }
-void coop_map_changed(){collision_restore();wardrobeDone=false;teamCards.known.clear();teamCards.dropping.clear();teamCards.floor.clear();teamCards.next=0;staleCards.clear();storyTeleports.clear();climbFollows.clear();storyAnchor={};storyLateDone.clear();arrivalGrace.clear();exitTriggers.clear();bossExitAt=-1;bossSave={};bossOverAt=-1;bossBarSeen=false;bossBarChecked=false;bossBar=nullptr;bossBarSerial=-1;bossDownBefore.clear();bossBarShown.clear();sceneWatch={};wheelchairCutLogged=false;subtitleMuteUntil=-1;pickupCopies.clear();pickupOwner.clear();pickupOwnerSerial.clear();deployLogged.clear();doorHides.clear();stripClears.clear();fadesDone=false;doorPressUsed.clear();itemCopiesDone=false;pickupOwnersNext=0;forcedVisible.clear();bossOver=false;fallBacks.clear();doorGlobals.clear();doorLocks.clear();trainEscape={};floorWallsDone=false;quickNotices.clear();fallWatch.clear();equipWants.clear();nightmareLogged=false;morphineWatch.clear();prologueSkip={};partyLimitLogged=-1;joinWait={};skipScene={};skipAfter={};skipJump.clear();skipLines=0;evidence_reset();drowned_reset();give_reset();stuckUsed.clear();nightmareRegroup={};nameStates.clear();lastPlaces.clear();sceneSeen.clear();sceneFollowers.clear();idleProbes.clear();doorMusicLines=0;sceneMoveLines=0;}
+void coop_map_changed(){collision_restore();wardrobeDone=false;teamCards.known.clear();teamCards.dropping.clear();teamCards.floor.clear();teamCards.next=0;staleCards.clear();storyTeleports.clear();climbFollows.clear();storyAnchor={};storyLateDone.clear();arrivalGrace.clear();exitTriggers.clear();exitsArrivedIn.clear();bossExitAt=-1;bossSave={};bossOverAt=-1;bossBarSeen=false;bossBarChecked=false;bossBar=nullptr;bossBarSerial=-1;bossDownBefore.clear();bossBarShown.clear();sceneWatch={};wheelchairCutLogged=false;subtitleMuteUntil=-1;pickupCopies.clear();pickupOwner.clear();pickupOwnerSerial.clear();deployLogged.clear();doorHides.clear();stripClears.clear();fadesDone=false;doorPressUsed.clear();itemCopiesDone=false;pickupOwnersNext=0;forcedVisible.clear();bossOver=false;fallBacks.clear();doorGlobals.clear();doorLocks.clear();trainEscape={};floorWallsDone=false;quickNotices.clear();fallWatch.clear();equipWants.clear();nightmareLogged=false;morphineWatch.clear();prologueSkip={};partyLimitLogged=-1;joinWait={};skipScene={};skipAfter={};skipJump.clear();skipLines=0;evidence_reset();drowned_reset();give_reset();stuckUsed.clear();nightmareRegroup={};nameStates.clear();lastPlaces.clear();sceneSeen.clear();sceneFollowers.clear();idleProbes.clear();doorMusicLines=0;sceneMoveLines=0;}

@@ -16,11 +16,11 @@
 
 ## ⬇️ Download
 
-### **[Click here to download Cry of Fear Co-op v0.10.1](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.10.1/Cry.of.Fear.Co-op.v0.10.1.zip)**
+### **[Click here to download Cry of Fear Co-op v0.10.2](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.10.2/Cry.of.Fear.Co-op.v0.10.2.zip)**
 
-### **[Click here to download Cry of Fear Co-op v0.10.1 for Linux](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.10.1/Cry.of.Fear.Co-op.v0.10.1.Linux.tar.gz)**
+### **[Click here to download Cry of Fear Co-op v0.10.2 for Linux](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.10.2/Cry.of.Fear.Co-op.v0.10.2.Linux.tar.gz)**
 
-v0.10.1 is a fix update for v0.10: a death before a boss fight no longer ends the game, a boss fight keeps its health bar after a game over and for players who join during it, and more fixes from a code review (see the release notes).
+v0.10.2 fixes the last playtest: co-op doors that change the map no longer wait for everyone, no more Carcass crash, save spots no longer push you, the metro fuse door no longer softlocks, the phone dies for everyone, no bounce between harbour maps, and the RebuiltSimon add-on works with co-op (see the release notes).
 
 > [!NOTE]
 > **Linux is supported now.** Cry of Fear runs through Steam Proton, and Linux and Windows players can play together. See the Linux steps below the Windows ones.
@@ -37,7 +37,7 @@ v0.10.1 is a fix update for v0.10: a death before a boss fight no longer ends th
 3. With Cry of Fear closed, open **`Cry of Fear Co-op.exe`** and click **Install** (every player). The program isn't signed, so Windows may warn about it: click **More info**, then **Run anyway**.
 4. To play, click **Run Co-op Mod**. See [Play](#2-play) below.
 
-**Linux (Steam Proton):** download the **[Linux package](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.10.1/Cry.of.Fear.Co-op.v0.10.1.Linux.tar.gz)** and extract it (`tar xzf` or your file manager). With the game closed, open a terminal in that folder, run `bash coop.sh` and pick **Install**. To play, run `bash coop.sh` again and pick **Run Co-op Mod** (if the game's own launcher window opens, click **LAUNCH**). It needs Python 3. The Linux version is new, so please report anything that breaks.
+**Linux (Steam Proton):** download the **[Linux package](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.10.2/Cry.of.Fear.Co-op.v0.10.2.Linux.tar.gz)** and extract it (`tar xzf` or your file manager). With the game closed, open a terminal in that folder, run `bash coop.sh` and pick **Install**. To play, run `bash coop.sh` again and pick **Run Co-op Mod** (if the game's own launcher window opens, click **LAUNCH**). It needs Python 3. The Linux version is new, so please report anything that breaks.
 
 > [!WARNING]
 > **This mod is unfinished,**
@@ -176,8 +176,8 @@ Every bug report needs the **log file**. That's how we can see what happened.
 - The v0.9 features (unstuck, player list tags, settings, subtitles per player,
   rejoin) and the v0.10 features (host options, Hunted, ping, scare, colours) have
   not been played in the game yet. Please report what breaks.
-- The crashes when joining that showed up in our logs happen inside the RebuiltSimon
-  add-on, not in this mod. If you crash while joining with it installed, try without it.
+- RebuiltSimon works with co-op from v0.10.2 (its crash right after joining is fixed). Other
+  add-ons in `cryoffear/addons`: if the game crashes, try without them.
 
 ## Credits
 

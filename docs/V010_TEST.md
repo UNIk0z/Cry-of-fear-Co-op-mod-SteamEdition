@@ -34,3 +34,15 @@ Nothing in v0.10 has run in the game yet. Close Cry of Fear, open "Cry of Fear C
 22. Bosses (s4_apartmentsick, Sawer): two players; before the arena, player 2 lets a monster or a fall down him: no game over, the host can revive him (`BOSS fight starts` comes only when the Sawer's bar appears). In the fight, player 2 dies: game over, the map restarts at the fight (autosave), the bar is shown again (`BOSS fight goes on after the load`) and a death is a game over again.
 23. During a boss fight, player 2 rejoins (or a third player joins): he sees the boss bar (`BOSS health bar shown to player=...`).
 24. "Harder with more players" on, ending 1-3 strangle or ending 4: the bar empties at the end as in single player. "Hunted" on: the log says `HUNTED off on this map: a boss fight is here` on every boss map.
+
+## v0.10.2 fixes
+
+25. Two players, a door that changes the map (for example the apartment corridor of clip 1): player 2 stays far away, the host uses the door. No "Please wait until everyone is ready!": both fade out and arrive on the next map (`DOORS a co-op level-change door opens for any player`).
+26. Carcass (s4_roofs2): two players; skip the scene with R while a head is in the air, or let a head hit a player after the fight: no crash (`TOUCH roofboss_head hit a player after its owner was gone` if it happened).
+27. Two players at a tape recorder with cassette tapes on the floor: walk over and around the spot where the other player's tape lies. Nothing pushes you; E still takes your own tape.
+28. A story teleport (for example s4_subway2st1 arriving from s4_subwaysick2, or the elevator scene): the partner arrives facing the same way as the player the story moved, not sideways.
+29. Metro (s4_subway2st1): each player carries a fuse. Player 2 puts his into one socket: the host keeps his fuse (`KEYITEM inventoryitems/fuse.txt used by player=2: 1 more lock(s) for it on this map, the others keep theirs`) and puts it into the other socket; the door opens.
+30. Drop a fuse in a doorway (or find one inside a door or cabinet), look at it and press E: you take the fuse, not the door (`USE player=N takes inventoryitems/fuse.txt from inside func_door...`).
+31. s4_subway1st1, where the story switches the phone off (cof_phonedisable): the phone of player 2 dies too (`PHONE died for player=1: also for player=2`).
+32. Player 2 with RebuiltSimon in cryoffear\addons joins the host: no crash after connecting, and the RebuiltSimon HUD works. In storycoop_server.cfg remove the // in front of `sc_noteleports` and set it to 1: after a scene the others stay where they were.
+33. s4_hamn3 to s4_hamn2 (the way back from the college): both arrive and stay on s4_hamn2. Walking back into that exit still takes you to s4_hamn3 (`ARRIVAL player=N left the exit he arrived in`).

@@ -1,0 +1,24 @@
+# Cry of Fear co-op v0.10.2 (2026-11-07): playtest fixes and RebuiltSimon
+
+v0.10.1 plus fixes for Katz's playtest of 2026-11-06 (videos 1-6, the second player's logs) and for the RebuiltSimon add-on. Maps are byte-identical to v0.10.1; the adapter, the launcher, storycoop_server.cfg (one new commented line), the setup's add-on note and the READ ME changed. Native tests pass. Nothing here has run in the game.
+
+| Report | Cause found | What changes |
+|---|---|---|
+| A door that changes the map said "Please wait until everyone is ready!" (clips 1, 5) | The game's co-op door (inter_door_coop_changelevel) only opens when every live player stands in its trigger zone. Single player never waits. | The door opens for whoever uses it. Everyone fades out together and arrives at the next map's co-op spawns, as before. |
+| The Carcass crashed the game (clip 2; log 2026-11-02, s4_roofs2_e0) | After the multikill2 skip the Carcass is removed while one of its heads is still flying. The head hurts the player "from" its gone owner, and the multiplayer damage rule reads that missing attacker (hl.dll+0xC8706). | Anything that touches a player after its owner is gone gets the world as its owner, so the hit counts with no attacker and nothing crashes. |
+| The save spot pushed the player (clip 3) | Each player has his own copy of a pickup such as a cassette tape (v0.8). The other players' copies were invisible to you but still solid on the host, so the host stopped you where your game saw nothing. | Pickup copies no longer block anyone's movement, in the host's physics or in any player's game. E still takes them. |
+| Wrong direction after a teleport (clip 4) | Partners were turned the way the moved player looked one frame after the teleport. At that moment the host still has that player's old view, because the new one has not reached his game yet. | Partners now face the way the map's teleport destination faces. That applies to the story teleport itself, a player who loads in later, and a player who comes off a ladder. |
+| Metro fuse door: after one fuse went in, the other player's fuse vanished (clip 6; log 2026-11-03) | Key items are shared by the team (v0.8): a use took the card from everyone. The metro door has two sockets. | A use leaves the others' fuses alone while another locked socket for that item is still on the map. After the last socket, extra copies are cleaned up as before. |
+| Fuses sometimes can't be picked up when inside something (school, station door) | Pressing E uses whatever the view line hits first. A usable door around the fuse always won. | When the line hits a door or other brush and a key lies inside it on your line of sight, E takes the key. |
+| The host's phone battery ran out, the friend's never did | cof_phonedisable only switches off the first player's phone. | When one player's phone dies, the game does the same to every other player's working phone. A battery still fixes each phone on its own. |
+| RebuiltSimon crashes (crash in RebuiltSimonCoFManager.dll right after joining) | RebuiltSimon writes its stamina flag through the engine's "current server player" every frame (Features/Cheats/disable_stamina.c). A joining player runs no server. On his game that pointer still points at the menu map's freed player, or is empty. | The adapter points it at a blank player of its own whenever no local server runs. The engine always sets it again before it uses it. The setup now says RebuiltSimon works with co-op. Other add-ons still get the advice to move them out. |
+| "Make a thing so we can turn off the teleports after cutscenes" (tester notes) | - | New host setting `sc_noteleports 1` in storycoop_server.cfg. The others stay where they are after a scene or a story teleport, and a late player is not brought over. K (unstuck) still works. |
+| Map-change loop (clip 5; tester log 2026-11-03: harbour 2 and harbour 3 three times in a row) | The co-op spawns of s4_hamn2_e0 stand inside the trigger that leads back to s4_hamn3. Arriving players were protected for 3 s, but the load wait held them longer than that, so the trigger sent them back the moment it let go. The same happened the other way. | A level-change trigger that a player stands in when he arrives does nothing for him until he has stepped out of it once. |
+
+Not changed in this build:
+
+- "Changing hands doesn't work" (Katz: which hand holds the weapon) is not found yet. The only hand change in the logs is an M16 + Glock dual wield, which the game refuses in single player too, because the M16 can't be dual wielded. The exact steps are needed.
+- Ammo dropping to give teammates is a new feature and is not in this build.
+- Windows Defender's "Trojan:Win32/Bearfoos.A!ml" is a machine-learning guess, not a signature. The scan of this build is in docs/V0102_STATUS.md.
+
+The v0.10 features are described in docs/V010_RELEASE.md and tested with docs/V010_TEST.md (steps 25-32 cover this build).

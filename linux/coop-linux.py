@@ -701,9 +701,14 @@ def run(game, dry=False):
         say('Warning: this PC has a different co-op version installed than this folder (%s). Starting it anyway; run the installer to update. '
             'Both players need the same version.' % catalog['coopFixes']['id'])
     addons = find(game, 'addons')
-    if os.path.isdir(addons) and [n for n in os.listdir(addons) if n.lower().endswith('.dll')]:
-        say('Warning: Cry of Fear add-ons found in %s. RebuiltSimon crashed the game in co-op playtests: move the "addons" folder '
-            'somewhere else while playing co-op.' % addons)
+    dlls = [n for n in os.listdir(addons) if n.lower().endswith('.dll')] if os.path.isdir(addons) else []
+    other = [n for n in dlls if n.lower() not in ('rebuiltsimoncofmanager.dll', 'fastrun.dll')]
+    if len(other) < len(dlls):
+        say('RebuiltSimon found in %s: it works with co-op from v0.10.2. If the game still crashes inside it, '
+            'move the "addons" folder out while playing co-op.' % addons)
+    if other:
+        say('Warning: Cry of Fear add-ons found in %s (%s): move them out of the "addons" folder while playing co-op.'
+            % (addons, ', '.join(other)))
     args = ['-condebug', '-insecure']
     name = persona_name()
     if name:
