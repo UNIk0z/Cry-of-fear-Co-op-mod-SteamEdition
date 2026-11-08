@@ -433,9 +433,9 @@ def install_package(game, catalog, verify_only=False, progress=None):
         present = os.path.isfile(path)
         setup_replace = False
         if extra.get('mutable') and target == 'sc_setup.scr':
-            # v0.9: an older one without the revive options is replaced once, like v0.7's Unlock extras.
+            # v0.9: an older one without the revive options is replaced once, like v0.7's Unlock extras (v0.10.3: the door wait).
             text = read(path).decode('latin-1') if present else ''
-            keep = present and 'sc_extras' in text and 'sv_coopcprtime' in text and 'sc_hunted' in text
+            keep = present and 'sc_extras' in text and 'sv_coopcprtime' in text and 'sc_hunted' in text and 'sc_doorwait' in text
             setup_replace = present and not keep
             if keep:
                 prepared.append(dict(path=path, exists=True))

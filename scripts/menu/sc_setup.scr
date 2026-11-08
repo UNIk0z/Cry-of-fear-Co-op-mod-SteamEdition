@@ -1,7 +1,8 @@
 // Cry of Fear co-op (Simon's story): options of the game's Create Server window.
 // The co-op adapter makes that window read this file instead of settings.scr
 // (only in co-op launches: Run Co-op Mod in "Cry of Fear Co-op.exe"). The window
-// may rewrite it to keep the last choices. v0.9: revive time (sv_coopcprtime)
+// may rewrite it to keep the last choices. v0.10.3: doors that change the map
+// wait for every living player (sc_doorwait, on). v0.9: revive time (sv_coopcprtime)
 // and auto respawn (sv_auto_respawn_time) are the game's own cvars. v0.10: run
 // timer, outlines, scaling, hunted and the hardcore options; sv_coop_nosave,
 // sv_morphinetriptime and sv_disablehints are the game's own.
@@ -45,6 +46,13 @@ DESCRIPTION SERVER_OPTIONS
 	"sc_collision"
 	{
 		"Player collision (off: walk through each other)"
+		{ BOOL }
+		{ "1" }
+	}
+
+	"sc_doorwait"
+	{
+		"Doors that change the map wait for everyone"
 		{ BOOL }
 		{ "1" }
 	}

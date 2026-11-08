@@ -109,7 +109,8 @@ int main(int argc,char** argv_){
  player(1,0,0);player(2,200,0);
 
  // --- Options: registered in every game, read twice a second, all off by default.
- qol2_register();for(const char* c:{"sc_hunted","sc_scale","sc_outline","sc_timer","sc_norespawn","sc_noir","sc_color"})assert(cvars.count(c)&&cvars[c]==0.f);
+ qol2_register();for(const char* c:{"sc_hunted","sc_scale","sc_outline","sc_timer","sc_norespawn","sc_noteleports","sc_noir","sc_color"})assert(cvars.count(c)&&cvars[c]==0.f);
+ assert(cvars.count("sc_doorwait")&&cvars["sc_doorwait"]==1.f&&door_wait_on());   // v0.10.3: the one host option on by default
  host_options_frame();assert(!hostOptions.hunted&&!hostOptions.scale&&!hostOptions.outline&&!hostOptions.timer&&!hostOptions.norespawn&&!hints_off());
  cvars["sv_disablehints"]=1;now(5.6f);host_options_frame();assert(hints_off());cvars["sv_disablehints"]=0;now(6.2f);host_options_frame();
 
@@ -235,20 +236,17 @@ int main(int argc,char** argv_){
 
  // --- v0.10.2 (docs/V0102_RELEASE.md).
  {nextFree=40;qol2_map_changed();coop_map_changed();player(1,0,0);player(2,200,0);
-  // 1. A co-op level-change door: its zone is ready for whoever uses the door.
+  // 1. A co-op level-change door: with sc_doorwait 0 its zone is ready for whoever uses the door.
   auto zone=&entities[20];*zone={};store(zone,0,0);store(zone,4,420);store(ev(zone),0,intern("trigger_coop_changelevel"));
+  cvars["sc_doorwait"]=0;hostOptions.next=-1;host_options_frame();
   lines.clear();door_ready_after_think(zone);assert(load<int>(ev(zone),0x248)==1&&logged("DOORS a co-op level-change door opens"));
+  cvars["sc_doorwait"]=1;hostOptions.next=-1;host_options_frame();store(ev(zone),0x248,0);
   auto relay=&entities[21];*relay={};store(relay,0,0);store(relay,4,421);store(ev(relay),0,intern("trigger_relay"));door_ready_after_think(relay);assert(load<int>(ev(relay),0x248)==0);
   // 2. A Carcass head whose owner is gone touches a player: the world is its owner, so the damage has an attacker.
   auto carcass=monster(22,"monster_roofboss",100.f);allocate(carcass,0x400);auto head=&entities[23];*head={};store(head,0,0);store(head,4,423);store(ev(head),0,intern("roofboss_head"));store(ev(head),0x19c,carcass);
   orphan_owner_touch(head,p1);assert(load<Edict*>(ev(head),0x19c)==carcass);   // the Carcass is there: untouched
   orphan_owner_touch(head,head);assert(load<Edict*>(ev(head),0x19c)==carcass);   // not a player
   release(carcass);store(carcass,0,1);lines.clear();orphan_owner_touch(head,p1);assert(load<Edict*>(ev(head),0x19c)==&entities[0]&&logged("TOUCH roofboss_head hit a player after its owner was gone"));
-  // 3. A grouped pickup copy is not solid in anyone's game; others are untouched.
-  auto tape=&entities[24];*tape={};store(tape,0,0);store(tape,4,424);store(ev(tape),0,intern("item_key"));store(ev(tape),0x10c,2);
-  std::array<unsigned char,0x100> st{};store<short>(st.data(),0x3a,2);pickup_unblocking(st.data(),tape);assert(load<short>(st.data(),0x3a)==2);
-  pickup_group(tape,1);assert(load<int>(ev(tape),0x244)==2);pickup_unblocking(st.data(),tape);assert(load<short>(st.data(),0x3a)==0);
-  pickup_group(tape,-1);assert(load<int>(ev(tape),0x244)==0);
   // 6. Fuse sockets: a use keeps the others' fuses while another locked socket for that card is on the map.
   std::filesystem::create_directories(dir/"inventoryitems");{std::ofstream(dir/"inventoryitems"/"fuse.txt")<<"\"map_name\"\n{\n\tdata\t\"fuse\"\n}\n";}
   auto s1=&entities[25],s2=&entities[26];for(auto s:{s1,s2}){*s={};store(s,0,0);store(s,4,400+index(s));store(ev(s),0,intern("func_button"));allocate(s,0x400);store<unsigned char>(pd(s),0x180,1);
@@ -285,9 +283,49 @@ int main(int argc,char** argv_){
   now(53.f);lines.clear();assert(!arrival_touch_blocked(back,p1)&&logged("ARRIVAL player=1 left the exit he arrived in"));   // left and came back
   loadWait.armed=true;assert(arrival_touch_blocked(relay,p1));loadWait.armed=false;assert(!arrival_touch_blocked(relay,p1));   // any trigger waits for the load wait; a relay is no exit afterwards
   exitsArrivedIn.clear();arrivalGrace.clear();
-  carryDone.clear();for(auto x:{zone,relay,head,tape,s1,door,fuse,back})store(x,0,1);}
+  carryDone.clear();for(auto x:{zone,relay,head,s1,door,fuse,back})store(x,0,1);}
+
+ // --- v0.10.3 (docs/V0103_RELEASE.md): a door that changes the map waits for every living player (sc_doorwait 1).
+ {nextFree=40;qol2_map_changed();coop_map_changed();player(1,60,0);player(2,1500,0);now(60.f);
+  auto box=[&](Edict* e,float x0,float y0,float z0,float x1,float y1,float z1){store(ev(e),0xc4,x0);store(ev(e),0xc8,y0);store(ev(e),0xcc,z0);store(ev(e),0xd0,x1);store(ev(e),0xd4,y1);store(ev(e),0xd8,z1);};
+  auto stand=[&](Edict* e,float x){store(ev(e),8,x);box(e,x-16,-16,0,x+16,16,72);};
+  auto make=[&](int i,const char* type,const char* name,const char* target){auto e=&entities[i];*e={};store(e,0,0);store(e,4,600+i);store(ev(e),0,intern(type));if(*name)store(ev(e),0x1d0,intern(name));if(*target)store(ev(e),0x1cc,intern(target));return e;};
+  stand(p1,60);stand(p2,1500);
+  // The native co-op door's zone: the game waits while two players live; one alone (p2 down) is not kept waiting.
+  auto zone=make(20,"trigger_coop_changelevel","","");door_ready_after_think(zone);assert(load<int>(ev(zone),0x248)==0);
+  store(ev(p2),0x174,2);door_ready_after_think(zone);assert(load<int>(ev(zone),0x248)==1);store(ev(p2),0x174,0);store(ev(zone),0x248,0);
+  store(ev(p2),0x264,1.f);assert(door_wait_players().size()==1);store(ev(p2),0x264,0.f);   // fuser4 set: not counted, as CountConnectedLivePlayers
+  // A plain door whose exit lies in a trigger that changes the map.
+  auto door=make(30,"inter_door","","exit_a");allocate(door,0x1b0);box(door,100,-24,0,101,24,96);
+  auto exitA=make(31,"inter_door_exit","exit_a","");store(ev(exitA),8,300.f);store(ev(exitA),12,500.f);store(ev(exitA),16,0.f);
+  auto zoneOut=make(32,"trigger_once","","go");box(zoneOut,260,460,0,340,540,130);make(33,"cof_changelevel","go","");
+  auto other=make(34,"inter_door","","exit_b");allocate(other,0x1b0);box(other,100,-24,0,101,24,96);auto exitB=make(35,"inter_door_exit","exit_b","");store(ev(exitB),8,900.f);store(ev(exitB),12,900.f);
+  auto ending=make(36,"inter_door","","endingcheck");allocate(ending,0x1b0);auto e3=make(37,"inter_door_exit","ending_exit3","");store(ev(e3),8,300.f);store(ev(e3),12,500.f);
+  assert(door_leads_out(door)&&!door_leads_out(other)&&door_leads_out(ending));
+  pickupActor=p1;useTracePhase=true;store(ev(p1),0x184,32);sent.clear();lines.clear();
+  const float eye[3]{60,0,62},end[3]{124,0,62};
+  Trace t{};t.fraction=0.6f;t.hit=door;door_wait_trace(eye,end,p1,&t);assert(t.hit==&entities[0]);   // E finds nothing there
+  {const Sent* m=last_type(77);assert(m&&m->to==p1&&m->bytes.size()==1&&m->bytes[0]==2&&m->texts.size()==1&&m->texts[0]=="Please wait until everyone is ready!");}
+  assert(logged("DOORS player=1 waits at the door to exit_a: 1 of 2 living player(s) there"));
+  assert(door_wait_blocked(door,p1,false)&&count_type(77)==1);   // FindEntityInSphere skips it too, without a second message
+  Trace o{};o.hit=other;door_wait_trace(eye,end,p1,&o);assert(o.hit==other);   // a door within the map: as before
+  stand(p2,150);Trace ok{};ok.hit=door;door_wait_trace(eye,end,p1,&ok);assert(ok.hit==door&&!door_wait_blocked(door,p1,false));   // everyone at the door: it opens
+  stand(p2,1500);assert(door_wait_blocked(door,p1,false));
+  store(ev(p2),0x174,2);assert(!door_wait_blocked(door,p1,false));store(ev(p2),0x174,0);   // a downed player is not waited for
+  store(pd(door),0x190,intern("key"));assert(!door_wait_blocked(door,p1,false));store(pd(door),0x190,0);   // locked: the game's message and key
+  store<unsigned char>(pd(door),0x180,1);assert(!door_wait_blocked(door,p1,false));store<unsigned char>(pd(door),0x180,0);   // disabled
+  store(pd(door),0x1a0,intern("door2"));assert(!door_wait_blocked(door,p1,false));store(pd(door),0x1a0,0);   // it unlocks another door
+  store(ev(door),0x19c,p2);assert(!door_wait_blocked(door,p1,false));store(ev(door),0x19c,static_cast<Edict*>(nullptr));   // someone else is using it
+  store(ev(p1),0x184,0);assert(!door_wait_blocked(door,p1,false));store(ev(p1),0x184,32);   // E not held
+  useTracePhase=false;assert(!door_wait_blocked(door,p1,false));useTracePhase=true;   // not PlayerUse
+  cvars["sc_doorwait"]=0;hostOptions.next=-1;lines.clear();host_options_frame();assert(!door_wait_blocked(door,p1,false)&&logged("DOORS sc_doorwait 0"));
+  door_ready_after_think(zone);assert(load<int>(ev(zone),0x248)==1);   // v0.10.2: the co-op door opens for anyone
+  cvars["sc_doorwait"]=1;hostOptions.next=-1;host_options_frame();
+  useTracePhase=false;pickupActor=nullptr;store(ev(p1),0x184,0);
+  for(int i:{20,30,31,32,33,34,35,36,37}){release(&entities[i]);store(&entities[i],0,1);}}
 
  std::puts("PASS v0.10 fixture: options, hardcore, scaling, dodge, ping, scare, run timer, black and white, outline, hunted, bosses");
- std::puts("PASS v0.10.2 fixture: co-op doors without the wait, ownerless touches, unblocking pickup copies, key inside a door, fuse sockets, phone for everyone, story facing, no teleports, arrival loop");
+ std::puts("PASS v0.10.2 fixture: co-op doors without the wait (sc_doorwait 0), ownerless touches, key inside a door, fuse sockets, phone for everyone, story facing, no teleports, arrival loop");
+ std::puts("PASS v0.10.3 fixture: doors that change the map wait for every living player (co-op zones and plain doors, the ending door), sc_doorwait 0 as v0.10.2");
  return 0;
 }

@@ -11,19 +11,22 @@ cvar_t outlineCvar{const_cast<char*>("sc_outline"),const_cast<char*>("0"),0,0.f,
 cvar_t timerCvar{const_cast<char*>("sc_timer"),const_cast<char*>("0"),0,0.f,nullptr};
 cvar_t norespawnCvar{const_cast<char*>("sc_norespawn"),const_cast<char*>("0"),0,0.f,nullptr};
 cvar_t noteleportsCvar{const_cast<char*>("sc_noteleports"),const_cast<char*>("0"),0,0.f,nullptr};   // v0.10.2
+cvar_t doorwaitCvar{const_cast<char*>("sc_doorwait"),const_cast<char*>("1"),0,1.f,nullptr};   // v0.10.3, on by default
 // Each player's own game (storycoop_comfort.cfg, SETTINGS in the launcher); sent to the host with sc_mdl.
 cvar_t noirCvar{const_cast<char*>("sc_noir"),const_cast<char*>("0"),0,0.f,nullptr};
 cvar_t colourCvar{const_cast<char*>("sc_color"),const_cast<char*>("0"),0,0.f,nullptr};
-void __cdecl qol2_register(){if(!engine[56])return;for(cvar_t* c:{&huntedCvar,&scaleCvar,&outlineCvar,&timerCvar,&norespawnCvar,&noteleportsCvar,&noirCvar,&colourCvar})eng<void(__cdecl*)(cvar_t*)>(56)(c);}
+void __cdecl qol2_register(){if(!engine[56])return;for(cvar_t* c:{&huntedCvar,&scaleCvar,&outlineCvar,&timerCvar,&norespawnCvar,&noteleportsCvar,&doorwaitCvar,&noirCvar,&colourCvar})eng<void(__cdecl*)(cvar_t*)>(56)(c);}
 float cvar_value(const char* name){return engine[57]?eng<float(__cdecl*)(const char*)>(57)(name):0.f;}
-struct HostOptions {int hunted=0,scale=0,outline=0,timer=0,norespawn=0,nosave=0,nohints=0,noteleports=0;float next=-1;} hostOptions;
+struct HostOptions {int hunted=0,scale=0,outline=0,timer=0,norespawn=0,nosave=0,nohints=0,noteleports=0,doorwait=1,doorwaitLogged=-1;float next=-1;} hostOptions;
 void host_options_frame(){
  if(!globals)return;const float now=load<float>(globals,0);if(hostOptions.next>=0&&now<hostOptions.next&&hostOptions.next-now<1.f)return;hostOptions.next=now+0.5f;
  hostOptions.hunted=cvar_value("sc_hunted")!=0;hostOptions.scale=cvar_value("sc_scale")!=0;hostOptions.outline=cvar_value("sc_outline")!=0;hostOptions.timer=static_cast<int>(cvar_value("sc_timer"));
  hostOptions.norespawn=cvar_value("sc_norespawn")!=0;hostOptions.nosave=cvar_value("sv_coop_nosave")!=0;hostOptions.nohints=cvar_value("sv_disablehints")!=0;
- hostOptions.noteleports=cvar_value("sc_noteleports")!=0;
+ hostOptions.noteleports=cvar_value("sc_noteleports")!=0;hostOptions.doorwait=cvar_value("sc_doorwait")!=0;
+ if(hostOptions.doorwait!=hostOptions.doorwaitLogged){hostOptions.doorwaitLogged=hostOptions.doorwait;log(hostOptions.doorwait?"[STORYCOOP_RC4] DOORS sc_doorwait 1: a door that changes the map waits for every living player\n":"[STORYCOOP_RC4] DOORS sc_doorwait 0: a door that changes the map opens for any player\n");}
 }
 bool teleports_off(){return hostOptions.noteleports!=0;}
+bool door_wait_on(){return hostOptions.doorwait!=0;}
 // sv_disablehints (the game's own "no hints" setting) also turns off the co-op key prompt and objective pop-ups.
 bool hints_off(){return hostOptions.nohints!=0;}
 // Each player's colour and black-and-white choice (sc_mdl words 4 and 5; older games send neither).
@@ -315,9 +318,13 @@ void hunt_frame(){
 // sets only while every live player stands inside it. Single player never waits, and the door already
 // fades, freezes and carries every player to the next map's co-op spawns. After the zone's own think
 // its iuser1 (entvars +0x248) is 1.
+// v0.10.3 (Katz 2026-11-08: "bring back wait for players to be ready ... on by default"): only with the host
+// option sc_doorwait 0, or while one player at most is alive (door_wait_players, below), as v0.10.2 did.
 bool doorWaitLogged=false;
+std::vector<Edict*> door_wait_players();   // below
 void door_ready_after_think(Edict* e){
  auto v=vars(e);if(!v||std::strcmp(classname(e),"trigger_coop_changelevel")||load<int>(v,0x248)==1)return;
+ if(door_wait_on()&&door_wait_players().size()>1)return;
  store<int>(v,0x248,1);
  if(!doorWaitLogged){doorWaitLogged=true;log("[STORYCOOP_RC4] DOORS a co-op level-change door opens for any player, as in single player\n");}
 }
@@ -336,9 +343,8 @@ void orphan_owner_touch(Edict* e,Edict* other){
  store(v,0x19c,world);
  if(orphanLogged.insert(classname(e)).second&&orphanLogged.size()<16){char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] TOUCH %.40s hit a player after its owner was gone: the world is its owner now\n",classname(e));log(line);}
 }
-// 3. Copies of a pickup with a group (pickup_group, coop-runtime.hpp) are not solid in any player's game
-// either, as the host's player movement treats them. SOLID_BBOX is 2; entity_state solid is +0x3A.
-void pickup_unblocking(void* state,Edict* e){auto v=vars(e);if(v&&load<int>(v,0x244)!=0&&load<int>(v,0x10c)==2)store<short>(state,0x3a,0);}
+// 3. Pickup copies pushed players (each slot's copy of a tape was solid on the host): v0.10.3 makes no
+// copies any more (coop-runtime.hpp, one of each pickup), so the groupinfo of v0.10.2 went with them.
 // 4. A key that lies inside a door can be taken (tester: "fuses sometimes can't be picked up when inside
 // something (school, station door)"). CBasePlayer::PlayerUse (decomp player.cpp) first uses whatever its
 // 64-unit trace from the eyes hits; only when that is not usable does it look for things around the player.
@@ -351,7 +357,7 @@ void use_trace_redirect(const float* a,const float* b,Edict* player,void* tr){
  auto hv=vars(hit);if(!hv)return;float dir[3]{},len2=0;for(int j=0;j<3;++j){dir[j]=b[j]-a[j];len2+=dir[j]*dir[j];}if(len2<1.f||len2>128.f*128.f)return;
  Edict* best=nullptr;float bestT=0;Edict* k=nullptr;
  for(int n=0;n<256;++n){k=find_next(k,"classname","item_key");if(!k)break;auto kv=vars(k);if(!kv||load<int>(kv,0x10c)==0||(load<unsigned>(kv,0x118)&0x80u))continue;
-  if(pickup_blocked(k,player)||pickup_hidden(eng<int(__cdecl*)(Edict*)>(71)(k),k,player))continue;
+  if(pickup_blocked(k,player))continue;
   float c[3]{};bool inside=true;for(int j=0;j<3;++j){c[j]=(load<float>(kv,0xc4+j*4)+load<float>(kv,0xd0+j*4))*0.5f;if(c[j]<load<float>(hv,0xc4+j*4)-4.f||c[j]>load<float>(hv,0xd0+j*4)+4.f)inside=false;}
   if(!inside)continue;float t=0;for(int j=0;j<3;++j)t+=(c[j]-a[j])*dir[j];t/=len2;if(t<0.f||t>1.f)continue;
   float d2=0;for(int j=0;j<3;++j){const float x=a[j]+dir[j]*t-c[j];d2+=x*x;}if(d2>16.f*16.f)continue;
@@ -359,9 +365,10 @@ void use_trace_redirect(const float* a,const float* b,Edict* player,void* tr){
  if(!best)return;store(tr,0x30,best);store(tr,0x10,bestT);for(int j=0;j<3;++j)store(tr,0x14+j*4,a[j]+dir[j]*bestT);
  if(useTraceLines<20){++useTraceLines;auto bv=vars(best);char line[200]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] USE player=%d takes %.60s from inside %.40s\n",eng<int(__cdecl*)(Edict*)>(71)(player),bv?string_at(load<int>(bv,0x1d8)):"",classname(hit));log(line);}
 }
+void door_wait_trace(const float* a,const float* b,Edict* player,void* tr);   // v0.10.3, below
 void __cdecl trace_line(const float* a,const float* b,int noMonsters,Edict* skip,void* tr){
  eng<void(__cdecl*)(const float*,const float*,int,Edict*,void*)>(31)(a,b,noMonsters,skip,tr);
- if(useTracePhase&&!noMonsters&&skip&&skip==pickupActor&&tr&&a&&b)use_trace_redirect(a,b,skip,tr);
+ if(useTracePhase&&!noMonsters&&skip&&skip==pickupActor&&tr&&a&&b){use_trace_redirect(a,b,skip,tr);door_wait_trace(a,b,skip,tr);}
 }
 // 5. The phone dies for every player (tester: "host phone battery never ran out for the friend but did for
 // the host"). cof_phonedisable (decomp effects.cpp 8595) disables the phone of UTIL_FindEntityByClassname
@@ -398,6 +405,72 @@ void rs_guard(bool force){
  std::memset(rsBlankPrivate,0,sizeof(rsBlankPrivate));store<void*>(rsBlankEdict,0x7c,rsBlankPrivate);player=rsBlankEdict;
 }
 
+// --- v0.10.3: a door that changes the map waits for everyone (Katz 2026-11-08) -------------------------
+// "the player that runs ahead of you can just go through the map change door even though you're a corridor
+// away ... bring back wait for players to be ready, and make it a setting for the host to toggle on or off
+// which is on by default, and also make sure all the needed doors have it in all levels". Host option
+// sc_doorwait (Create Server window, storycoop_server.cfg), 1 by default; 0 is v0.10.2 (any player opens).
+// Who must be there is the game's own rule for its co-op door (CTriggerCoopChangelevel::InsideThink,
+// triggers.cpp 6616, with CountConnectedLivePlayers 6571): every player alive with fuser4 (+0x264) 0, so a
+// downed player is not waited for. scripts/audit-v0103.mjs found two kinds of door that change the map on
+// the 194 served maps:
+// - 298 game co-op doors (inter_door_coop_changelevel; 102 different ones) and their zones, 224 x 224 units
+//   around the door (build-connected-campaign.mjs). The game waits by itself ("Please wait until everyone
+//   is ready!"); door_ready_after_think no longer opens them while two or more players live.
+// - 203 plain doors (inter_door; 71 different ones: locked, named or special doors the map build left as
+//   they were, and the ending door "endingcheck") whose exit lies in a trigger that changes the map
+//   (exit_volumes). The game moves only the door's user into that trigger, and the map changed for
+//   everybody. While anyone alive is outside the box a co-op zone would have around that door, E does not
+//   find such a door (the PlayerUse trace, then FindEntityInSphere) and its user gets the game's message.
+//   Only a use that would open it now is held back (CInterDoor::Use, decomp CoF_InterDoor.cpp 224; offsets
+//   from the pinned hl.dll's CInterDoor save table at 10212400): not locked (m_sLockedBy +0x190, the key and
+//   the locked message stay the game's), not disabled (m_bDisabled +0x180), no other door to unlock
+//   (m_sUseUnlock +0x1A0), not in use (pev->owner, m_fNextUse +0x1A4).
+std::vector<Edict*> door_wait_players(){
+ std::vector<Edict*> out;if(!globals||!engine[72])return out;
+ for(int i=1;i<=load<int>(globals,0x90);++i){auto e=eng<Edict*(__cdecl*)(int)>(72)(i);auto v=live(e)&&!std::strcmp(classname(e),"player")?vars(e):nullptr;
+  if(v&&load<int>(v,0x174)==0&&load<float>(v,0x164)>0&&load<float>(v,0x264)==0.f)out.push_back(e);}
+ return out;
+}
+std::map<Edict*,std::pair<int,bool>> doorsOut;
+bool door_leads_out(Edict* door){
+ auto it=doorsOut.find(door);if(it!=doorsOut.end()&&it->second.first==serial(door))return it->second.second;
+ auto v=vars(door);const char* target=v?string_at(load<int>(v,0x1cc)):nullptr;bool out=false;
+ if(target&&*target){
+  std::vector<std::string> names;if(!std::strcmp(target,"endingcheck"))for(int n=1;n<=5;++n)names.push_back("ending_exit"+std::to_string(n));else names.push_back(target);
+  const auto exits=exit_volumes();
+  // CInterDoor::EndSequence puts its user's origin at the exit's origin + 37 (- mins.z + 1).
+  for(const auto& n:names){Edict* x=find_next(nullptr,"targetname",n.c_str());auto xv=live(x)?vars(x):nullptr;if(xv&&!outside_exits({load<float>(xv,8),load<float>(xv,12),load<float>(xv,16)+37.f},exits))out=true;}
+ }
+ doorsOut[door]={serial(door),out};return out;
+}
+bool door_everyone_at(Edict* door,const std::vector<Edict*>& players){
+ auto d=vars(door);if(!d)return true;float lo[3]{},hi[3]{};
+ for(int k=0;k<2;++k){const float c=(load<float>(d,0xc4+k*4)+load<float>(d,0xd0+k*4))*0.5f;lo[k]=c-112.f;hi[k]=c+112.f;}
+ lo[2]=load<float>(d,0xcc)-24.f;hi[2]=load<float>(d,0xd8)+40.f;
+ for(auto e:players){auto v=vars(e);for(int k=0;k<3;++k)if(load<float>(v,0xd0+k*4)<lo[k]||load<float>(v,0xc4+k*4)>hi[k])return false;}
+ return true;
+}
+std::map<std::pair<Edict*,int>,float> doorWaitShown;int doorWaitLines=0;
+bool door_wait_blocked(Edict* door,Edict* user,bool aimed){
+ if(!useTracePhase||!door_wait_on()||!scoped()||!globals||!live(door)||!live(user)||std::strcmp(classname(door),"inter_door")||std::strcmp(classname(user),"player"))return false;
+ auto uv=vars(user),dv=vars(door);if(!uv||!dv||!(load<int>(uv,0x184)&32))return false;   // pev->button IN_USE
+ if(door_locked(door)!=0||!engine[64])return false;void* p=eng<void*(__cdecl*)(Edict*)>(64)(door);const float now=load<float>(globals,0);
+ if(!p||load<unsigned char>(p,0x180)||load<int>(p,0x1a0)||load<Edict*>(dv,0x19c)||load<float>(p,0x1a4)>now||!door_leads_out(door))return false;
+ const auto players=door_wait_players();if(players.size()<2||door_everyone_at(door,players))return false;
+ auto& shown=doorWaitShown[{user,serial(user)}];
+ if(aimed&&(now>=shown||shown-now>2.f)){shown=now+1.5f;
+  if(proFontMessage>0){eng<void(__cdecl*)(int,int,const float*,Edict*)>(46)(1,proFontMessage,nullptr,user);eng<void(__cdecl*)(int)>(48)(2);eng<void(__cdecl*)(const char*)>(54)("Please wait until everyone is ready!");eng<void(__cdecl*)()>(47)();}
+  if(doorWaitLines<20){++doorWaitLines;int at=0;for(auto e:players)if(door_everyone_at(door,{e}))++at;char line[200]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] DOORS player=%d waits at the door to %.40s: %d of %d living player(s) there\n",eng<int(__cdecl*)(Edict*)>(71)(user),string_at(load<int>(dv,0x1cc)),at,static_cast<int>(players.size()));log(line);}}
+ return true;
+}
+// The PlayerUse trace hit such a door: it hits the world instead (nothing to use there), so PlayerUse looks
+// around (FindEntityInSphere, which skips the door too: adapter.cpp find_in_sphere).
+void door_wait_trace(const float* a,const float* b,Edict* player,void* tr){
+ float len2=0;for(int j=0;j<3;++j){const float d=b[j]-a[j];len2+=d*d;}if(len2>128.f*128.f||!engine[72])return;
+ Edict* hit=load<Edict*>(tr,0x30);if(hit&&door_wait_blocked(hit,player,true))store(tr,0x30,eng<Edict*(__cdecl*)(int)>(72)(0));
+}
+
 // --- Wiring ----------------------------------------------------------------------------
 bool qol2_client_command(Edict* e,const char* command){
  if(!command)return false;
@@ -410,7 +483,7 @@ void qol2_world_spawned(){if(!scoped())return;ping_precache();hunt_precache();}
 void qol2_frame(){host_options_frame();scale_frame();run_timer_frame();hunt_frame();phone_frame();}
 void qol2_player_frame(Edict* e){if(!live(e)||std::strcmp(classname(e),"player"))return;norespawn_frame(e);if(!scoped())return;dodge_frame(e);catch_up_frame(e);noir_frame(e);}
 void qol2_map_changed(){pingSprite=0;scaledMonsters.clear();scaleBarTargets.clear();scaleBarsRead=false;scaleNext=0;scaleLogged=-1;dodgeApplied.clear();noirSent.clear();pingUsed.clear();scareUsed.clear();hunt=Hunt{};hostOptions.next=-1;runTimer.last=-1;runTimer.splitDue=-1;runTimer.next=0;
- doorWaitLogged=false;phoneSeen.clear();phoneNext=0;cardLockNames.clear();rs_guard(true);}
+ doorWaitLogged=false;doorsOut.clear();doorWaitShown.clear();doorWaitLines=0;phoneSeen.clear();phoneNext=0;cardLockNames.clear();rs_guard(true);}
 // v0.10.1 (review): what is kept per player slot goes with the player. netTuned (story-runtime.hpp) asks each
 // slot once per map for its tuning and sc_report: a player who rejoined the same slot on the same map (the
 // crash-rejoin offer) got neither, so his model, language, colour and black and white waited for the next map,

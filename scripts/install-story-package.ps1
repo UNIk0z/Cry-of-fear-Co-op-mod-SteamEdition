@@ -258,8 +258,8 @@ foreach ($extra in @($catalog.extras | Where-Object { $null -ne $_ })) {
     $extraPath=Join-Path $gameRoot ($extra.target.Replace('/','\'))
     $extraExists=[IO.File]::Exists($extraPath)
     # v0.7: a kept sc_setup.scr without the 'Unlock extras' option (sc_extras) is replaced once, so the option shows up.
-    # v0.9: the same for the revive options (sv_coopcprtime); v0.10 for its host options (sc_hunted).
-    if ($extra.mutable -and $extra.target -ceq 'sc_setup.scr') { $setupText=if ($extraExists) { [IO.File]::ReadAllText($extraPath) } else { '' }; $keepSetup=$extraExists -and $setupText -match 'sc_extras' -and $setupText -match 'sv_coopcprtime' -and $setupText -match 'sc_hunted'; $setupReplace=$extraExists -and -not $keepSetup; if ($Remove -or $keepSetup) { $prepared.Add(@{path=$extraPath; exists=$extraExists; extra=$true}); continue } }
+    # v0.9: the same for the revive options (sv_coopcprtime); v0.10 for its host options (sc_hunted); v0.10.3 for the door wait (sc_doorwait).
+    if ($extra.mutable -and $extra.target -ceq 'sc_setup.scr') { $setupText=if ($extraExists) { [IO.File]::ReadAllText($extraPath) } else { '' }; $keepSetup=$extraExists -and $setupText -match 'sc_extras' -and $setupText -match 'sv_coopcprtime' -and $setupText -match 'sc_hunted' -and $setupText -match 'sc_doorwait'; $setupReplace=$extraExists -and -not $keepSetup; if ($Remove -or $keepSetup) { $prepared.Add(@{path=$extraPath; exists=$extraExists; extra=$true}); continue } }
     # v0.9: the host's storycoop_server.cfg and each player's storycoop_comfort.cfg are theirs once there.
     # v0.10: one still exactly as an earlier version installed it (oldDefaults) is replaced once (kept as .storycoop-old).
     elseif ($extra.mutable) { $setupReplace=$extraExists -and -not $Remove -and $null -ne $extra.oldDefaults -and (@($extra.oldDefaults) -contains (Get-PatchFileSha $extraPath)); if (-not $setupReplace -and ($Remove -or $extraExists)) { $prepared.Add(@{path=$extraPath; exists=$extraExists; extra=$true}); continue } }
