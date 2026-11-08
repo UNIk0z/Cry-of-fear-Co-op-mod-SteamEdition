@@ -116,8 +116,8 @@ function Start-CofGame([string]$GameDirectory,[string[]]$Arguments) {
 # player's crash in RebuiltSimonCoFManager.dll came from its stamina write through
 # the engine's sv_player, which points at freed memory on a game that runs no
 # server; the adapter now keeps it on a blank player (qol2-runtime.hpp, item 6).
-# RebuiltSimon and its own fastrun.dll are named as working; any other add-on
-# still gets the advice to move it out for co-op.
+# Katz 2026-11-07: that fix is not tested, so RebuiltSimon stays a known limit and
+# is named with that note; any other add-on still gets the advice to move it out.
 function Get-CofAddons([string]$GameDirectory) {
     $dir=Join-Path $GameDirectory 'addons'
     if (-not [IO.Directory]::Exists($dir)) { return @() }
@@ -128,7 +128,7 @@ function Write-CofAddonWarning([string]$GameDirectory) {
     if (-not $addons.Count) { return }
     $known=@($addons | Where-Object { $_ -match '^(RebuiltSimonCoFManager|fastrun)\.dll$' })
     $other=@($addons | Where-Object { $_ -notmatch '^(RebuiltSimonCoFManager|fastrun)\.dll$' })
-    if ($known.Count) { Write-Host 'RebuiltSimon found in the addons folder: it works with co-op from v0.10.2. If the game still crashes inside RebuiltSimonCoFManager.dll, move the "addons" folder out while playing co-op.' }
+    if ($known.Count) { Write-Host 'RebuiltSimon found in the addons folder. It crashed joining players in our tests; this version has an untested fix. If the game crashes, move the "addons" folder out while playing co-op.' }
     if (-not $other.Count) { return }
     Write-Warning ('Cry of Fear add-ons found in '+(Join-Path $GameDirectory 'addons')+': '+($other -join ', ')+'.')
     Write-Warning 'For co-op, close the game and move these add-ons out of the "addons" folder (for example to your Desktop). Put them back afterwards for single player.'

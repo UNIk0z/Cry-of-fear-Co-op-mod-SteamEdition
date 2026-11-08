@@ -704,8 +704,8 @@ def run(game, dry=False):
     dlls = [n for n in os.listdir(addons) if n.lower().endswith('.dll')] if os.path.isdir(addons) else []
     other = [n for n in dlls if n.lower() not in ('rebuiltsimoncofmanager.dll', 'fastrun.dll')]
     if len(other) < len(dlls):
-        say('RebuiltSimon found in %s: it works with co-op from v0.10.2. If the game still crashes inside it, '
-            'move the "addons" folder out while playing co-op.' % addons)
+        say('RebuiltSimon found in %s. It crashed joining players in our tests; this version has an untested fix. '
+            'If the game crashes, move the "addons" folder out while playing co-op.' % addons)
     if other:
         say('Warning: Cry of Fear add-ons found in %s (%s): move them out of the "addons" folder while playing co-op.'
             % (addons, ', '.join(other)))

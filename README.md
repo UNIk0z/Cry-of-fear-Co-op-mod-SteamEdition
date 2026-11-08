@@ -20,7 +20,7 @@
 
 ### **[Click here to download Cry of Fear Co-op v0.10.2 for Linux](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.10.2/Cry.of.Fear.Co-op.v0.10.2.Linux.tar.gz)**
 
-v0.10.2 fixes the last playtest: co-op doors that change the map no longer wait for everyone, no more Carcass crash, save spots no longer push you, the metro fuse door no longer softlocks, the phone dies for everyone, no bounce between harbour maps, and the RebuiltSimon add-on works with co-op (see the release notes).
+v0.10.2 is a fix update for v0.10.1. What changed is in the release notes; none of it has been played in the game yet.
 
 > [!NOTE]
 > **Linux is supported now.** Cry of Fear runs through Steam Proton, and Linux and Windows players can play together. See the Linux steps below the Windows ones.
@@ -173,6 +173,9 @@ Every bug report needs the **log file**. That's how we can see what happened.
 - A crawler enemy is missing in the subway (s4_subtunnel2), and crouching on a save
   station jitters.
 - Pressing R while typing in the chat during a cutscene counts as a skip vote.
+- RebuiltSimon (`cryoffear/addons`) crashed joining players in our tests. v0.10.2 has a fix
+  for that crash that has not been tested yet. If the game crashes with RebuiltSimon or another
+  add-on installed, move the `addons` folder out while playing co-op.
 
 ## Credits
 
