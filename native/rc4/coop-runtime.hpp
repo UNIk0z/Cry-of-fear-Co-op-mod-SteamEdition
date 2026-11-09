@@ -627,38 +627,83 @@ void floor_walls_frame(){
   for(auto e:skip_named(w.wall))if(!std::strcmp(classname(e),"func_wall_toggle")){entity_retire(e);++n;}
   char line[140]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] FLOORWALL %s: %d wall(s) %s removed (partners can follow down)\n",m.c_str(),n,w.wall);log(line);}
 }
-// --- One of each pickup (v0.10.3) -----------------------------------------------------
-// Katz 2026-11-08: "Why there is 4 syringes in each syringe spawn and they are apparently separate for each
-// player ... should be returned to just 1 item". Two things made them. The served maps carry up to three
-// copies of every plain ammo/weapon pickup in a 2x2 square beside it (connected-campaign build,
-// build-v05-maps.mjs ammoSquares), appended after the original map's entities: four of everything, alone or
-// not. And v0.8 made each of those one entity per player slot, shown to and taken by that slot only. Now
-// nothing is copied per player, and the map's copies are removed when a story map starts: every pickup is one
-// shared entity, taken by whoever gets it first, as in single player. The maps are not rebuilt; FirstCopies
-// holds, per served map, the position of its first appended entity (the original map's entity count;
-// scripts/audit-v0103.mjs reads it from the maps and finds every appended pickup to be such a copy). Only an
-// ammo_/weapon_ entity from there on whose keys, origin aside, are those of a pickup before it is removed.
-// Key items stay one per team (team cards, below). Tapes, the video tape, the Glock light and the night
-// vision are one per spawn again, for whoever takes them. The phone battery (one on the whole campaign,
-// s4_subway2st1) is a team card now: the phone dies for every player (v0.10.2 phone_frame), so the one battery
-// reaches every player's inventory, and using it leaves the others theirs (kept_card).
+// --- A pickup for each player (v0.8, Katz's item 1) ----------------------------------
+// Playtest 3000 (more.txt): "theres like 5 billion of everything everywhere". The v0.6.1
+// copies stood side by side for everyone to see and take, however many played. Now every
+// map pickup (ammo, weapons, the phone battery, tapes...; never notes, and never the key
+// items, see the team cards at the end of this file) is one entity per player slot, on
+// the same spot. Only its owner is sent it (full_pack), can touch it (dispatch_touch) and
+// finds it with E (find_in_sphere, CBasePlayer::PlayerUse), so it disappears for him alone
+// and the other players still take theirs. Alone, a game shows each pickup once. Copies
+// are runtime entities, made from the pickup's own BSP keys; which slots took which pickup
+// is kept per map (MapState.pickups, slotN.cofmap version 3) and the copies are made again
+// on a revisit or a load. A dropped weapon has no owner: whoever comes along can take it.
+constexpr int PickupSlots=4;
 bool holds_card(Edict* e,const std::string& path);   // below
-std::string card_base(const std::string& card){const auto slash=card.find_last_of('/');return slash==std::string::npos?card:card.substr(slash+1);}
+const std::map<std::string,unsigned>* state_pickup_masks();   // state-runtime.hpp
 bool personal_card(const std::string& card){
- const std::string base=card_base(card);
- for(const char* c:{"cassettetape.txt","videotape.txt","taclight.txt"})if(!_stricmp(base.c_str(),c))return true;
+ const auto slash=card.find_last_of('/');const std::string base=slash==std::string::npos?card:card.substr(slash+1);
+ for(const char* c:{"cassettetape.txt","videotape.txt","mobile_battery.txt","taclight.txt"})if(!_stricmp(base.c_str(),c))return true;
  return false;
 }
-bool kept_card(const std::string& card){return !_stricmp(card_base(card).c_str(),"mobile_battery.txt");}
 bool team_card(const std::string& card){return card.rfind("inventoryitems/",0)==0&&card.rfind("inventoryitems/weapons/",0)!=0&&!personal_card(card);}
-// A key a partner dropped is not for someone who has that key already (a map's own second fuse is).
+bool per_player_pickup(const SpawnRecord& r){
+ const std::string& t=r.type;
+ if(t.rfind("ammo_",0)==0)return true;
+ if(t.rfind("weapon_",0)==0)return t!="weapon_mobile"&&t!="weapon_switchblade"&&t!="weapon_dualweapon"&&t!="weapon_p345";
+ if(t=="item_key"){for(const auto& [k,v]:r.keys)if(!_stricmp(k.c_str(),"message"))return personal_card(v);return false;}
+ return t=="item_phonebattery"||t=="item_nightvision"||t=="item_glocktaclight";
+}
+struct PickupCopies {std::array<Edict*,PickupSlots> e{};std::array<int,PickupSlots> serial{};unsigned taken=0;};
+std::map<std::size_t,PickupCopies> pickupCopies;   // by index in spawnRecords
+std::vector<int> pickupOwner,pickupOwnerSerial;    // by edict index; 0: nobody's in particular
+int pickup_owner(int number,Edict* e){
+ if(number<0||static_cast<std::size_t>(number)>=pickupOwner.size()||!pickupOwner[number])return 0;
+ if(pickupOwnerSerial[number]!=load<int>(e,4)){pickupOwner[number]=0;return 0;}
+ return pickupOwner[number];
+}
+bool pickup_hidden(int number,Edict* e,Edict* host){const int o=pickup_owner(number,e);return o&&live(host)&&o!=eng<int(__cdecl*)(Edict*)>(71)(host);}
 bool pickup_blocked(Edict* pickup,Edict* player){
- if(!globals||!live(pickup)||!live(player)||std::strcmp(classname(pickup),"item_key"))return false;
+ if(!globals||!live(pickup)||!live(player))return false;
+ const int slot=eng<int(__cdecl*)(Edict*)>(71)(player);if(slot<1||slot>load<int>(globals,0x90))return false;
+ const int o=pickup_owner(eng<int(__cdecl*)(Edict*)>(71)(pickup),pickup);if(o&&o!=slot)return true;
+ // A key a partner dropped is not for someone who has that key already (a map's own second fuse is).
+ if(std::strcmp(classname(pickup),"item_key"))return false;
  auto v=vars(pickup);const char* card=v?string_at(load<int>(v,0x1d8)):nullptr;
  if(!card||!team_card(card)||!holds_card(player,card))return false;
  const int id=serial(pickup);return std::none_of(spawnRecords.begin(),spawnRecords.end(),[&](const SpawnRecord& r){return r.e==pickup&&r.serial==id;});
 }
 bool pickup_gone(Edict* e,int id){auto v=serial(e)==id?vars(e):nullptr;return !v||(load<unsigned>(v,0x1a8)&FlKillMe)||(load<int>(v,0x10c)==0&&(load<unsigned>(v,0x118)&0x80u));}
+Edict* pickup_spawn(const SpawnRecord& r){
+ auto c=eng<Edict*(__cdecl*)(int)>(23)(eng<int(__cdecl*)(const char*)>(67)(r.type.c_str()));if(!live(c))return nullptr;
+ for(const auto& [k,value]:r.keys){std::string text=value;if(!_stricmp(k.c_str(),"spawnflags"))text=std::to_string(std::atoi(value.c_str())&~2048);KeyValue data{const_cast<char*>(r.type.c_str()),const_cast<char*>(k.c_str()),const_cast<char*>(text.c_str()),0};native<void(__cdecl*)(Edict*,KeyValue*)>(6)(c,&data);}
+ if(native<int(__cdecl*)(Edict*)>(1)(c)!=0){if(live(c)){assist_unlink(c);eng<void(__cdecl*)(Edict*)>(22)(c);}return nullptr;}
+ return c;
+}
+// Which slots no longer have their copy of each pickup; state_capture keeps this.
+void pickup_masks(std::map<std::string,unsigned>& out){
+ for(const auto& [i,c]:pickupCopies){if(i>=spawnRecords.size()||spawnRecords[i].key.empty())continue;unsigned mask=c.taken;
+  for(int k=0;k<PickupSlots;++k)if(c.e[k]&&pickup_gone(c.e[k],c.serial[k]))mask|=1u<<k;
+  out[spawnRecords[i].key]=mask;}
+}
+// v0.10.2 (Katz: "save station block collision pushes the player"; clip 3 beside a tape recorder): item_key
+// pickups such as the cassette tapes are SOLID_BBOX (decomp CoF_KeyItem.cpp 157). The other slots' copies
+// were hidden from a player but solid on the host, so the host's movement stopped him where his own game
+// saw nothing: the push. Each copy now has a group (entvars groupinfo +0x244). Player movement skips
+// grouped entities while the player has no group (hw SV_AddLinksToPM, sv_user.c 583), so a copy no longer
+// blocks anyone; traces, E and touches still find it, and full_pack sends grouped entities not solid, so no
+// game predicts a block either (pickup_unblocking, qol2-runtime.hpp).
+void pickup_group(Edict* e,int slot){auto v=vars(e);if(v)store<int>(v,0x244,slot>=0?(1<<(slot&7)):0);}
+// v0.10.3 (Katz 2026-11-08: "Why there is 4 syringes in each syringe spawn and they are apparently separate for
+// each player"; 2026-11-09: each player must see and take his own copy, as in Serious Sam): the served maps
+// carry up to three copies of every plain ammo/weapon pickup in a 2x2 square beside it (connected-campaign
+// build, build-v05-maps.mjs ammoSquares), appended after the original map's entities, and the copies above
+// were made for each of those too: four of everything for every player. The map's copies are now removed
+// when a story map starts, before the copies per player are made (start_frame), and never copied. The maps
+// are not rebuilt; FirstCopies holds, per served map, the position of its first appended entity (the original
+// map's entity count; scripts/audit-v0103.mjs reads it from the maps and finds every appended pickup to be
+// such a copy). Only an ammo_/weapon_ entity from there on whose keys, origin aside, are those of a pickup
+// before it is removed.
 struct FirstCopy {const char* map;int at;};
 const FirstCopy FirstCopies[]={{"apartment1",967},{"apartment2",467},{"apartment3",632},{"apartment3sick",498},{"apartment4",512},{"apartment5",335},
  {"apartmentsick",478},{"asylum1",967},{"asylum1day",414},{"asylum2",201},{"asylumb",66},{"attic",254},{"avlopp",363},{"basement",713},{"bridge",386},
@@ -675,15 +720,48 @@ bool same_pickup(const SpawnRecord& a,const SpawnRecord& b){
   if(i==a.keys.size()||j==b.keys.size())return i==a.keys.size()&&j==b.keys.size();
   if(_stricmp(a.keys[i].first.c_str(),b.keys[j].first.c_str())||a.keys[i].second!=b.keys[j].second)return false;++i;++j;}
 }
-bool pickupExtrasDone=false;
+bool pickupExtrasDone=false;std::set<std::size_t> pickupExtras;   // spawnRecords indices of the removed copies
 void pickup_extras_frame(){
- if(pickupExtrasDone||!scoped()||!globals)return;pickupExtrasDone=true;
+ if(pickupExtrasDone||!scoped()||!globals)return;pickupExtrasDone=true;pickupExtras.clear();
  const int at=first_copy(map_name());if(at<1||static_cast<std::size_t>(at)>=spawnRecords.size())return;int removed=0;
  for(std::size_t i=at;i<spawnRecords.size();++i){
   const SpawnRecord& r=spawnRecords[i];if(!r.e||(r.type.rfind("ammo_",0)&&r.type.rfind("weapon_",0))||pickup_gone(r.e,r.serial))continue;
   if(std::none_of(spawnRecords.begin()+1,spawnRecords.begin()+at,[&](const SpawnRecord& o){return same_pickup(o,r);}))continue;
-  entity_retire(r.e);++removed;}
- char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] ITEMS %d extra pickup cop%s removed: one of each pickup, shared by the team\n",removed,removed==1?"y":"ies");log(line);
+  entity_retire(r.e);pickupExtras.insert(i);++removed;}
+ char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] ITEMS %d extra pickup cop%s of the map removed: one of each pickup for each player\n",removed,removed==1?"y":"ies");log(line);
+}
+bool itemCopiesDone=false;float pickupOwnersNext=0;
+void item_copies_frame(){
+ if(!scoped()||!globals||!engine[23]||!engine[67]||!original[1]||!original[6])return;
+ if(itemCopiesDone){
+  // A pickup taken is nobody's any more: the same entity is what a later drop puts on the floor.
+  const float now=load<float>(globals,0);if(now<pickupOwnersNext&&now>=pickupOwnersNext-1.f)return;pickupOwnersNext=now+0.5f;
+  for(const auto& [i,c]:pickupCopies)for(int k=0;k<PickupSlots;++k)if(c.e[k]&&serial(c.e[k])==c.serial[k]&&pickup_gone(c.e[k],c.serial[k])){const int n=eng<int(__cdecl*)(Edict*)>(71)(c.e[k]);if(n>=0&&static_cast<std::size_t>(n)<pickupOwner.size())pickupOwner[n]=0;}
+  return;}
+ itemCopiesDone=true;pickupCopies.clear();
+ const int maxEdicts=load<int>(globals,0x94);pickupOwner.assign(maxEdicts+1,0);pickupOwnerSerial.assign(maxEdicts+1,0);
+ const int slots=(std::min)(PickupSlots,load<int>(globals,0x90));if(slots<2)return;
+ int used=0;for(int i=0;i<maxEdicts;++i)if(live(eng<Edict*(__cdecl*)(int)>(72)(i)))++used;
+ const auto* book=state_pickup_masks();int made=0,pickups=0,finished=0,noRoom=0;
+ for(std::size_t i=1;i<spawnRecords.size();++i){
+  const SpawnRecord& r=spawnRecords[i];if(!r.pickup||r.dm||r.keys.empty()||!per_player_pickup(r)||pickupExtras.count(i))continue;
+  const bool here=r.e&&!pickup_gone(r.e,r.serial);
+  unsigned taken=0;
+  if(book){auto m=book->find(r.key);if(m!=book->end())taken=m->second;else if(!here)taken=0xfu;}
+  else if(!here)taken=0xfu;
+  PickupCopies c;c.taken=taken;bool originalUsed=false,missing=false;
+  for(int k=0;k<slots;++k){if(taken&(1u<<k))continue;Edict* e=nullptr;
+   if(here&&!originalUsed){e=r.e;originalUsed=true;}
+   else {if(used+made>=maxEdicts-96){++noRoom;missing=true;continue;}e=pickup_spawn(r);if(!e){++noRoom;missing=true;continue;}++made;}
+   c.e[k]=e;c.serial[k]=serial(e);const int n=eng<int(__cdecl*)(Edict*)>(71)(e);if(n>=0&&n<=maxEdicts){pickupOwner[n]=k+1;pickupOwnerSerial[n]=serial(e);pickup_group(e,k);}
+  }
+  // Review 2026-11-04: a slot whose copy could not be made (edict limit) would have no pickup there at all;
+  // the map's own one is then everybody's again, first come first served, as before v0.8.
+  if(missing&&originalUsed){const int n=eng<int(__cdecl*)(Edict*)>(71)(r.e);if(n>=0&&n<=maxEdicts)pickupOwner[n]=0;pickup_group(r.e,-1);}
+  if(here&&!originalUsed){entity_retire(r.e);++finished;}
+  pickupCopies[i]=c;++pickups;
+ }
+ char line[220]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] ITEMS %d pickup(s) per player for %d slots: %d copies made, %d taken by everyone%s\n",pickups,slots,made,finished,noRoom?" (edict limit: some copies skipped)":"");log(line);
 }
 // --- Everyone waits for everyone after a level change (v0.6) ------------------------------
 // Playtest note: "you could make the host wait for all the other players to finish
@@ -1932,7 +2010,6 @@ void team_cards_frame(){
    if(is>was){teamCards.declined[player_identity(e)].erase(c);int fresh=is-was;auto& onFloor=teamCards.floor[c];const int back=(std::min)(fresh,onFloor);onFloor-=back;fresh-=back;
     for(auto o:players)if(o!=e&&team_settled(o))team_give(o,c,(std::max)(is,card_count(team_cards_of(o),c)+fresh));continue;}
    if(dropped){teamCards.declined[player_identity(e)].insert(c);teamCards.floor[c]+=was-is;std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] KEYITEM %.60s dropped by player=%d; the others keep theirs\n",c.c_str(),index);log(line);continue;}
-   if(kept_card(c)){std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] KEYITEM %.60s used by player=%d; the others keep theirs (each phone takes its own)\n",c.c_str(),index);log(line);continue;}
    if(const int locks=card_locks_left(c);locks>0){std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] KEYITEM %.60s used by player=%d: %d more lock(s) for it on this map, the others keep theirs\n",c.c_str(),index,locks);log(line);continue;}
    int taken=0;for(auto o:players){if(o==e)continue;const int had=card_count(team_cards_of(o),c),keep=(std::max)(0,had-(was-is));for(int guard=0;guard<6&&card_count(team_cards_of(o),c)>keep;++guard){if(!helper_use("cof_clearitems","message",c,o))break;++taken;}team_known_add(o,c,card_count(team_cards_of(o),c)-had);}
    for(auto& [identity,set]:teamCards.declined)set.erase(c);
@@ -2136,4 +2213,4 @@ void wheelchair_frame(){
   for(int k=0;k<3;++k)store(v,0x20+k*4,load<float>(v,0x20+k*4)*cap/s);
   if(!wheelchairCutLogged){wheelchairCutLogged=true;char line[120]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] WHEELCHAIR speed %.0f held to its cap %.0f\n",s,cap);log(line);}}
 }
-void coop_map_changed(){collision_restore();wardrobeDone=false;teamCards.known.clear();teamCards.dropping.clear();teamCards.floor.clear();teamCards.next=0;staleCards.clear();storyTeleports.clear();climbFollows.clear();storyAnchor={};storyLateDone.clear();arrivalGrace.clear();exitTriggers.clear();exitsArrivedIn.clear();bossExitAt=-1;bossSave={};bossOverAt=-1;bossBarSeen=false;bossBarChecked=false;bossBar=nullptr;bossBarSerial=-1;bossDownBefore.clear();bossBarShown.clear();sceneWatch={};wheelchairCutLogged=false;subtitleMuteUntil=-1;deployLogged.clear();doorHides.clear();stripClears.clear();fadesDone=false;doorPressUsed.clear();pickupExtrasDone=false;forcedVisible.clear();bossOver=false;fallBacks.clear();doorGlobals.clear();doorLocks.clear();trainEscape={};floorWallsDone=false;quickNotices.clear();fallWatch.clear();equipWants.clear();nightmareLogged=false;morphineWatch.clear();prologueSkip={};partyLimitLogged=-1;joinWait={};skipScene={};skipAfter={};skipJump.clear();skipLines=0;evidence_reset();drowned_reset();give_reset();stuckUsed.clear();nightmareRegroup={};nameStates.clear();lastPlaces.clear();sceneSeen.clear();sceneFollowers.clear();idleProbes.clear();doorMusicLines=0;sceneMoveLines=0;}
+void coop_map_changed(){collision_restore();wardrobeDone=false;teamCards.known.clear();teamCards.dropping.clear();teamCards.floor.clear();teamCards.next=0;staleCards.clear();storyTeleports.clear();climbFollows.clear();storyAnchor={};storyLateDone.clear();arrivalGrace.clear();exitTriggers.clear();exitsArrivedIn.clear();bossExitAt=-1;bossSave={};bossOverAt=-1;bossBarSeen=false;bossBarChecked=false;bossBar=nullptr;bossBarSerial=-1;bossDownBefore.clear();bossBarShown.clear();sceneWatch={};wheelchairCutLogged=false;subtitleMuteUntil=-1;pickupCopies.clear();pickupOwner.clear();pickupOwnerSerial.clear();deployLogged.clear();doorHides.clear();stripClears.clear();fadesDone=false;doorPressUsed.clear();itemCopiesDone=false;pickupOwnersNext=0;pickupExtrasDone=false;pickupExtras.clear();forcedVisible.clear();bossOver=false;fallBacks.clear();doorGlobals.clear();doorLocks.clear();trainEscape={};floorWallsDone=false;quickNotices.clear();fallWatch.clear();equipWants.clear();nightmareLogged=false;morphineWatch.clear();prologueSkip={};partyLimitLogged=-1;joinWait={};skipScene={};skipAfter={};skipJump.clear();skipLines=0;evidence_reset();drowned_reset();give_reset();stuckUsed.clear();nightmareRegroup={};nameStates.clear();lastPlaces.clear();sceneSeen.clear();sceneFollowers.clear();idleProbes.clear();doorMusicLines=0;sceneMoveLines=0;}

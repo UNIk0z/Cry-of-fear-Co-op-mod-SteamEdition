@@ -343,8 +343,9 @@ void orphan_owner_touch(Edict* e,Edict* other){
  store(v,0x19c,world);
  if(orphanLogged.insert(classname(e)).second&&orphanLogged.size()<16){char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] TOUCH %.40s hit a player after its owner was gone: the world is its owner now\n",classname(e));log(line);}
 }
-// 3. Pickup copies pushed players (each slot's copy of a tape was solid on the host): v0.10.3 makes no
-// copies any more (coop-runtime.hpp, one of each pickup), so the groupinfo of v0.10.2 went with them.
+// 3. Copies of a pickup with a group (pickup_group, coop-runtime.hpp) are not solid in any player's game
+// either, as the host's player movement treats them. SOLID_BBOX is 2; entity_state solid is +0x3A.
+void pickup_unblocking(void* state,Edict* e){auto v=vars(e);if(v&&load<int>(v,0x244)!=0&&load<int>(v,0x10c)==2)store<short>(state,0x3a,0);}
 // 4. A key that lies inside a door can be taken (tester: "fuses sometimes can't be picked up when inside
 // something (school, station door)"). CBasePlayer::PlayerUse (decomp player.cpp) first uses whatever its
 // 64-unit trace from the eyes hits; only when that is not usable does it look for things around the player.
@@ -357,7 +358,7 @@ void use_trace_redirect(const float* a,const float* b,Edict* player,void* tr){
  auto hv=vars(hit);if(!hv)return;float dir[3]{},len2=0;for(int j=0;j<3;++j){dir[j]=b[j]-a[j];len2+=dir[j]*dir[j];}if(len2<1.f||len2>128.f*128.f)return;
  Edict* best=nullptr;float bestT=0;Edict* k=nullptr;
  for(int n=0;n<256;++n){k=find_next(k,"classname","item_key");if(!k)break;auto kv=vars(k);if(!kv||load<int>(kv,0x10c)==0||(load<unsigned>(kv,0x118)&0x80u))continue;
-  if(pickup_blocked(k,player))continue;
+  if(pickup_blocked(k,player)||pickup_hidden(eng<int(__cdecl*)(Edict*)>(71)(k),k,player))continue;
   float c[3]{};bool inside=true;for(int j=0;j<3;++j){c[j]=(load<float>(kv,0xc4+j*4)+load<float>(kv,0xd0+j*4))*0.5f;if(c[j]<load<float>(hv,0xc4+j*4)-4.f||c[j]>load<float>(hv,0xd0+j*4)+4.f)inside=false;}
   if(!inside)continue;float t=0;for(int j=0;j<3;++j)t+=(c[j]-a[j])*dir[j];t/=len2;if(t<0.f||t>1.f)continue;
   float d2=0;for(int j=0;j<3;++j){const float x=a[j]+dir[j]*t-c[j];d2+=x*x;}if(d2>16.f*16.f)continue;

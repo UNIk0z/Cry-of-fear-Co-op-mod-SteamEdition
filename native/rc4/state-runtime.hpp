@@ -98,7 +98,7 @@ bool state_capture(MapState& out,std::string& why){
  if(!original[7]||!globals||!engine[72]||!engine[67]){why="save callback unavailable";return false;}
  const int clients=load<int>(globals,0x90),maxEntities=load<int>(globals,0x94);
  struct Candidate {Edict* e;std::string key,type;bool fixed;};std::vector<Candidate> list;std::set<Edict*> known;
- out={};out.map=map_name();out.layout=stateLayout;   // v0.10.3: no per-player pickups, pickups stays empty
+ out={};out.map=map_name();out.layout=stateLayout;pickup_masks(out.pickups);
  for(std::size_t i=1;i<spawnRecords.size();++i){
   const auto& r=spawnRecords[i];if(!r.e||r.key.empty()||keepKeys.count(r.key))continue;
   const bool present=serial(r.e)==r.serial&&r.type==classname(r.e);if(present)known.insert(r.e);
@@ -311,3 +311,5 @@ bool state_reoffer(const SpawnRecord& r,const Checkpoint& value){
  }
  return false;
 }
+// v0.8: which player slots took which pickup on the last visit of this map; nullptr: never visited.
+const std::map<std::string,unsigned>* state_pickup_masks(){if(state_off())return nullptr;auto it=mapStates.find(state_source(map_name()));return it==mapStates.end()?nullptr:&it->second.pickups;}

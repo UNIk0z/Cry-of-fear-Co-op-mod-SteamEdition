@@ -125,7 +125,8 @@ void vehicle_evidence(Edict* e,const char* phase,int host,int packed){
  // These offsets were read from this exact backend's entvars save metadata.
  std::snprintf(s,sizeof(s),"[STORYCOOP_RC4] VEHICLE_STATE phase=%s entity=%d host=%d packed=%d name=%s model=%s modelindex=%d origin=%.1f,%.1f,%.1f speed=%.1f effects=%x rendermode=%d renderamt=%.1f flags=%x group=%x time=%.2f\n",phase,eng<int(__cdecl*)(Edict*)>(71)(e),host,packed,targetname(e),string_at(load<int>(p,0xb8)),load<int>(p,0xb4),load<float>(p,8),load<float>(p,12),load<float>(p,16),load<float>(p,0x1fc),load<unsigned>(p,0x118),load<int>(p,0x14c),load<float>(p,0x150),load<unsigned>(p,0x1a8),load<unsigned>(p,0x244),load<float>(globals,0));log(s);
 }
-bool pickup_blocked(Edict* pickup,Edict* player);   // coop-runtime.hpp (v0.8)
+bool pickup_hidden(int number,Edict* e,Edict* host);bool pickup_blocked(Edict* pickup,Edict* player);   // coop-runtime.hpp (v0.8)
+void pickup_unblocking(void* state,Edict* e);   // qol2-runtime.hpp (v0.10.2)
 bool collision_off();   // coop-runtime.hpp (v0.5 host setup)
 bool outline_state(void* state,Edict* e,Edict* host);   // qol2-runtime.hpp (v0.10)
 bool player_force_visible(Edict* e,Edict* host);void player_forced_log(Edict* e,Edict* host,bool shown);   // coop-runtime.hpp (v0.6)
@@ -136,6 +137,7 @@ int __cdecl full_pack(void* state,int number,Edict* e,Edict* host,int flags,int 
  // (P2 crash 2026-10-15, client.dll+5f5c8). Native AddToFullPack copies
  // entvars effects (edict+198) to entity_state+3C; EF_NODRAW=0x80 is added there.
  // v0.2: staged actors are hidden by the maps themselves (coop-runtime.hpp).
+ if(!player&&pickup_hidden(number,e,host))return 0;   // v0.8: another player's copy of a pickup
  const bool hide=player&&hide_player_from(e,host);
  // v0.1 (user: "the train appears at the bottom left"): the title train waits
  // at the station until multiintro1 starts it (coop-fixes-003 timing, as in
@@ -159,6 +161,7 @@ int __cdecl full_pack(void* state,int number,Edict* e,Edict* host,int flags,int 
  if(result&&hide&&state)store(state,0x3c,load<unsigned>(state,0x3c)|0x80u);
  if(result&&player&&state&&collision_off())store<short>(state,0x3a,0);   // v0.5 E2: collision off
  if(result&&player&&state&&!hide)outline_state(state,e,host);   // v0.10: far teammates outlined (sc_outline)
+ if(result&&!player&&state)pickup_unblocking(state,e);   // v0.10.2: pickup copies block nobody
  return result;
 }
 void __cdecl visibility(Edict* view,Edict* client,unsigned char** pvs,unsigned char** pas){
@@ -348,7 +351,7 @@ void __cdecl write_entity(int n){mirror_op(55,n,0,nullptr);if(!recorder_write(55
 std::int32_t __cdecl random_long(std::int32_t low,std::int32_t high){auto generated=eng<std::int32_t(__cdecl*)(std::int32_t,std::int32_t)>(90)(low,high),result=generated;puzzle_random_long_override(low,high,generated,result);return result;}
 bool subtitle_muted(const char* key,const char* value);void story_teleport_lookup(Edict*,const char*,const char*,Edict*);void boss_bar_lookup(Edict*,const char*,const char*,Edict*);   // coop-runtime.hpp
 Edict* __cdecl find(Edict* start,const char* key,const char* value){Edict* out=nullptr;if(subtitle_muted(key,value))return nullptr;if(!start&&key&&value&&std::strcmp(key,"classname")==0&&std::strcmp(value,"player")==0)firstPlayerLookup=true;if(puzzle_find_override(start,key,value,out))return out;if(acting_override(start,key,value,out))return out;if(ladder_find_override(start,key,value,out))return out;out=eng<Edict*(__cdecl*)(Edict*,const char*,const char*)>(14)(start,key,value);fanout_lookup(start,key,value,out);bag_lookup(start,key,value,out);give_lookup(start,key,value,out);regroup_lookup(start,key,value,out);evidence_lookup(start,key,value);door_lock_lookup(start,key,value,out);story_teleport_lookup(start,key,value,out);boss_bar_lookup(start,key,value,out);return out;}
-// v0.8: E (CBasePlayer::PlayerUse, FindEntityInSphere) does not see a key the player holds already.
+// v0.8: E (CBasePlayer::PlayerUse, FindEntityInSphere) does not see a pickup that is not this player's.
 // v0.10.3: nor a door that changes the map while someone alive is not at it (sc_doorwait).
 Edict* pickupActor=nullptr;
 bool door_wait_blocked(Edict* door,Edict* user,bool aimed);   // qol2-runtime.hpp (v0.10.3)
@@ -415,7 +418,7 @@ void everyone(bool capture){if(!globals)return;for(int i=1;i<=load<int>(globals,
 #include "spray-runtime.hpp"
 #include "qol2-runtime.hpp"
 void frame_evidence();
-void __cdecl start_frame(){crumb("start_frame");++netFrame;collision_restore();gameui_patch();firstPlayerLookup=false;pause_poll();menu_credit_frame();give_flush();three_slots_frame();chapter_frame();join_wait_frame();regroup_frame();checkpoint_start_frame();keypad_frame();story_frame();logo_frame();score_sync();keydoor_frame();ladder_frame();pp_frame();half_frame();skip_frame();party_counters_frame();prologue_skip_frame();boss_frame();train_escape_frame();floor_walls_frame();stayout_fades_frame();wardrobe_frame();join_connect_frame();load_wait_frame();door_lock_frame();pickup_extras_frame();team_cards_frame();story_teleport_frame();climb_follow_frame();scene_watch_frame();boss_save_frame();wheelchair_frame();team_hud_frame();language_frame();qol2_frame();frame_evidence();}
+void __cdecl start_frame(){crumb("start_frame");++netFrame;collision_restore();gameui_patch();firstPlayerLookup=false;pause_poll();menu_credit_frame();give_flush();three_slots_frame();chapter_frame();join_wait_frame();regroup_frame();checkpoint_start_frame();keypad_frame();story_frame();logo_frame();score_sync();keydoor_frame();ladder_frame();pp_frame();half_frame();skip_frame();party_counters_frame();prologue_skip_frame();boss_frame();train_escape_frame();floor_walls_frame();stayout_fades_frame();wardrobe_frame();join_connect_frame();load_wait_frame();door_lock_frame();pickup_extras_frame();item_copies_frame();team_cards_frame();story_teleport_frame();climb_follow_frame();scene_watch_frame();boss_save_frame();wheelchair_frame();team_hud_frame();language_frame();qol2_frame();frame_evidence();}
 void __cdecl game_init(){crash_install();reset();native<void(__cdecl*)()>(0)();if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_checkpoint_load",&checkpoint_load_command);if(engine[56])eng<void(__cdecl*)(cvar_t*)>(56)(&collisionCvar);if(engine[56])eng<void(__cdecl*)(cvar_t*)>(56)(&extrasCvar);if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_checkpoint_prepare",&checkpoint_prepare_command);if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_door_music",&door_music_command);if(engine[140])eng<void(__cdecl*)(const char*,void(__cdecl*)())>(140)("sc_report",&model_report_send);qol_register_commands();qol2_register();log("[STORYCOOP_RC4] GameInit forwarded; checkpoint command registered\n");}
 // v0.3 audit: the main menu map (c_game_menu1) ends every game. Only the mod's
 // New Game/Load entries and cof_campaign_story4 reset the session, so a game

@@ -49,10 +49,9 @@ Nothing in v0.10 has run in the game yet. Close Cry of Fear, open "Cry of Fear C
 
 ## v0.10.3 (docs/V0103_RELEASE.md)
 
-34. Solo, s4_apartment1 (Chapter 1): every ammo box and syringe spot shows one item, not a square of four. The host log has `ITEMS N extra pickup copies removed: one of each pickup, shared by the team` on each map with copies.
-35. Two players, same spots: one item each; when player 2 takes it, it is gone for the host too.
+34. Solo, s4_apartment1 (Chapter 1): every ammo box and syringe spot shows one item, not a square of four. The host log has `ITEMS N extra pickup copies of the map removed: one of each pickup for each player` on each map with copies.
+35. Two players, same spots: each sees one item. Player 2 takes it: it is gone on his screen, the host still sees his own and takes it too.
 36. Two players, "Doors that change the map wait for everyone" on (the default). The apartment corridor door to the next map: the host uses it while player 2 is a corridor away. The host gets "Please wait until everyone is ready!" and nothing happens. Player 2 comes to the door: the door works and both arrive on the next map.
 37. A plain door that changes the map, for example s4_college2 to s4_college1 (doorch1), s4_hamn3 to the college (doortc1) or s4_subway1st1 to the tunnel (lockedd1): the same wait (`DOORS player=1 waits at the door to ...: 1 of 2 living player(s) there`). A locked one still says it is locked until the key is used.
 38. Player 2 is downed far away: the host's door works without him. Alone (solo or the other player left): no door ever waits.
 39. The ending door of s4_village3 (endingcheck): it waits for both players too, then the ending map loads.
-40. s4_subway2st1: one player picks up the phone battery. Both players get it in the inventory (`KEYITEM inventoryitems/mobile_battery.txt also given to player=2`); each uses his own and his phone works again (`... the others keep theirs (each phone takes its own)`).

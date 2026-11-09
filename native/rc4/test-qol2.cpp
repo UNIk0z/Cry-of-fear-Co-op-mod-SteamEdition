@@ -247,6 +247,11 @@ int main(int argc,char** argv_){
   orphan_owner_touch(head,p1);assert(load<Edict*>(ev(head),0x19c)==carcass);   // the Carcass is there: untouched
   orphan_owner_touch(head,head);assert(load<Edict*>(ev(head),0x19c)==carcass);   // not a player
   release(carcass);store(carcass,0,1);lines.clear();orphan_owner_touch(head,p1);assert(load<Edict*>(ev(head),0x19c)==&entities[0]&&logged("TOUCH roofboss_head hit a player after its owner was gone"));
+  // 3. A grouped pickup copy is not solid in anyone's game; others are untouched.
+  auto tape=&entities[24];*tape={};store(tape,0,0);store(tape,4,424);store(ev(tape),0,intern("item_key"));store(ev(tape),0x10c,2);
+  std::array<unsigned char,0x100> st{};store<short>(st.data(),0x3a,2);pickup_unblocking(st.data(),tape);assert(load<short>(st.data(),0x3a)==2);
+  pickup_group(tape,1);assert(load<int>(ev(tape),0x244)==2);pickup_unblocking(st.data(),tape);assert(load<short>(st.data(),0x3a)==0);
+  pickup_group(tape,-1);assert(load<int>(ev(tape),0x244)==0);
   // 6. Fuse sockets: a use keeps the others' fuses while another locked socket for that card is on the map.
   std::filesystem::create_directories(dir/"inventoryitems");{std::ofstream(dir/"inventoryitems"/"fuse.txt")<<"\"map_name\"\n{\n\tdata\t\"fuse\"\n}\n";}
   auto s1=&entities[25],s2=&entities[26];for(auto s:{s1,s2}){*s={};store(s,0,0);store(s,4,400+index(s));store(ev(s),0,intern("func_button"));allocate(s,0x400);store<unsigned char>(pd(s),0x180,1);
@@ -283,7 +288,7 @@ int main(int argc,char** argv_){
   now(53.f);lines.clear();assert(!arrival_touch_blocked(back,p1)&&logged("ARRIVAL player=1 left the exit he arrived in"));   // left and came back
   loadWait.armed=true;assert(arrival_touch_blocked(relay,p1));loadWait.armed=false;assert(!arrival_touch_blocked(relay,p1));   // any trigger waits for the load wait; a relay is no exit afterwards
   exitsArrivedIn.clear();arrivalGrace.clear();
-  carryDone.clear();for(auto x:{zone,relay,head,s1,door,fuse,back})store(x,0,1);}
+  carryDone.clear();for(auto x:{zone,relay,head,tape,s1,door,fuse,back})store(x,0,1);}
 
  // --- v0.10.3 (docs/V0103_RELEASE.md): a door that changes the map waits for every living player (sc_doorwait 1).
  {nextFree=40;qol2_map_changed();coop_map_changed();player(1,60,0);player(2,1500,0);now(60.f);
@@ -325,7 +330,7 @@ int main(int argc,char** argv_){
   for(int i:{20,30,31,32,33,34,35,36,37}){release(&entities[i]);store(&entities[i],0,1);}}
 
  std::puts("PASS v0.10 fixture: options, hardcore, scaling, dodge, ping, scare, run timer, black and white, outline, hunted, bosses");
- std::puts("PASS v0.10.2 fixture: co-op doors without the wait (sc_doorwait 0), ownerless touches, key inside a door, fuse sockets, phone for everyone, story facing, no teleports, arrival loop");
+ std::puts("PASS v0.10.2 fixture: co-op doors without the wait (sc_doorwait 0), ownerless touches, unblocking pickup copies, key inside a door, fuse sockets, phone for everyone, story facing, no teleports, arrival loop");
  std::puts("PASS v0.10.3 fixture: doors that change the map wait for every living player (co-op zones and plain doors, the ending door), sc_doorwait 0 as v0.10.2");
  return 0;
 }

@@ -28,10 +28,11 @@ test('the door wait is a host option, on by default, in the Create Server window
  assert.ok(V09_DEFAULTS['storycoop_server.cfg'].includes('115a40b5513abd457ce4f40c3e31d412f00dabf600dfe18cd619630c7d203bc8'));
 });
 
-test('no per-player pickup copies are left in the adapter',()=>{
- const src=['coop-runtime.hpp','qol2-runtime.hpp','adapter.cpp','state-runtime.hpp'].map(f=>read('native/rc4/'+f)).join('\n');
- for(const gone of ['item_copies_frame','pickup_hidden','pickup_group','pickup_unblocking','per_player_pickup','pickupCopies'])assert.ok(!src.includes(gone),gone);
- assert.ok(src.includes('pickup_extras_frame();team_cards_frame();'));
+test("the map's copies are removed before the copies per player are made, and never copied",()=>{
+ const coop=read('native/rc4/coop-runtime.hpp');
+ assert.ok(read('native/rc4/adapter.cpp').includes('pickup_extras_frame();item_copies_frame();team_cards_frame();'));
+ assert.ok(coop.includes('!per_player_pickup(r)||pickupExtras.count(i))continue;'));
+ assert.match(coop,/"mobile_battery\.txt"/);   // the battery stays one per player (Katz 2026-11-09)
 });
 
 test('the served maps: every appended pickup is a copy the adapter removes, and every door that changes the map is covered',{skip:!(process.env.COF_SERVED_MAPS&&process.env.COF_ORIGINAL_MAPS)},()=>{

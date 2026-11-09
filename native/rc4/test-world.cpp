@@ -448,30 +448,46 @@ int main(int argc,char** argv){
   carryDone.clear();auto w=send();assert(w[5]=="byte 1");   // inventory not back yet
   carryDone[&entities[1]]=serial(&entities[1]);w=send();assert(w[5]=="byte 0");
   ++restoreQuiet;w=send();assert(w[5]=="byte 1");--restoreQuiet;carryDone.clear();inventoryMessage=0;}
- // --- v0.10.3: one of each pickup. The map's copies (appended after the original map's entities) go when the map
- // starts; nothing is made per player; the phone battery is a team card that each phone uses on its own.
- {assert(personal_card("inventoryitems/cassettetape.txt")&&personal_card("inventoryitems/Videotape.txt")&&!personal_card("inventoryitems/fuse.txt")&&!personal_card("inventoryitems/mobile_battery.txt"));
-  assert(team_card("inventoryitems/fuse.txt")&&team_card("inventoryitems/mobile_battery.txt")&&!team_card("inventoryitems/cassettetape.txt")&&!team_card("inventoryitems/weapons/weapon_m16.txt"));
-  assert(kept_card("inventoryitems/mobile_battery.txt")&&!kept_card("inventoryitems/fuse.txt"));
-  assert(first_copy("s4_apartment1_e3")==967&&first_copy("s4_start")==1024&&first_copy("s4_asylumb_e1")==66&&first_copy("s4_start2")==-1&&first_copy("cof_campaign_story4")==-1);
-  const int mapOfPickups=load<int>(globals,0x0c);store(globals,0x0c,intern("s4_asylumb_e0"));   // the map's copies from entity 66 on
+ // --- v0.8: a pickup for each player slot, shown to and taken by that player alone.
+ {assert(personal_card("inventoryitems/cassettetape.txt")&&personal_card("inventoryitems/Videotape.txt")&&!personal_card("inventoryitems/fuse.txt"));
+  assert(team_card("inventoryitems/fuse.txt")&&!team_card("inventoryitems/cassettetape.txt")&&!team_card("inventoryitems/weapons/weapon_m16.txt"));
   store(globalData.data(),0x90,2);store(globalData.data(),0x94,200);nextFree=20;player(1);player(2);
   world_spawned(&entities[0],true,0);
-  auto pickup=[&](int i,const char* type,float x,int id,const char* angles){make(i,type,"",id);place(&entities[i],x,0,36);store(ev(&entities[i]),0x10c,1);char o[40]{};std::snprintf(o,sizeof(o),"%.0f 0 36",x);
-   KeyValue a{const_cast<char*>(type),const_cast<char*>("origin"),o,0};pickup_keyvalue(&entities[i],&a);KeyValue c{const_cast<char*>(type),const_cast<char*>("angles"),const_cast<char*>(angles),0};pickup_keyvalue(&entities[i],&c);
-   KeyValue b{const_cast<char*>(type),const_cast<char*>("classname"),const_cast<char*>(type),0};pickup_keyvalue(&entities[i],&b);world_spawned(&entities[i],false,0,std::string(type)+"#k");};
-  pickup(3,"weapon_syringe",100,801,"0 0 0");pickup(4,"ammo_glock",200,802,"0 0 0");
-  assert(spawnRecords[1].keys.size()==2&&spawnRecords[1].keys[0].first=="origin");   // classname comes from the entity itself
-  spawnRecords.resize(66);   // the original map's entities end here
-  pickup(5,"weapon_syringe",114,803,"0 0 0");pickup(6,"ammo_glock",214,804,"0 0 0");pickup(7,"weapon_syringe",300,805,"0 90 0");
-  auto gone=[&](int i){return (load<unsigned>(ev(&entities[i]),0x1a8)&FlKillMe)!=0;};
-  pickupExtrasDone=false;lines.clear();pickup_extras_frame();
-  assert(!gone(3)&&!gone(4)&&gone(5)&&gone(6)&&!gone(7)&&logged({"ITEMS 2 extra pickup copies removed: one of each pickup"}));   // 7 is not a copy of anything
-  lines.clear();pickup_extras_frame();assert(lines.empty());   // once a map
-  // No pickup belongs to a player any more: either player takes either one.
-  assert(!pickup_blocked(&entities[3],&entities[1])&&!pickup_blocked(&entities[3],&entities[2]));
-  store(globals,0x0c,intern("s4_start2"));pickupExtrasDone=false;lines.clear();pickup_extras_frame();assert(lines.empty());   // a map without copies
-  store(globals,0x0c,mapOfPickups);for(int i=3;i<=7;++i){entities[i]={};store(&entities[i],0,1);}spawnRecords.clear();pickupExtrasDone=false;
+  auto pickup=[&](int i,const char* type,float x,int id){make(i,type,"",id);place(&entities[i],x,0,36);store(ev(&entities[i]),0x10c,1);char o[40]{};std::snprintf(o,sizeof(o),"%.0f 0 36",x);KeyValue a{const_cast<char*>(type),const_cast<char*>("origin"),o,0};pickup_keyvalue(&entities[i],&a);KeyValue b{const_cast<char*>(type),const_cast<char*>("classname"),const_cast<char*>(type),0};pickup_keyvalue(&entities[i],&b);world_spawned(&entities[i],false,0,std::string(type)+"#k");};
+  pickup(3,"ammo_glock",100,801);pickup(4,"weapon_mobile",200,802);
+  assert(spawnRecords[1].keys.size()==1&&spawnRecords[1].keys[0].first=="origin");   // classname comes from the entity itself
+  itemCopiesDone=false;item_copies_frame();
+  auto copy=pickupCopies.at(1).e[1];assert(pickupCopies.at(1).e[0]==&entities[3]&&copy&&copy!=&entities[3]&&!pickupCopies.count(2));   // the phone stays one
+  assert(helpers[copy]["origin"]=="100 0 36");
+  const int on=index(copy);
+  assert(pickup_hidden(3,&entities[3],&entities[2])&&!pickup_hidden(3,&entities[3],&entities[1]));
+  assert(pickup_hidden(on,copy,&entities[1])&&!pickup_hidden(on,copy,&entities[2])&&!pickup_hidden(4,&entities[4],&entities[1]));
+  assert(pickup_blocked(&entities[3],&entities[2])&&!pickup_blocked(&entities[3],&entities[1])&&pickup_blocked(copy,&entities[1])&&!pickup_blocked(copy,&entities[2]));
+  // Slot 2 takes his: gone for him alone, and the next visit makes only slot 1's.
+  store(ev(copy),0x10c,0);store(ev(copy),0x118,0x80u);std::map<std::string,unsigned> masks;pickup_masks(masks);assert(masks.at("ammo_glock#k")==2u);
+  mapStates[state_source(map_name())].pickups=masks;
+  store(ev(copy),0x118,0u);store(copy,0,1);   // a new visit: the map again, the copy gone
+  nextFree=20;itemCopiesDone=false;item_copies_frame();assert(pickupCopies.at(1).e[0]==&entities[3]&&!pickupCopies.at(1).e[1]&&pickup_hidden(3,&entities[3],&entities[2]));
+  // Slot 1 took it on an earlier visit too: nothing of it is left.
+  mapStates[state_source(map_name())].pickups["ammo_glock#k"]=3u;nextFree=20;itemCopiesDone=false;item_copies_frame();assert(!pickupCopies.at(1).e[0]&&!pickupCopies.at(1).e[1]&&(load<unsigned>(ev(&entities[3]),0x1a8)&FlKillMe));
+ // --- v0.10.3: the map's own copies (appended after the original map's entities) go first, before the copies per player,
+ // and get none; every other pickup, appended or not, still gets one per player slot.
+  {const int mapOfPickups=load<int>(globals,0x0c);store(globals,0x0c,intern("s4_asylumb_e0"));   // the map's copies from entity 66 on
+   assert(first_copy("s4_apartment1_e3")==967&&first_copy("s4_start")==1024&&first_copy("s4_asylumb_e1")==66&&first_copy("s4_start2")==-1&&first_copy("cof_campaign_story4")==-1);
+   for(int i=3;i<=7;++i){entities[i]={};store(&entities[i],0,1);}mapStates.clear();nextFree=20;world_spawned(&entities[0],true,0);
+   auto placed=[&](int i,const char* type,float x,int id,const char* angles){make(i,type,"",id);place(&entities[i],x,0,36);store(ev(&entities[i]),0x10c,1);char o[40]{};std::snprintf(o,sizeof(o),"%.0f 0 36",x);
+    KeyValue a{const_cast<char*>(type),const_cast<char*>("origin"),o,0};pickup_keyvalue(&entities[i],&a);KeyValue c{const_cast<char*>(type),const_cast<char*>("angles"),const_cast<char*>(angles),0};pickup_keyvalue(&entities[i],&c);world_spawned(&entities[i],false,0,std::string(type)+"#x"+std::to_string(i));};
+   placed(3,"weapon_syringe",100,811,"0 0 0");placed(4,"ammo_glock",200,812,"0 0 0");
+   spawnRecords.resize(66);   // the original map's entities end here
+   placed(5,"weapon_syringe",114,813,"0 0 0");placed(6,"ammo_glock",214,814,"0 0 0");placed(7,"weapon_syringe",300,815,"0 90 0");
+   auto gone=[&](int i){return (load<unsigned>(ev(&entities[i]),0x1a8)&FlKillMe)!=0;};
+   pickupExtrasDone=false;lines.clear();pickup_extras_frame();itemCopiesDone=false;item_copies_frame();
+   assert(!gone(3)&&!gone(4)&&gone(5)&&gone(6)&&!gone(7)&&logged({"ITEMS 2 extra pickup copies of the map removed: one of each pickup for each player"}));   // 7 is not a copy of anything
+   assert(pickupExtras.count(66)&&pickupExtras.count(67)&&!pickupCopies.count(66)&&!pickupCopies.count(67));   // removed copies are never copied
+   assert(pickupCopies.count(1)&&pickupCopies.at(1).e[1]&&pickupCopies.count(2)&&pickupCopies.count(68)&&pickup_hidden(3,&entities[3],&entities[2]));   // each player his own
+   lines.clear();pickup_extras_frame();assert(lines.empty());   // once a map
+   store(globals,0x0c,intern("s4_start2"));pickupExtrasDone=false;lines.clear();pickup_extras_frame();assert(lines.empty());   // a map without copies
+   store(globals,0x0c,mapOfPickups);pickupExtrasDone=false;pickupExtras.clear();}
   mapStates.clear();store(globalData.data(),0x90,2);store(globalData.data(),0x94,32);
  // --- v0.8: a story teleport takes the others along; a door's and a passage's do not.
  {const int mapBefore=load<int>(globals,0x0c);store(globals,0x0c,intern("s4_subway2st1_e2"));player(1);player(2);nextFree=20;teleports=0;lines.clear();lastPlaces.clear();cameraLeases.clear();store(globalData.data(),0,200.f);

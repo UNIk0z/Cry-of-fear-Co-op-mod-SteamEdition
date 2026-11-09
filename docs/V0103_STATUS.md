@@ -1,14 +1,14 @@
 # v0.10.3 status (2026-11-08, Claude)
 
-Katz's requests of 2026-11-08 (through the project chat): one item per pickup spawn ("4 syringes in each syringe spawn ... separate for each player"), and doors that change the map wait for the team again, as a host option on by default, on every door that needs it. Built from main c15d082 (v0.10.2). Nothing has run in the game.
+Katz's requests of 2026-11-08 (through the project chat): one item per pickup spawn ("4 syringes in each syringe spawn ... separate for each player"; 2026-11-09: one copy for each player, taken on his own screen, as in Serious Sam), and doors that change the map wait for the team again, as a host option on by default, on every door that needs it. Built from main c15d082 (v0.10.2); rebuilt on 2026-11-09 with the copies per player kept (the first build, which shared every pickup and made the battery a team item, is in outputs/superseded/v0103-a). Nothing has run in the game.
 
 ## Where it is
 
 | # | Change | Code | Fixture |
 |---|---|---|---|
-| 1 | The maps' pickup copies are removed when a story map starts | coop-runtime `FirstCopies`, `first_copy`, `same_pickup`, `pickup_extras_frame` (start_frame) | test-world v0.10.3 block |
-| 2 | No per-player copies (v0.8 `item_copies_frame`, `pickup_hidden`, owners, v0.10.2 `pickup_group`/`pickup_unblocking` removed); the map state no longer writes per-slot masks (the field stays for old saves) | coop-runtime, adapter `full_pack`, qol2, state-runtime | test-world, test-mapstate (old masks still decode) |
-| 3 | The phone battery is a team card that each player keeps when another uses his | coop-runtime `personal_card`, `kept_card`, `team_cards_frame` | test-world |
+| 1 | The maps' pickup copies are removed when a story map starts, before the copies per player are made, and are never copied | coop-runtime `FirstCopies`, `first_copy`, `same_pickup`, `pickup_extras_frame`, `pickupExtras` (start_frame: `pickup_extras_frame();item_copies_frame();`) | test-world v0.10.3 block |
+| 2 | Every other pickup keeps one copy per player slot (v0.8 `item_copies_frame`, unchanged), the phone battery included | coop-runtime | test-world v0.8 block |
+| 3 | (first build only, superseded: copies per player removed and the battery a team card) | - | - |
 | 4 | Host option `sc_doorwait` (1 by default): Create Server window (sc_setup.scr), storycoop_server.cfg; installers replace an old sc_setup.scr without it once | qol2 `doorwaitCvar`, `host_options_frame`; install-story-package.ps1, coop-linux.py | test-qol2, tests/v0103.test.mjs |
 | 5 | Game co-op doors: `door_ready_after_think` opens their zone only with sc_doorwait 0 or one living player | qol2 | test-qol2 v0.10.2 and v0.10.3 blocks |
 | 6 | Plain doors into a level change wait: E (PlayerUse trace and FindEntityInSphere) does not find them while a living player is outside the door's zone box; the user gets the game's message | qol2 `door_wait_players`, `door_leads_out`, `door_everyone_at`, `door_wait_blocked`, `door_wait_trace`; adapter `find_in_sphere` | test-qol2 v0.10.3 block |
@@ -20,7 +20,6 @@ Decomp and pinned-binary facts used:
 - CInterDoor::Use and EndSequence (CoF_InterDoor.cpp 224, 399): lock, disabled, useunlock, owner, next use; the exit origin + 37; "endingcheck" picks ending_exit1..5.
 - CInterDoor save table in the pinned hl.dll at 10212400: m_bDisabled +0x180, m_sLockedBy +0x190, m_sUseUnlock +0x1A0, m_fNextUse +0x1A4.
 - CBasePlayer::PlayerUse (player.cpp 3468): the 64-unit trace first, then FindEntityInSphere.
-- CPhoneBattery (items.cpp 474): an inventory card, inventoryitems/mobile_battery.txt.
 - Every classname on the served maps is exported by the pinned hl.dll, so the adapter's spawn list position is the BSP entity index.
 
 ## Map audit (scripts/audit-v0103.mjs; tests/v0103.test.mjs with COF_SERVED_MAPS and COF_ORIGINAL_MAPS)
@@ -110,17 +109,16 @@ Pickup copies removed per map (all variants together): apartment1 104, apartment
 
 ## Tests
 
-- Native: 18 suites PASS, adapter claude-s48-native-003 (SHA256 3bef00b65156d2e0f51d4f972861fc73bc372ecb5ef3caa2fb01433a59b26387).
+- Native: 18 suites PASS, adapter claude-s49-native-001 (SHA256 5a74702dd471ac41946e0dee57661202a748d0dbac5e4aa6ea73cf948aefc5ab).
 - Node: 108 pass, 0 fail, 29 skipped (COF_SERVED_MAPS, COF_ORIGINAL_MAPS and the older map builds set; COF_V04_MAPS must stay unset, it is the v0.4 build).
 
 ## Not verified
 
 - Nothing has run in the game. The door wait for plain doors depends on PlayerUse calling the engine's TraceLine and FindEntityInSphere through the adapter during PreThink, as the v0.10.2 key-inside-a-door fix does (also not played yet).
-- The battery hand-out uses the game's cof_giveitems as the key items do (played since v0.8).
 
 ## Virus scan (Windows Defender, MpCmdRun -Scan -ScanType 3 -DisableRemediation)
 
-Signatures 1.463.191.0 (updated 2026-11-08 09:38), engine 1.1.26100.4, real-time protection on.
+Signatures 1.463.204.0 (updated 2026-11-09 02:33), engine 1.1.26100.4, real-time protection on.
 
 | File | Result |
 |---|---|
@@ -129,10 +127,10 @@ Signatures 1.463.191.0 (updated 2026-11-08 09:38), engine 1.1.26100.4, real-time
 | outputs/coop-v0103-player (folder) | no threats |
 | outputs/coop-v0103-linux (folder) | no threats |
 | outputs/v0103-candidate (folder) | no threats |
-| work/claude-s48-native-003/storycoop_rc4.dll (the shipped adapter) | no threats |
+| work/claude-s49-native-001/storycoop_rc4.dll (the shipped adapter) | no threats |
 
 A clean local scan does not guarantee that a tester's PC raises no machine-learning warning (docs/V0102_STATUS.md).
 
 ## Packages
 
-Windows `Cry of Fear Co-op v0.10.3.zip` (SHA256 `95a5d9c6...`), Linux `Cry of Fear Co-op v0.10.3 Linux.tar.gz` (`45523bac...`), catalog `6ecec127...`, commit `fdf3943`. Against v0.10.2 only the launcher, READ ME, sc_setup.scr, storycoop_server.cfg, the installer script, the adapter, release.json and known-builds.json differ. `setup-coop -CheckOnly` on Katz's game: "Found co-op v0.9. Updating it to v0.10.3", 248 files current, set aside cl_dlls\storycoop_rc4.dll and txtfiles\storycoop_hints.txt (the same plan as v0.10.2).
+Windows `Cry of Fear Co-op v0.10.3.zip` (SHA256 `3864f8bc...`), Linux `Cry of Fear Co-op v0.10.3 Linux.tar.gz` (`b5e0d06f...`), catalog `0c101a84...`, commit `db062cc`. Against v0.10.2 only the launcher, READ ME, sc_setup.scr, storycoop_server.cfg, the installer script, the adapter, release.json and known-builds.json differ. `setup-coop -CheckOnly` on Katz's game: "Found co-op v0.9. Updating it to v0.10.3", 248 files current, set aside cl_dlls\storycoop_rc4.dll and txtfiles\storycoop_hints.txt (the same plan as v0.10.2). The first build is in outputs/superseded/v0103-a.
