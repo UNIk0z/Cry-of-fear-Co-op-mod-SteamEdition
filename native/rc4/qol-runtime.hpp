@@ -331,6 +331,16 @@ void bag_poll(){
 // hud_update.cpp 45: the view is m_flFOV * cl_fovmultiplier; default_fov is turned off in CoF), so the
 // v0.8 zoom reset to 90 keeps each player's own FOV. Head bob: cl_bob, cl_bobup, cl_bobcycle (view.cpp).
 unsigned long long processStart=0;bool comfortDone=false;
+// v0.10.4: a comfort file from before v0.10.4 (kept by Install, or written by an older SETTINGS) has no key for
+// "sc_dropammo": Q gets it, unless config.cfg already binds Q to something else.
+std::string read_text(const std::filesystem::path& p){std::ifstream f(p,std::ios::binary);std::string s((std::istreambuf_iterator<char>(f)),std::istreambuf_iterator<char>());return s.size()>262144?std::string():s;}
+bool comfort_drop_key(const std::string& comfort,const std::string& config){
+ if(comfort.find("sc_dropammo")!=std::string::npos||!engine[39])return false;
+ std::string lower=config;std::transform(lower.begin(),lower.end(),lower.begin(),[](unsigned char c){return static_cast<char>(std::tolower(c));});
+ const auto at=lower.find("bind \"q\" \"");
+ if(at!=std::string::npos&&lower.compare(at+10,12,"sc_dropammo\"")!=0){session_log("[STORYCOOP_RC4] COMFORT no drop-ammo key: Q is taken in config.cfg (pick one in SETTINGS)\n");return false;}
+ eng<void(__cdecl*)(const char*)>(39)("bind \"q\" \"sc_dropammo\"\n");session_log("[STORYCOOP_RC4] COMFORT drop ammo bound to Q\n");return true;
+}
 void comfort_frame(){
  if(comfortDone||!engine[39])return;if(!processStart)processStart=GetTickCount64();if(GetTickCount64()-processStart<4000)return;comfortDone=true;
  // The HUD key's hud_draw 0 is saved in config.cfg if the game was closed with the HUD hidden.
@@ -338,6 +348,7 @@ void comfort_frame(){
  const auto dir=game_dir_path();std::error_code error;
  if(dir.empty()||!std::filesystem::is_regular_file(dir/L"storycoop_comfort.cfg",error)){session_log("[STORYCOOP_RC4] COMFORT storycoop_comfort.cfg not found; keys and view as they are\n");return;}
  eng<void(__cdecl*)(const char*)>(39)("exec storycoop_comfort.cfg\n");session_log("[STORYCOOP_RC4] COMFORT storycoop_comfort.cfg run (co-op keys, FOV, head bob)\n");
+ comfort_drop_key(read_text(dir/L"storycoop_comfort.cfg"),read_text(dir/L"config.cfg"));
 }
 // 11. For the launcher's rejoin offer: storycoop_session.txt says whether this game is a joiner.
 // "joining <ip:port>" (join box), "joined <ip:port>" (a host's server asked for sc_report while this

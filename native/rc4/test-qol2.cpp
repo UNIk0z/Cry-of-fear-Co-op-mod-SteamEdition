@@ -329,8 +329,27 @@ int main(int argc,char** argv_){
   useTracePhase=false;pickupActor=nullptr;store(ev(p1),0x184,0);
   for(int i:{20,30,31,32,33,34,35,36,37}){release(&entities[i]);store(&entities[i],0,1);}}
 
+ // --- v0.10.4 (docs/V0104_RELEASE.md): Q drops one box of the held gun's ammo for a teammate.
+ {nextFree=40;qol2_map_changed();coop_map_changed();player(1,0,0);player(2,200,0);now(70.f);store(globals,0x14,1.f);store(globals,0x94,200);
+  auto gun=&entities[30];*gun={};store(gun,0,0);store(gun,4,630);store(ev(gun),0,intern("weapon_glock"));allocate(gun,0x200);store(pd(gun),0x1dc,2);
+  store(pd(p1),0x252c,static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(pd(gun))));store(pd(p1),0x2548,40);
+  lines.clear();sent.clear();assert(qol2_client_command(p1,"sc_dropammo"));
+  auto box=&entities[40];assert(nextFree==41&&!std::strcmp(classname(box),"ammo_glock")&&helpers[box]["origin"]=="28.0 0.0 36.0"&&helpers[box]["angles"]=="0 0 0");
+  assert(load<int>(pd(p1),0x2548)==25&&logged("CLIENT1:You dropped 15 rounds.")&&logged("AMMO player=1 dropped 15 rounds (ammo_glock) at 28 0 36, 25 left"));
+  {const Sent* m=last_type(23);assert(m&&m->to==p2&&!m->texts.empty()&&m->texts.back()=="Katz dropped ammo for you");}
+  now(70.5f);qol2_client_command(p1,"sc_dropammo");assert(nextFree==41&&load<int>(pd(p1),0x2548)==25);   // once a second
+  now(72.f);qol2_client_command(p1,"sc_dropammo");assert(nextFree==42&&load<int>(pd(p1),0x2548)==10);
+  now(74.f);lines.clear();qol2_client_command(p1,"sc_dropammo");assert(nextFree==42&&load<int>(pd(p1),0x2548)==10&&logged("CLIENT1:Not enough spare ammo: a box is 15."));
+  store(pd(p1),0x2548,40);store(ev(gun),0,intern("weapon_dualweapon"));now(76.f);lines.clear();qol2_client_command(p1,"sc_dropammo");assert(nextFree==42&&logged("CLIENT1:Hold one gun to drop its ammo."));
+  store(ev(gun),0,intern("weapon_tmp"));now(78.f);lines.clear();qol2_client_command(p1,"sc_dropammo");assert(nextFree==42&&logged("CLIENT1:This ammo can't be dropped on this map."));   // no TMP box here: its model is not precached
+  store(ev(gun),0,intern("weapon_glock"));store(globals,0x14,0.f);now(80.f);lines.clear();qol2_client_command(p1,"sc_dropammo");assert(nextFree==42&&logged("CLIENT1:This ammo can't be dropped on this map."));store(globals,0x14,1.f);
+  store(ev(p2),0x174,2);store(ev(p2),0x164,0.f);store(p2,0,1);now(82.f);lines.clear();qol2_client_command(p1,"sc_dropammo");assert(nextFree==42&&logged("CLIENT1:Nobody to drop ammo for."));store(p2,0,0);
+  store(pd(p1),0x252c,0u);now(84.f);lines.clear();qol2_client_command(p1,"sc_dropammo");assert(logged("CLIENT1:Hold a gun to drop its ammo."));
+  store(globals,0x94,48);store(globals,0x14,0.f);for(int i:{30,40,41}){release(&entities[i]);store(&entities[i],0,1);}}
+
  std::puts("PASS v0.10 fixture: options, hardcore, scaling, dodge, ping, scare, run timer, black and white, outline, hunted, bosses");
  std::puts("PASS v0.10.2 fixture: co-op doors without the wait (sc_doorwait 0), ownerless touches, unblocking pickup copies, key inside a door, fuse sockets, phone for everyone, story facing, no teleports, arrival loop");
  std::puts("PASS v0.10.3 fixture: doors that change the map wait for every living player (co-op zones and plain doors, the ending door), sc_doorwait 0 as v0.10.2");
+ std::puts("PASS v0.10.4 fixture: Q drops one box of the held gun's ammo (from the reserve, in front, precached boxes only, once a second, not alone or dual wielding)");
  return 0;
 }

@@ -55,3 +55,11 @@ Nothing in v0.10 has run in the game yet. Close Cry of Fear, open "Cry of Fear C
 37. A plain door that changes the map, for example s4_college2 to s4_college1 (doorch1), s4_hamn3 to the college (doortc1) or s4_subway1st1 to the tunnel (lockedd1): the same wait (`DOORS player=1 waits at the door to ...: 1 of 2 living player(s) there`). A locked one still says it is locked until the key is used.
 38. Player 2 is downed far away: the host's door works without him. Alone (solo or the other player left): no door ever waits.
 39. The ending door of s4_village3 (endingcheck): it waits for both players too, then the ending map loads.
+
+## v0.10.4 (docs/V0104_RELEASE.md)
+
+40. Two players, the host holds the Glock with spare ammo and presses Q: a 9mm box lands in front of him, his spare ammo drops by 15 (the clip stays), he sees "You dropped 15 rounds." and player 2 sees "<host> dropped ammo for you". Player 2 takes it with E and gets 15 rounds (`AMMO player=1 dropped 15 rounds (ammo_glock)`).
+41. Q again within a second: nothing. With less than one box of spare ammo: "Not enough spare ammo: a box is 15." Dual wielding: "Hold one gun to drop its ammo." Alone: "Nobody to drop ammo for."
+42. The shotgun, the M16 and the revolver each drop their own box (9, 20 and 5 rounds).
+43. SETTINGS in "Cry of Fear Co-op.exe" shows a sixth key, "Drop ammo key" (Q); changing it and saving moves the drop to that key.
+44. A player who kept his own storycoop_comfort.cfg from v0.10.3: Q still drops ammo after Install (`COMFORT drop ammo bound to Q` in his log), unless his config.cfg uses Q for something else.

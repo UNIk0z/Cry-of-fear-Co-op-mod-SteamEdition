@@ -472,11 +472,68 @@ void door_wait_trace(const float* a,const float* b,Edict* player,void* tr){
  Edict* hit=load<Edict*>(tr,0x30);if(hit&&door_wait_blocked(hit,player,true))store(tr,0x30,eng<Edict*(__cdecl*)(int)>(72)(0));
 }
 
+// --- v0.10.4: drop ammo for a teammate (Katz 2026-11-09) ------------------------------------------------
+// "make it so that on a certain keybind players can drop ammo to their teammates". "sc_dropammo" (Q by
+// default, storycoop_comfort.cfg / SETTINGS): one box of the held gun's ammo lands in front of the player. It is
+// the game's own ammo box (E takes it, CBasePlayerAmmo::DefaultUse, weapons.cpp 1974; no owner, so any player
+// can), and its rounds leave the dropper's reserve: m_rgAmmo (player +0x2540) at the weapon's
+// m_iPrimaryAmmoType (+0x1DC), as the checkpoint code reads them. A box holds what its AddAmmo gives in the
+// single-player branch every co-op game uses since v0.8 (decomp CoF_Glock.cpp 954, CoF_P345.cpp 806,
+// CoF_Shotgun.cpp 843, CoF_Rifle.cpp 949, CoF_Revolver.cpp 888, CoF_M16.cpp 920, CoF_VP70.cpp 739,
+// CoF_G43.cpp 840, CoF_TMP.cpp 716, CoF_MP5_guess.cpp 695). A box's model must already be precached: W_Precache
+// (weapons.cpp 455) precaches eight of them under multiplayer rules (gpGlobals->deathmatch); the TMP and MP5
+// boxes only when the map has one. Once a second; not while down, in a scene, during the load wait or alone;
+// never close to the edict limit. A dropped box is not kept across a map change or a save.
+struct AmmoBox {const char* weapon;const char* box;int rounds;bool everyMap;};
+const AmmoBox AmmoBoxes[]={{"weapon_glock","ammo_glock",15,true},{"weapon_p345","ammo_p345",8,true},{"weapon_shotgun","ammo_shells",9,true},
+ {"weapon_rifle","ammo_rifle",5,true},{"weapon_revolver","ammo_revolver",5,true},{"weapon_m16","ammo_m16",20,true},{"weapon_vp70","ammo_vp70",18,true},
+ {"weapon_g43","ammo_g43",10,true},{"weapon_tmp","ammo_tmp",30,false},{"weapon_uzi","ammo_tmp",30,false},{"weapon_mp5","ammo_mp5",30,false}};
+bool ammo_box_ready(const AmmoBox& b){
+ if(b.everyMap&&globals&&load<float>(globals,0x14)!=0.f)return true;
+ return std::any_of(spawnRecords.begin(),spawnRecords.end(),[&](const SpawnRecord& r){return r.type==b.box;});
+}
+std::unordered_map<Edict*,float> dropUsed;int dropLines=0;
+bool drop_ammo_command(Edict* e){
+ auto v=vars(e);if(!scoped()||!globals||!v||!engine[23]||!engine[31]||!engine[67]||!engine[72]||!engine[80]||!original[1]||!original[6])return true;
+ auto say=[&](const char* t){eng<void(__cdecl*)(Edict*,int,const char*)>(80)(e,1,t);};
+ const float now=load<float>(globals,0);auto& used=dropUsed[e];if(used>now)used=0;if(used&&now-used<1.f)return true;
+ if(!view_alive(e)||in_scene(e)||loadWait.armed)return true;
+ std::vector<Edict*> others;for(auto o:connected_players())if(o!=e&&client_ready(o))others.push_back(o);
+ if(others.empty()){say("Nobody to drop ammo for.");return true;}
+ void* p=nullptr;std::size_t n=0;if(!player_memory(e,p,n))return true;
+ Edict* held=nullptr;void* weapon=nullptr;const auto bits=load<std::uint32_t>(p,0x252c);
+ if(!bits||!item_object(bits,held,weapon)){say("Hold a gun to drop its ammo.");return true;}
+ if(!std::strcmp(classname(held),"weapon_dualweapon")){say("Hold one gun to drop its ammo.");return true;}
+ const AmmoBox* box=nullptr;for(const auto& b:AmmoBoxes)if(!std::strcmp(classname(held),b.weapon))box=&b;
+ if(!box){say("Hold a gun to drop its ammo.");return true;}
+ const int index=load<int>(weapon,0x1dc);if(index<0||index>=32)return true;const int spare=load<int>(p,0x2540+index*4);
+ if(spare<box->rounds){char t[80]{};std::snprintf(t,sizeof(t),"Not enough spare ammo: a box is %d.",box->rounds);say(t);return true;}
+ if(!ammo_box_ready(*box)){say("This ammo can't be dropped on this map.");return true;}
+ const int maxEdicts=load<int>(globals,0x94);int live_=0;for(int i=0;i<maxEdicts;++i)if(live(eng<Edict*(__cdecl*)(int)>(72)(i)))++live_;
+ if(live_>=maxEdicts-96){say("Too much on this map to drop ammo.");return true;}
+ used=now;
+ // In front of him at waist height, short of any wall (a TOSS box falls to the floor).
+ const float yaw=load<float>(v,0x78)*0.01745329f;const std::array<float,3> from{load<float>(v,8),load<float>(v,12),load<float>(v,16)},to{from[0]+std::cos(yaw)*40.f,from[1]+std::sin(yaw)*40.f,from[2]};
+ Trace t{};eng<void(__cdecl*)(const float*,const float*,int,Edict*,Trace*)>(31)(from.data(),to.data(),1,e,&t);
+ const float reach=(std::max)(0.f,40.f*t.fraction-12.f);const std::array<float,3> at{from[0]+std::cos(yaw)*reach,from[1]+std::sin(yaw)*reach,from[2]};
+ Edict* c=eng<Edict*(__cdecl*)(int)>(23)(eng<int(__cdecl*)(const char*)>(67)(box->box));if(!live(c)){say("Could not drop ammo.");return true;}
+ char origin[64]{},angles[40]{};std::snprintf(origin,sizeof(origin),"%.1f %.1f %.1f",at[0],at[1],at[2]);std::snprintf(angles,sizeof(angles),"0 %.0f 0",load<float>(v,0x78));
+ for(const auto& [k,value]:{std::pair<const char*,const char*>{"origin",origin},{"angles",angles}}){KeyValue data{const_cast<char*>(box->box),const_cast<char*>(k),const_cast<char*>(value),0};native<void(__cdecl*)(Edict*,KeyValue*)>(6)(c,&data);}
+ if(native<int(__cdecl*)(Edict*)>(1)(c)!=0){if(live(c)){assist_unlink(c);eng<void(__cdecl*)(Edict*)>(22)(c);}say("Could not drop ammo.");return true;}
+ store(p,0x2540+index*4,spare-box->rounds);
+ char t1[64]{};std::snprintf(t1,sizeof(t1),"You dropped %d rounds.",box->rounds);say(t1);
+ const int slot=eng<int(__cdecl*)(Edict*)>(71)(e);const auto col=player_colour(slot);const unsigned char colour[4]={col[0],col[1],col[2],255};const std::string name=player_name(e);
+ for(auto o:others){if(in_scene(o))continue;char t2[96]{};std::snprintf(t2,sizeof(t2),"%s dropped ammo for you",name.c_str());hud_text(o,3,-1.f,0.32f,colour,2.f,t2,0.f);}
+ if(dropLines<40){++dropLines;char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] AMMO player=%d dropped %d rounds (%s) at %.0f %.0f %.0f, %d left\n",slot,box->rounds,box->box,at[0],at[1],at[2],spare-box->rounds);log(line);}
+ return true;
+}
+
 // --- Wiring ----------------------------------------------------------------------------
 bool qol2_client_command(Edict* e,const char* command){
  if(!command)return false;
  if(!std::strcmp(command,"sc_ping"))return ping_command(e);
  if(!std::strcmp(command,"sc_scare"))return scare_command(e);
+ if(!std::strcmp(command,"sc_dropammo"))return drop_ammo_command(e);   // v0.10.4
  return false;
 }
 void qol2_after_command(Edict* e,const char* command){if(command&&!std::strcmp(command,"dodgetoggle"))dodge_noted(e);}
@@ -484,7 +541,7 @@ void qol2_world_spawned(){if(!scoped())return;ping_precache();hunt_precache();}
 void qol2_frame(){host_options_frame();scale_frame();run_timer_frame();hunt_frame();phone_frame();}
 void qol2_player_frame(Edict* e){if(!live(e)||std::strcmp(classname(e),"player"))return;norespawn_frame(e);if(!scoped())return;dodge_frame(e);catch_up_frame(e);noir_frame(e);}
 void qol2_map_changed(){pingSprite=0;scaledMonsters.clear();scaleBarTargets.clear();scaleBarsRead=false;scaleNext=0;scaleLogged=-1;dodgeApplied.clear();noirSent.clear();pingUsed.clear();scareUsed.clear();hunt=Hunt{};hostOptions.next=-1;runTimer.last=-1;runTimer.splitDue=-1;runTimer.next=0;
- doorWaitLogged=false;doorsOut.clear();doorWaitShown.clear();doorWaitLines=0;phoneSeen.clear();phoneNext=0;cardLockNames.clear();rs_guard(true);}
+ doorWaitLogged=false;dropUsed.clear();dropLines=0;doorsOut.clear();doorWaitShown.clear();doorWaitLines=0;phoneSeen.clear();phoneNext=0;cardLockNames.clear();rs_guard(true);}
 // v0.10.1 (review): what is kept per player slot goes with the player. netTuned (story-runtime.hpp) asks each
 // slot once per map for its tuning and sc_report: a player who rejoined the same slot on the same map (the
 // crash-rejoin offer) got neither, so his model, language, colour and black and white waited for the next map,

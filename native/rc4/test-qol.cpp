@@ -219,8 +219,12 @@ int main(int argc,char** argv_){
  // --- 8. Comfort settings: once, 4 s after start, and a HUD left hidden comes back.
  serverCommands.clear();processStart=GetTickCount64();comfort_frame();assert(serverCommands.empty()&&!comfortDone);
  processStart=GetTickCount64()-5000;cvars["hud_draw"]=0.f;comfort_frame();assert(comfortDone&&cvars["hud_draw"]==1.f&&serverCommands.empty());   // no file yet: nothing run
- write(dir/"storycoop_comfort.cfg","bind \"k\" \"sc_unstuck\"\n");comfortDone=false;comfort_frame();assert(serverCommands==std::vector<std::string>{"exec storycoop_comfort.cfg\n"});
- comfort_frame();assert(serverCommands.size()==1);
+ write(dir/"storycoop_comfort.cfg","bind \"k\" \"sc_unstuck\"\n");comfortDone=false;comfort_frame();assert((serverCommands==std::vector<std::string>{"exec storycoop_comfort.cfg\n","bind \"q\" \"sc_dropammo\"\n"}));
+ comfort_frame();assert(serverCommands.size()==2);
+ // v0.10.4: a comfort file without the drop key gets Q, unless config.cfg binds Q to something else.
+ serverCommands.clear();assert(!comfort_drop_key("bind \"q\" \"sc_dropammo\"\n","")&&!comfort_drop_key("bind \"l\" \"sc_dropammo\"\n","")&&serverCommands.empty());
+ assert(!comfort_drop_key("bind \"j\" \"sc_scare\"\n","bind \"Q\" \"+lean\"\n")&&serverCommands.empty());
+ assert(comfort_drop_key("bind \"j\" \"sc_scare\"\n","bind \"q\" \"sc_dropammo\"\n")&&serverCommands.back()=="bind \"q\" \"sc_dropammo\"\n");
  // --- 11. The session file the launcher reads.
  session_join_started("1.2.3.4:27015");assert(read(dir/"storycoop_session.txt")=="joining 1.2.3.4:27015\n");
  localServerActive=false;session_joined_report();assert(read(dir/"storycoop_session.txt")=="joined 1.2.3.4:27015\n");
