@@ -734,6 +734,33 @@ def run(game, dry=False):
                     say('Player model added: %s' % stem)
                 except OSError as e:
                     say('Player model %s could not be copied: %s' % (stem, e))
+    # v0.10.5 (hand skins): each handskins/<name>/ folder here with any of sleeve.tga, fingers.tga and
+    # glove.tga goes to cryoffear/models/handskins/<name>/ (host-story-coop.ps1 does the same on Windows).
+    skins = os.path.join(os.path.dirname(HERE), 'handskins')
+    if os.path.isdir(skins):
+        for entry in sorted(os.listdir(skins)):
+            folder = os.path.join(skins, entry)
+            if not os.path.isdir(folder):
+                continue
+            skin = entry.lower()
+            if not re.fullmatch(r'[a-z0-9_-]{1,32}', skin):
+                say('Hand skin %s skipped: name it with a-z, 0-9, _ and - only' % entry)
+                continue
+            files = {f.lower(): f for f in os.listdir(folder)}
+            for part in ('sleeve', 'fingers', 'glove'):
+                if part + '.tga' not in files:
+                    continue
+                source_file = os.path.join(folder, files[part + '.tga'])
+                existing = find(game, 'models/handskins/%s/%s.tga' % (skin, part))
+                try:
+                    if os.path.isfile(existing) and open(existing, 'rb').read() == open(source_file, 'rb').read():
+                        continue
+                    target = existing if os.path.isfile(existing) else os.path.join(find(game, 'models'), 'handskins', skin, part + '.tga')
+                    os.makedirs(os.path.dirname(target), exist_ok=True)
+                    shutil.copyfile(source_file, target)
+                    say('Hand skin added: %s (%s)' % (skin, part))
+                except OSError as e:
+                    say('Hand skin %s (%s) could not be copied: %s' % (skin, part, e))
     choice = find(game, 'storycoop_model.txt')
     if os.path.isfile(choice):
         chosen = open(choice, encoding='latin-1').read().strip().lower()

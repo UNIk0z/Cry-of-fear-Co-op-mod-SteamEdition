@@ -11,7 +11,11 @@ sits at (194,162), 211 x 152; Next (157,320) and Done (238,320), 75 x 23; the
 red power button (478,447) closes it. The package ships only an XOR delta of each
 picture and Install rebuilds it from the player's own file.
 v0.10.5: the Hands page has its own pictures, sc_mbh<clothes state>.tga, titled
-"Hands", each showing the first-person arm in that costume's sleeve.
+"Hands", each showing the first-person arm in that costume's sleeve. sc_mbhuv.tga
+is a map of the same arm for the player's own hand skins (cryoffear/models/handskins,
+client-menu.hpp hands_skin_picture): in the preview frame each pixel's red and
+green are the texture's u and v (0-255), its blue the part (sleeve 1, fingers 2,
+gloves 3, times 64) plus the light (0-63); the rest is black.
 Needs Pillow (on the packaging PC only).
 """
 import importlib.util
@@ -209,6 +213,58 @@ def render(tris, textures, costume, size, project=front):
     return color.resize(size, Image.LANCZOS)
 
 
+def part_of(name):
+    """The game's own order (decomp gl_studiomodel.cpp): sleeve, fingers, glove."""
+    return 1 if 'sleeve' in name else 2 if 'fingers' in name else 3 if 'glove' in name else 0
+
+
+def render_uv(tris, textures, size, project):
+    """render()'s drawing as a map (part_of, u, v, light), sampled at the middle of each 3x3 block."""
+    pts = [project(x, y, z) for _tex, tri in tris for x, y, z, _s, _t in tri]
+    minx, maxx = min(p[0] for p in pts), max(p[0] for p in pts)
+    miny, maxy = min(p[1] for p in pts), max(p[1] for p in pts)
+    w, h = size[0] * 3, size[1] * 3
+    k = min((w - 12) / (maxx - minx), (h - 12) / (maxy - miny))
+    ox, oy = w / 2 - k * (minx + maxx) / 2, h / 2 - k * (miny + maxy) / 2
+    out = Image.new('RGB', size, (0, 0, 0))
+    px = out.load()
+    depth = [[-1e9] * size[0] for _ in range(size[1])]
+    for tex, tri in tris:
+        name, img = textures[tex]
+        part = part_of(name)
+        tw, th = img.size
+        v = [project(x, y, z) + (u, t) for x, y, z, u, t in tri]
+        ax, ay, az = v[0][0] * k + ox, v[0][1] * k + oy, v[0][2]
+        bx, by, bz = v[1][0] * k + ox, v[1][1] * k + oy, v[1][2]
+        cx, cy, cz = v[2][0] * k + ox, v[2][1] * k + oy, v[2][2]
+        area = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax)
+        if abs(area) < 1e-6:
+            continue
+        ux, uy, uz = v[1][0] - v[0][0], v[1][1] - v[0][1], v[1][2] - v[0][2]
+        wx, wy, wz = v[2][0] - v[0][0], v[2][1] - v[0][1], v[2][2] - v[0][2]
+        nx, ny, nz = uy * wz - uz * wy, uz * wx - ux * wz, ux * wy - uy * wx
+        length = math.sqrt(nx * nx + ny * ny + nz * nz) or 1
+        light = 0.62 + 0.38 * abs((nx * -0.3 + ny * -0.5 + nz * 0.8) / length)
+        for oy3 in range(max(0, int(min(ay, by, cy)) // 3), min(size[1] - 1, int(max(ay, by, cy)) // 3 + 1) + 1):
+            y = oy3 * 3 + 1
+            row = depth[oy3]
+            for ox3 in range(max(0, int(min(ax, bx, cx)) // 3), min(size[0] - 1, int(max(ax, bx, cx)) // 3 + 1) + 1):
+                x = ox3 * 3 + 1
+                l1 = ((bx - x) * (cy - y) - (by - y) * (cx - x)) / area
+                l2 = ((cx - x) * (ay - y) - (cy - y) * (ax - x)) / area
+                l3 = 1 - l1 - l2
+                if l1 < 0 or l2 < 0 or l3 < 0:
+                    continue
+                z = l1 * az + l2 * bz + l3 * cz
+                if z <= row[ox3]:
+                    continue
+                row[ox3] = z
+                u = (l1 * v[0][3] + l2 * v[1][3] + l3 * v[2][3]) % tw / tw
+                t = (l1 * v[0][4] + l2 * v[1][4] + l3 * v[2][4]) % th / th
+                px[ox3, oy3] = (min(255, int(u * 256)), min(255, int(t * 256)), part * 64 + round(light * 63) if part else 0)
+    return out
+
+
 def base_picture(source, title='Player Model'):
     header, img, tail = joinbox.read_tga(source)
     if img.size != (554, 480):
@@ -288,6 +344,12 @@ def hands(game, source, out, size):
         costume = {target: read_costume(path) for target in sleeves} if path else {}
         joinbox.write_tga(os.path.join(out, name + '.tga'), header, framed(picture, render(tris, textures, costume, size, arm_view)), tail)
         print('made', name)
+    # v0.10.5 (Katz: "there should be a folder for custom hand models too"): the map the client paints
+    # a player's own hand skin with, on sc_mbh0's arm, when the Hands page shows it.
+    uv = Image.new('RGB', picture.size, (0, 0, 0))
+    uv.paste(render_uv(tris, textures, size, arm_view), (BOX[0] + 2, BOX[1] + 2))
+    joinbox.write_tga(os.path.join(out, 'sc_mbhuv.tga'), header, uv, tail)
+    print('made sc_mbhuv')
 
 
 if __name__ == '__main__':

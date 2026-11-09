@@ -177,7 +177,9 @@ Every bug report needs the **log file**. That's how we can see what happened.
   for that crash that has not been tested yet. If the game crashes with RebuiltSimon or another
   add-on installed, move the `addons` folder out while playing co-op.
 - Choosing your hands (the Hands page after Player Model) did not change the first-person
-  hands in co-op. v0.10.5 has a fix that has not been tested yet.
+  hands in co-op. v0.10.5 has a fix that has not been tested yet. v0.10.5 also adds a
+  `handskins` folder for your own sleeve, fingers and glove pictures (see the note in the
+  folder); it has not been tested in a game yet either.
 
 ## Credits
 

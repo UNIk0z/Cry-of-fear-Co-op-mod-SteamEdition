@@ -61,6 +61,24 @@ if ($MenuOnly) {
             try { [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($target)); [IO.File]::Copy($file.FullName,$target); Write-Output "Player model added: $name" } catch { Write-Output "Player model $name could not be copied: $($_.Exception.Message)" }
         }
     }
+    # v0.10.5 (hand skins, Katz: "the folder should be called handskins"): each "handskins\<name>\" folder
+    # next to the exe with any of sleeve.tga, fingers.tga and glove.tga goes to cryoffear\models\handskins\<name>\,
+    # where the Hands page lists it (client-menu.hpp local_hand_skins). A changed picture is copied again.
+    $skinSource=Join-Path (Split-Path -Parent $PSScriptRoot) 'handskins'
+    if ([IO.Directory]::Exists($skinSource)) {
+        foreach ($folder in @(Get-ChildItem -LiteralPath $skinSource -Directory -ErrorAction SilentlyContinue)) {
+            $skin=$folder.Name.ToLowerInvariant()
+            if ($skin -cnotmatch '^[a-z0-9_-]{1,32}$') { Write-Output "Hand skin $($folder.Name) skipped: name it with a-z, 0-9, _ and - only"; continue }
+            foreach ($part in @('sleeve','fingers','glove')) {
+                $file=Join-Path $folder.FullName ($part+'.tga'); if (-not [IO.File]::Exists($file)) { continue }
+                $target=Join-Path $GameDirectory ('models\handskins\'+$skin+'\'+$part+'.tga')
+                try {
+                    if ([IO.File]::Exists($target) -and (Get-FileHash -LiteralPath $file).Hash -eq (Get-FileHash -LiteralPath $target).Hash) { continue }
+                    [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($target)); [IO.File]::Copy($file,$target,$true); Write-Output "Hand skin added: $skin ($part)"
+                } catch { Write-Output "Hand skin $skin ($part) could not be copied: $($_.Exception.Message)" }
+            }
+        }
+    }
     $modelChoice=Join-Path $GameDirectory 'storycoop_model.txt'
     if ([IO.File]::Exists($modelChoice)) { $chosen=([IO.File]::ReadAllText($modelChoice)).Trim().ToLowerInvariant(); if ($chosen -cmatch '^[a-z0-9_-]{1,32}$') { $launchArguments+=@('+setinfo','sc_model',$chosen) } }
 }

@@ -4,7 +4,7 @@
 // PowerShell scripts. Cry of Fear runs through Steam Proton, so the co-op
 // adapter is the same Windows DLL; coop-linux.py builds every file from the
 // player's own game files and checks it against release.json, like Windows.
-//   <OUT>/Cry of Fear Co-op Linux/  coop.sh, READ ME.txt, playermodels/ and files/
+//   <OUT>/Cry of Fear Co-op Linux/  coop.sh, READ ME.txt, playermodels/, handskins/ and files/
 // Packed as a .tar.gz, never a .zip: launchers before v0.8.1 take the first .zip
 // of a release as the Windows update (Katz 2026-11-01).
 // Usage: linux-package.mjs CANDIDATE_PACKAGE NEW_OUTPUT
@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {sha256} from './bsp.mjs';
-import {playerFiles} from './player-package.mjs';
+import {playerFiles,HAND_SKINS_NOTE} from './player-package.mjs';
 
 export const LINUX_FOLDER='Cry of Fear Co-op Linux';
 const linuxDir=path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))),'linux');
@@ -48,7 +48,9 @@ export function linuxReadMe(version){
   'PLAYER MODEL',
   '  "Player Model" in the co-op menu picks your model and, after Done, your',
   '  hands. Your own .mdl files go in the "playermodels" folder here; they are',
-  '  added the next time you run the mod.',
+  '  added the next time you run the mod. Your own hand skins (sleeve.tga,',
+  '  fingers.tga, glove.tga) go in a folder of their own in "handskins" here',
+  '  (see the note in it; new in v0.10.5, not played in a full game yet).',
   '',
   'SAVING, SKIPPING, CO-OP KEYS',
   '  Only the host saves (tape recorder). Press R in a cutscene to vote to skip.',
@@ -91,6 +93,8 @@ export function main(args){
  fs.writeFileSync(path.join(root,'coop.sh'),lf('coop.sh'),{flag:'wx'});fs.chmodSync(path.join(root,'coop.sh'),0o755);
  fs.writeFileSync(path.join(root,'READ ME.txt'),linuxReadMe(catalog.coopFixes.id),{flag:'wx'});
  fs.mkdirSync(path.join(root,'playermodels'));fs.writeFileSync(path.join(root,'playermodels','PUT PLAYER MODELS HERE.txt'),'Put your own player models (.mdl files made for the Cry of Fear player skeleton) in this folder,\nthen run the mod (bash coop.sh run). Each model is copied into the game once.\n',{flag:'wx'});
+ // v0.10.5: the player's own hand skins (coop-linux.py copies them to cryoffear/models/handskins).
+ fs.mkdirSync(path.join(root,'handskins'));fs.writeFileSync(path.join(root,'handskins','PUT HAND SKINS HERE.txt'),HAND_SKINS_NOTE.replace(/\\/g,'/'),{flag:'wx'});
  const summary={root,version:catalog.coopFixes.id,files:files.filter(([r])=>!r.endsWith('.ps1')).length};
  console.log(JSON.stringify(summary));return summary;
 }

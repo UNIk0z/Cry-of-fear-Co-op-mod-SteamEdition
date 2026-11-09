@@ -750,6 +750,7 @@ namespace CofCoop
                 int[] want = VersionParts(newerTag);
                 if (got == null || want == null || CompareVersions(got, want) != 0) throw new IOException("the downloaded ZIP holds a different version than " + newerTag);
                 CopyPlayerModels(Path.Combine(baseDir, "playermodels"), Path.Combine(root, "playermodels"));
+                CopyPlayerModels(Path.Combine(baseDir, "handskins"), Path.Combine(root, "handskins"));   // v0.10.5: the player's own hand skins come along too
                 updateRoot = root;
                 busy = false;
                 RunScript(Path.Combine(root, "files"), "setup-coop.ps1", "", "update", "Installing " + newerTag + "...");

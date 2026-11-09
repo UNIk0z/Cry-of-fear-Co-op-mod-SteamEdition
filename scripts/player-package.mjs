@@ -1,7 +1,7 @@
 // coop-fixes-012 (user request): the folder players get. The full candidate
 // package (rollbacks, source, reports, QA) stays the developer's; this copies
 // only what installing, hosting, joining and uninstalling need into
-//   <OUT>/Cry of Fear Co-op/  Cry of Fear Co-op.exe, READ ME.txt, playermodels/ and files/
+//   <OUT>/Cry of Fear Co-op/  Cry of Fear Co-op.exe, READ ME.txt, playermodels/, handskins/ and files/
 // and checks every copied file against the candidate's release.json.
 // Usage: player-package.mjs CANDIDATE_PACKAGE NEW_OUTPUT
 import fs from 'node:fs';
@@ -15,6 +15,14 @@ export const PLAYER_FOLDER='Cry of Fear Co-op';
 // package without it is refused.
 export const LAUNCHER_EXE='Cry of Fear Co-op.exe';
 const launcherBuild=path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))),'launcher','out',LAUNCHER_EXE);
+// v0.10.5 (Katz: "there should be a folder for custom hand models too", "the folder should be called handskins").
+export const HAND_SKINS_NOTE='Your own first-person hand skins. Make a folder here per skin, named a-z, 0-9, _ and - (for example\n'+
+ '"handskins\\red_jacket"), with any of these uncompressed 24-bit TGA pictures:\n'+
+ '  sleeve.tga   the sleeve\n  fingers.tga  the hand\n  glove.tga    the glove\n'+
+ 'Start from the game\'s own costume pictures (cryoffear\\models\\costumes, for example Camo\\Camo_Sleeve.tga)\n'+
+ 'and keep their size. The mod copies the folder into the game when it starts; the skin is then on the\n'+
+ 'Hands page of the Player Model box. Only you see your hands, so the others do not need the files.\n'+
+ 'New in v0.10.5 and not played in a full game yet.\n';
 export const PLAYER_SCRIPTS=['setup-coop.ps1','install-story-package.ps1','host-story-coop.ps1','join-coop.ps1','find-cof.ps1','update-coop.ps1'];
 export function readMe(version){
  return [
@@ -69,6 +77,15 @@ export function readMe(version){
   '  "playermodels" folder next to "Cry of Fear Co-op.exe" and start the mod again.',
   '  The others see your model when the host has it too (the host can put the',
   '  same file in their playermodels folder; joining players download it).',
+  '',
+  'HAND SKINS',
+  '  After Done, the Hands page picks your first-person hands. To add your own',
+  '  skin, make a folder in "handskins" next to "Cry of Fear Co-op.exe" (its name',
+  '  is the skin\'s name: a-z, 0-9, _ and -) with any of sleeve.tga, fingers.tga',
+  '  and glove.tga, uncompressed 24-bit TGA pictures like the game\'s own costume',
+  '  sleeves (cryoffear\\models\\costumes). Start the mod again. Only you see your',
+  '  hands, so the others do not need the files. New in v0.10.5 and not played',
+  '  in a full game yet.',
   '',
   'Run Co-op Mod uses your Steam name as your player name. Starting Cry of Fear',
   'the normal way shows the game\'s own menu; only Run Co-op Mod starts it with',
@@ -159,6 +176,8 @@ export function main(args){
  fs.writeFileSync(path.join(root,'READ ME.txt'),readMe(catalog.coopFixes.id),{flag:'wx'});
  // v0.7: custom player models go here (host-story-coop.ps1 copies them into the game).
  fs.mkdirSync(path.join(root,'playermodels'));fs.writeFileSync(path.join(root,'playermodels','PUT PLAYER MODELS HERE.txt'),'Put your own player models (.mdl files made for the Cry of Fear player skeleton) in this folder,\r\nthen click Run Co-op Mod. Each model shows up in the Player Model box of the co-op menu.\r\nUninstall leaves this folder alone.\r\n',{flag:'wx'});
+ // v0.10.5: the player's own hand skins (host-story-coop.ps1 copies them to cryoffear\models\handskins).
+ fs.mkdirSync(path.join(root,'handskins'));fs.writeFileSync(path.join(root,'handskins','PUT HAND SKINS HERE.txt'),HAND_SKINS_NOTE.replace(/\n/g,'\r\n'),{flag:'wx'});
  const summary={root,version:catalog.coopFixes.id,files:files.length,catalogSha256:sha256(fs.readFileSync(path.join(candidate,'release.json')))};
  console.log(JSON.stringify(summary));return summary;
 }

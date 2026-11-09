@@ -76,13 +76,21 @@ bool default_player_model(int named){
  if(!named)return true;const char* m=string_at(named);
  return m&&std::strlen(m)==7&&_strnicmp(m,"police",6)==0&&m[6]>='1'&&m[6]<='4';
 }
-struct ModelState{float next=0;int attempts=0;unsigned logged=0;std::string want,hands;int clothes=0;float clothesNext=0;};
+struct ModelState{float next=0;int attempts=0;unsigned logged=0;std::string want,hands;int clothes=0;float clothesNext=0;int skins=0;std::string skinSent;};
 // v0.8 (Katz's item 7; both logs of Playtest 3000: "Info string length exceeded" at every setinfo, host
 // "MODEL player=1 is simon" all session long): the player's userinfo is full, and the engine drops the
 // key on the way to refusing the new value, so a chosen model could vanish. Each game now says what it
 // wants as a client command: the server stuffs "sc_report" once per map (net_tune), that game's own adapter
 // runs it and answers "cmd sc_mdl <model> <hands>" (model_report_send, client-menu.hpp).
-struct ModelReport {std::string model,hands;};
+struct ModelReport {std::string model,hands;int skins=0;};
+// v0.10.5 (Katz: "there should be a folder for custom hand models too", "the folder should be called
+// handskins"): hands "hs_<name>" are the player's own skin, cryoffear/models/handskins/<name>/ with
+// sleeve.tga, fingers.tga and glove.tga (the arm textures' names, models/weapons/v_*.mdl). Word 6 of
+// the report says which of them that game has (1 sleeve, 2 fingers, 4 glove). The files are only on
+// that player's PC: the server sends their paths with the game's own CustomSlv/CustomFng/CustomGlv
+// (decomp hud_msg.cpp 1289-1336, what a map's cof_customiseplayermodels sends, effects.cpp 13500).
+constexpr const char* HandSkinParts[]={"sleeve","fingers","glove"};
+bool hands_skin_name(const std::string& h){return h.size()>3&&h.compare(0,3,"hs_")==0;}
 std::map<int,ModelReport> modelReports;
 // v0.9 (item 9): each joining game's own cof_subtitlelanguage, from the same report (qol-runtime.hpp).
 std::map<int,int> playerLanguage;bool checkpoint_host(Edict* e);
@@ -122,7 +130,7 @@ int world_models_simon(){
  return set;
 }
 void model_activate(){
- modelStates.clear();hostModels.clear();modelStrings.clear();simonModel=false;simonString=0;char dir[MAX_PATH]{};if(!engine[99])return;eng<void(__cdecl*)(char*)>(99)(dir);if(!dir[0]||!std::memchr(dir,0,MAX_PATH))return;
+ modelStates.clear();handsHudSerial.clear();handsMapArms.clear();hostModels.clear();modelStrings.clear();simonModel=false;simonString=0;char dir[MAX_PATH]{};if(!engine[99])return;eng<void(__cdecl*)(char*)>(99)(dir);if(!dir[0]||!std::memchr(dir,0,MAX_PATH))return;
  std::error_code error;simonModel=std::filesystem::is_regular_file(std::filesystem::path(dir)/L"models"/L"player"/L"simon"/L"simon.mdl",error);
  const int set=world_models_simon();
  if(set<0)log("[STORYCOOP_RC4] MODEL world object not recognized; players keep the map's models\n");
@@ -137,25 +145,56 @@ void model_line(ModelState& s,unsigned what,const char* format,int index,const c
 // v0.7: the wearer's own hands and the story's Simon in the outfit: the client's own
 // clothes state, as the game's wardrobe sets it (decomp player.cpp, gmsgClothes). Sent
 // again now and then, because the game sends its own state after a spawn.
+// v0.10.5: per player, InitHUD (a new map or a new connection) clears every custom arm texture on the
+// client (decomp multiplay_gamerules.cpp InitHUD); a map's own arms (cof_customiseplayermodels, sent
+// again at the first weapon deploy, weapons.cpp 1778) win over a player's skin until the next InitHUD.
+struct HandsWire {Edict* to=nullptr;bool custom=false;};HandsWire handsWire;
+std::map<int,unsigned> handsHudSerial;std::map<int,bool> handsMapArms;
+void hands_wire_begin(int dest,int type,Edict* e){
+ handsWire={};if(dest!=1||!live(e)||std::strcmp(classname(e),"player"))return;const int index=eng<int(__cdecl*)(Edict*)>(71)(e);if(index<1||index>32)return;
+ if(type>0&&(type==initHud||type==resetHud)){++handsHudSerial[index];if(type==initHud)handsMapArms[index]=false;return;}
+ handsWire.custom=type>0&&(type==customSleeveMessage||type==customFingersMessage||type==customGloveMessage);if(handsWire.custom)handsWire.to=e;
+}
+void hands_wire_string(const char* s){
+ if(!handsWire.custom||!handsWire.to||!s||std::strlen(s)<=2)return;const int index=eng<int(__cdecl*)(Edict*)>(71)(handsWire.to);
+ if(index>=1&&index<=32&&!handsMapArms[index]){handsMapArms[index]=true;char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MODEL player=%d has the map's own arms (%.64s); a hand skin waits for the next map\n",index,s);log(line);}
+}
+// The three paths, sent once per HUD reset or change (each message makes the client load the file again).
+void hands_skin_send(Edict* e,int index,ModelState& s){
+ const bool custom=hands_skin_name(s.hands)&&s.skins;
+ const std::string key=custom?s.hands+":"+std::to_string(s.skins)+":"+std::to_string(handsHudSerial[index]):std::string();
+ if(key==s.skinSent||handsMapArms[index]||!engine[54])return;
+ const int ids[]={customSleeveMessage,customFingersMessage,customGloveMessage};for(int i:ids)if(i<=0)return;
+ for(int i=0;i<3;++i){const std::string path=custom&&(s.skins&(1<<i))?"models/handskins/"+s.hands.substr(3)+"/"+HandSkinParts[i]+".tga":std::string();
+  eng<void(__cdecl*)(int,int,const float*,Edict*)>(46)(1,ids[i],nullptr,e);eng<void(__cdecl*)(const char*)>(54)(path.c_str());eng<void(__cdecl*)()>(47)();}
+ char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MODEL player=%d hand skin %s (parts %d)\n",index,custom?s.hands.c_str()+3:"off",custom?s.skins:0);log(line);
+ s.skinSent=key;
+}
 void model_clothes(Edict* e,ModelState& s,const std::string& want,float now){
  // v0.8 (Katz's item 8): the hands are chosen on their own; "auto" follows the player model.
- const int state=s.hands.empty()||s.hands=="auto"?model_outfit(want):model_outfit(s.hands);
+ // v0.10.5: a hand skin keeps the model's costume for the parts it does not have.
+ const bool skin=hands_skin_name(s.hands)&&s.skins;
+ const int state=s.hands.empty()||s.hands=="auto"||hands_skin_name(s.hands)?model_outfit(want):model_outfit(s.hands);
  // v0.10.5: plain Simon's hands are sent too (clothes off, state 0). The game's own message after a spawn says
  // "clothes on" whenever the host has unlocked any outfit, with state 0; since v0.10.5 the view model's sleeve
  // reads that (client-menu.hpp 100668EE), and "on" with state 0 has no sleeve file (decomp LoadSleeveTexture).
  if(clothesMessage<=0||!engine[51]||!client_ready(e)||now<s.clothesNext)return;
  s.clothes=state;s.clothesNext=now+5.f;
+ // A skin's sleeve is drawn only with the clothes on (decomp gl_studiomodel.cpp LoadSleeveTexture returns
+ // at once with them off and no finger texture); its path then replaces the state's sleeve file.
  eng<void(__cdecl*)(int,int,const float*,Edict*)>(46)(1,clothesMessage,nullptr,e);
- eng<void(__cdecl*)(int)>(51)(0);for(int v:{state?1:0,state,0})eng<void(__cdecl*)(int)>(48)(v);
+ eng<void(__cdecl*)(int)>(51)(0);for(int v:{state||(skin&&(s.skins&1))?1:0,state,0})eng<void(__cdecl*)(int)>(48)(v);
  eng<void(__cdecl*)()>(47)();
+ const int index=eng<int(__cdecl*)(Edict*)>(71)(e);if(index>=1&&index<=32)hands_skin_send(e,index,s);
 }
 bool model_report_command(Edict* e,const char* command){
  if(!command||std::strcmp(command,"sc_mdl")||!live(e))return false;
  auto arg=[](int i){const char* a=eng<const char*(__cdecl*)(int)>(83)(i);return std::string(a?a:"");};
  const std::string model=arg(1),hands=arg(2);const int index=eng<int(__cdecl*)(Edict*)>(71)(e);if(index<1||index>32)return true;
- if(!model_name_ok(model)||!(hands=="auto"||hands=="simon"||model_outfit(hands)))return true;
- auto& r=modelReports[index];if(r.model!=model||r.hands!=hands){char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MODEL player=%d reports model %.32s, hands %.32s\n",index,model.c_str(),hands.c_str());log(line);}
- r={model,hands};
+ if(!model_name_ok(model)||!(hands=="auto"||hands=="simon"||model_outfit(hands)||(hands_skin_name(hands)&&model_name_ok(hands.substr(3)))))return true;
+ const std::string parts=arg(6);const int skins=hands_skin_name(hands)&&parts.size()==1&&parts[0]>='1'&&parts[0]<='7'?parts[0]-'0':0;
+ auto& r=modelReports[index];if(r.model!=model||r.hands!=hands||r.skins!=skins){char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MODEL player=%d reports model %.32s, hands %.40s\n",index,model.c_str(),hands.c_str());log(line);}
+ r={model,hands,skins};
  player_prefs_report(index,arg(4),arg(5));
  const std::string language=arg(3);if(language.size()==1&&language[0]>='0'&&language[0]<='7'&&!checkpoint_host(e)){const int l=language[0]-'0';const auto known=playerLanguage.find(index);if(known==playerLanguage.end()||known->second!=l){char note[100]{};std::snprintf(note,sizeof(note),"[STORYCOOP_RC4] LANGUAGE player=%d reads subtitles in %d\n",index,l);log(note);}playerLanguage[index]=l;}
  return true;
@@ -166,7 +205,7 @@ void model_frame(Edict* e){
  auto& s=modelStates[index];const float now=load<float>(globals,0);if(now<s.next)return;s.next=now+1.f;
  std::string want="simon";
  {auto info=eng<char*(__cdecl*)(Edict*)>(106)(e);const char* asked=info?eng<char*(__cdecl*)(char*,char*)>(107)(info,const_cast<char*>("sc_model")):nullptr;std::string a=asked?asked:"";
-  {auto r=modelReports.find(index);if(r!=modelReports.end()){a=r->second.model;s.hands=r->second.hands;}}
+  {auto r=modelReports.find(index);if(r!=modelReports.end()){a=r->second.model;s.hands=r->second.hands;s.skins=r->second.skins;}}
   for(auto& c:a)c=static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
   if(!a.empty()&&a!="simon"){if(model_name_ok(a)&&host_has_model(a))want=a;
    else if(!(s.logged&16u)){s.logged|=16u;char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MODEL player=%d asked for %.32s: not on the host's PC, shown as Simon\n",index,a.c_str());log(line);

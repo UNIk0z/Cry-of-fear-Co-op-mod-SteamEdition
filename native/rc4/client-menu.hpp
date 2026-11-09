@@ -321,10 +321,57 @@ struct ModelBox {Edict* who=nullptr;int serial=-1;std::string current,picture,ha
 // Afraid of Monsters, Black Metal and Team Psykskallar have none and are drawn with the Awesome
 // sleeve, so the page lists Awesome once. A sleeve is a game file: it does not need the outfit model.
 int hands_state(const std::string& hands){const int s=model_outfit(hands);return s==4||s==7||s==8?9:s;}
-std::vector<std::string> local_hands(){std::vector<std::string> out{"auto","simon"};for(const auto& o:ModelOutfits){const std::string m=o.model;if(hands_state(m)==model_outfit(m))out.push_back(m);}return out;}
+// v0.10.5 (Katz: "there should be a folder for custom hand models too", "the folder should be called
+// handskins"): the player's own hand skins, cryoffear/models/handskins/<name>/ (the launcher copies the
+// handskins folder beside it there) with any of sleeve.tga, fingers.tga and glove.tga: uncompressed
+// 24-bit TGAs, like the game's own costume sleeves. Listed as "hs_<name>" after the costumes.
+struct SkinPicture {int w=0,h=0;std::vector<std::uint8_t> rgb;};   // rgb, the top row first
+std::vector<std::uint8_t> file_bytes(const std::filesystem::path& p,std::size_t limit=16u<<20){
+ std::error_code e;const auto n=std::filesystem::file_size(p,e);if(e||n>limit)return {};std::ifstream f(p,std::ios::binary);std::vector<std::uint8_t> d(static_cast<std::size_t>(n));
+ if(n&&!f.read(reinterpret_cast<char*>(d.data()),static_cast<std::streamsize>(n)))return {};return d;}
+bool skin_tga(const std::vector<std::uint8_t>& d,SkinPicture& out){
+ if(d.size()<18||d[1]||d[2]!=2||d[16]!=24)return false;const int w=d[12]|d[13]<<8,h=d[14]|d[15]<<8;const std::size_t at=18u+d[0];
+ if(w<=0||h<=0||w>4096||h>4096||at+static_cast<std::size_t>(w)*h*3>d.size())return false;
+ out.w=w;out.h=h;out.rgb.assign(static_cast<std::size_t>(w)*h*3,0);const bool top=(d[17]&0x20)!=0;
+ for(int y=0;y<h;++y){const std::uint8_t* row=d.data()+at+static_cast<std::size_t>(top?y:h-1-y)*w*3;std::uint8_t* to=out.rgb.data()+static_cast<std::size_t>(y)*w*3;
+  for(int x=0;x<w;++x){to[x*3]=row[x*3+2];to[x*3+1]=row[x*3+1];to[x*3+2]=row[x*3];}}
+ return true;}
+std::filesystem::path hands_skin_folder(const std::string& name){const auto dir=game_dir_path();return dir.empty()?dir:dir/L"models"/L"handskins"/std::wstring(name.begin(),name.end());}
+// Which parts the skin has (1 sleeve, 2 fingers, 4 glove, session-runtime.hpp HandSkinParts): only a file the game can load.
+int hands_skin_parts(const std::string& name,SkinPicture* pictures=nullptr){
+ if(!model_name_ok(name))return 0;const auto folder=hands_skin_folder(name);if(folder.empty())return 0;int parts=0;
+ for(int i=0;i<3;++i){SkinPicture p;if(skin_tga(file_bytes(folder/(std::string(HandSkinParts[i])+".tga")),p)){parts|=1<<i;if(pictures)pictures[i]=std::move(p);}}
+ return parts;}
+std::vector<std::string> local_hand_skins(){
+ std::vector<std::string> out;const auto dir=game_dir_path();if(dir.empty())return out;std::error_code error;
+ std::filesystem::directory_iterator it(dir/L"models"/L"handskins",error),end;
+ while(!error&&it!=end&&out.size()<20){
+  std::string n;for(const wchar_t c:it->path().filename().wstring())n+=c<128?static_cast<char>(std::tolower(static_cast<unsigned char>(c))):'?';
+  std::error_code e2;if(it->is_directory(e2)&&hands_skin_parts(n))out.push_back("hs_"+n);
+  it.increment(error);}
+ std::sort(out.begin(),out.end());return out;}
+std::vector<std::string> local_hands(){std::vector<std::string> out{"auto","simon"};for(const auto& o:ModelOutfits){const std::string m=o.model;if(hands_state(m)==model_outfit(m))out.push_back(m);}
+ for(auto& h:local_hand_skins())out.push_back(std::move(h));return out;}
 std::string hands_saved(){const auto dir=game_dir_path();std::string name;if(!dir.empty()){std::ifstream f(dir/L"storycoop_hands.txt",std::ios::binary);if(f)f>>name;}for(auto& c:name)c=static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
  if(const int s=hands_state(name);s&&s!=model_outfit(name))return ModelOutfits[s-1].model;   // an older choice of a sleeve-less outfit
+ if(hands_skin_name(name))return hands_skin_parts(name.substr(3))?name:"auto";   // a skin whose folder is gone: the model's hands
  return name=="auto"||name=="simon"||model_outfit(name)?name:"auto";}
+// The Hands page's picture of a skin: Simon's arm (sc_mbh0.tga) painted with the skin's files through the
+// arm's map (sc_mbhuv.tga, scripts/menu/make-modelbox.py: red/green u/v, blue part*64 + light 0-63), written
+// as gfx/vgui/sc_mbhc<slot>.tga, one file per listed skin. Both pictures come from the same game file, so
+// their headers match.
+bool hands_skin_paint(std::vector<std::uint8_t>& base,const std::vector<std::uint8_t>& map,const SkinPicture* parts){
+ if(base.size()<18||map.size()!=base.size()||!std::equal(base.begin(),base.begin()+18,map.begin())||base[1]||base[2]!=2||base[16]!=24)return false;
+ const std::size_t w=base[12]|base[13]<<8,h=base[14]|base[15]<<8,at=18u+base[0];if(at+w*h*3>base.size())return false;
+ for(std::size_t i=0;i<w*h;++i){const std::size_t o=at+i*3;const int part=map[o]>>6;if(!part)continue;const SkinPicture& p=parts[part-1];if(p.rgb.empty())continue;
+  const int light=map[o]&63;const std::size_t x=static_cast<std::size_t>(map[o+2])*p.w/256,y=static_cast<std::size_t>(map[o+1])*p.h/256;const std::uint8_t* c=p.rgb.data()+(y*p.w+x)*3;
+  base[o]=static_cast<std::uint8_t>(c[2]*light/63);base[o+1]=static_cast<std::uint8_t>(c[1]*light/63);base[o+2]=static_cast<std::uint8_t>(c[0]*light/63);}
+ return true;}
+std::string hands_skin_picture(const std::string& hands,int slot){
+ const auto dir=game_dir_path();if(dir.empty()||!hands_skin_name(hands))return {};SkinPicture parts[3];if(!hands_skin_parts(hands.substr(3),parts))return {};
+ auto base=file_bytes(dir/L"gfx"/L"vgui"/L"sc_mbh0.tga");const auto map=file_bytes(dir/L"gfx"/L"vgui"/L"sc_mbhuv.tga");if(!hands_skin_paint(base,map,parts))return {};
+ const std::string name="sc_mbhc"+std::to_string(slot)+".tga";std::ofstream f(dir/L"gfx"/L"vgui"/std::wstring(name.begin(),name.end()),std::ios::binary|std::ios::trunc);
+ if(!f||!f.write(reinterpret_cast<const char*>(base.data()),static_cast<std::streamsize>(base.size())))return {};return "gfx/vgui/"+name;}
 constexpr std::uint32_t ModelBoxPicture=0x10147380;constexpr std::size_t ModelBoxPictureBytes=47;
 const char* const ModelBoxPictureShipped="gfx/vgui/puzzle/computer/computer_loggedon.tga";
 bool model_box_set_picture(const std::string& path){
@@ -346,10 +393,12 @@ void model_box_show(Edict* e,const std::vector<std::string>& models){
  // v0.10.5 (Katz: "first its simon model with simon model skin display and then its hand model selection
  // with hand model skins display"): the Hands page shows the first-person arm in the chosen sleeve
  // (sc_mbh<state>.tga, scripts/menu/make-modelbox.py), not the player model. A custom model has Simon's hands.
- const std::string picture=modelBox.handsPage?"gfx/vgui/sc_mbh"+std::to_string(hands_state(look))+".tga"
+ const bool skin=modelBox.handsPage&&hands_skin_name(shown);std::string painted;
+ if(skin){painted=hands_skin_picture(shown,static_cast<int>(at-models.begin())%20);if(painted.empty())log("[STORYCOOP_RC4] MODEL hand skin picture not made (sc_mbh0.tga, sc_mbhuv.tga or the skin's files)\n");}
+ const std::string picture=skin?(painted.empty()?std::string("gfx/vgui/sc_mbh0.tga"):painted):modelBox.handsPage?"gfx/vgui/sc_mbh"+std::to_string(hands_state(look))+".tga"
   :look=="simon"?"gfx/vgui/sc_mb0.tga":outfit?"gfx/vgui/sc_mb"+std::to_string(outfit)+".tga":"gfx/vgui/sc_mbx.tga";
  if(!model_box_set_picture(picture))return;
- const std::string handsName=hands_state(look)?model_label(ModelOutfits[hands_state(look)-1].model):std::string("Simon");
+ const std::string handsName=skin?shown.substr(3)+"\n(your own skin)":hands_state(look)?model_label(ModelOutfits[hands_state(look)-1].model):std::string("Simon");
  const std::string text=modelBox.handsPage?"\nHands: "+(shown=="auto"?"same as the model\n("+handsName+")":handsName)+"\n\nHands "+std::to_string(at-models.begin()+1)+" of "+std::to_string(models.size())+"\n\nNext: next hands\nDone: keep these"
   :"\n"+model_label(modelBox.current)+"\n\nModel "+std::to_string(at-models.begin()+1)+" of "+std::to_string(models.size())+"\n\nNext: next model\nDone: keep it, then the hands";
  eng<void(__cdecl*)(int,int,const float*,Edict*)>(46)(1,computerMessage,nullptr,e);
@@ -396,7 +445,9 @@ void __cdecl model_report_send(){
  const int language=engine[57]?static_cast<int>(eng<float(__cdecl*)(const char*)>(57)("cof_subtitlelanguage")):1;
  // v0.10: then this game's colour (sc_color 0-8) and black-and-white choice (sc_noir), from storycoop_comfort.cfg.
  const int colour=engine[57]?static_cast<int>(eng<float(__cdecl*)(const char*)>(57)("sc_color")):0;const bool noir=engine[57]&&eng<float(__cdecl*)(const char*)>(57)("sc_noir")!=0.f;
- const std::string text="cmd sc_mdl "+model+" "+hands_saved()+" "+std::to_string(language<0||language>7?1:language)+" "+std::to_string(colour<0||colour>8?0:colour)+" "+(noir?"1":"0")+"\n";if(engine[39])eng<void(__cdecl*)(const char*)>(39)(text.c_str());
+ // v0.10.5: then which parts of a hand skin this game has (session-runtime.hpp model_report_command).
+ const std::string hands=hands_saved();const int parts=hands_skin_name(hands)?hands_skin_parts(hands.substr(3)):0;
+ const std::string text="cmd sc_mdl "+model+" "+hands+" "+std::to_string(language<0||language>7?1:language)+" "+std::to_string(colour<0||colour>8?0:colour)+" "+(noir?"1":"0")+" "+std::to_string(parts)+"\n";if(engine[39])eng<void(__cdecl*)(const char*)>(39)(text.c_str());
  session_joined_report();
 }
 // --- Up to ten syringes in co-op (v0.6.1) ---------------------------------------------

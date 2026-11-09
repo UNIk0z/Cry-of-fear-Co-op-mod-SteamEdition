@@ -254,6 +254,25 @@ int main(int argc,char** argv_){
   for(int k=0;k<7;++k)assert(model_box_command(j,"computercheck"));
   assert(picture()=="gfx/vgui/sc_mbh11.tga"&&savedHands()=="simon_twitcher"&&model_box_command(j,"computercheck")&&savedHands()=="auto");   // wraps
   {std::ofstream(std::filesystem::path(gameDir)/"storycoop_hands.txt",std::ios::binary)<<"simon_blackmetal";assert(hands_saved()=="simon_awesome");std::ofstream(std::filesystem::path(gameDir)/"storycoop_hands.txt",std::ios::binary)<<"auto";}   // an older sleeve-less choice
+  // v0.10.5: the player's own hand skin (models/handskins/<name>, any of sleeve/fingers/glove.tga, 24-bit) comes last,
+  // drawn on Simon's arm (sc_mbh0) through the arm's map (sc_mbhuv: blue = part*64 + light, red/green = u/v).
+  {const auto vgui=std::filesystem::path(gameDir)/"gfx"/"vgui",skins=std::filesystem::path(gameDir)/"models"/"handskins";
+   auto tga=[](int w,int h,std::vector<std::uint8_t> px){std::vector<std::uint8_t> d(18,0);d[2]=2;d[12]=static_cast<std::uint8_t>(w);d[14]=static_cast<std::uint8_t>(h);d[16]=24;d[17]=0x20;d.insert(d.end(),px.begin(),px.end());return d;};
+   auto put=[](const std::filesystem::path& p,const std::vector<std::uint8_t>& d){std::filesystem::create_directories(p.parent_path());std::ofstream(p,std::ios::binary).write(reinterpret_cast<const char*>(d.data()),static_cast<std::streamsize>(d.size()));};
+   auto bytes=[](const std::filesystem::path& p){std::ifstream f(p,std::ios::binary);return std::vector<std::uint8_t>((std::istreambuf_iterator<char>(f)),std::istreambuf_iterator<char>());};
+   put(vgui/"sc_mbh0.tga",tga(2,1,{10,20,30,40,50,60}));
+   put(vgui/"sc_mbhuv.tga",tga(2,1,{0,0,0,64+63,0,0}));   // the second pixel: sleeve, u=v=0, full light
+   put(skins/"Mine"/"sleeve.tga",tga(1,1,{1,2,3}));
+   put(skins/"bad"/"fingers.tga",std::vector<std::uint8_t>(10,0));   // not a TGA: not listed
+   std::filesystem::create_directories(skins/"empty");
+   assert((local_hand_skins()==std::vector<std::string>{"hs_mine"})&&local_hands().size()==11&&local_hands().back()=="hs_mine"&&hands_skin_parts("mine")==1&&!hands_skin_parts("bad")&&!hands_skin_parts("empty"));
+   for(int k=0;k<10;++k)assert(model_box_command(j,"computercheck"));
+   assert(savedHands()=="hs_mine"&&hands_saved()=="hs_mine"&&picture()=="gfx/vgui/sc_mbhc10.tga"&&messageText.rfind("\nHands: mine\n(your own skin)\n\nHands 11 of 11",0)==0);
+   assert((bytes(vgui/"sc_mbhc10.tga")==tga(2,1,{10,20,30,1,2,3})));   // the sleeve's texel painted, the rest Simon's
+   put(skins/"Mine"/"glove.tga",tga(1,1,{9,9,9}));assert(hands_skin_parts("mine")==5);
+   assert(model_box_command(j,"computercheck")&&savedHands()=="auto");   // wraps
+   std::filesystem::remove_all(skins/"Mine");std::ofstream(std::filesystem::path(gameDir)/"storycoop_hands.txt",std::ios::binary)<<"hs_mine";assert(hands_saved()=="auto");   // its folder gone: the model's hands
+   std::ofstream(std::filesystem::path(gameDir)/"storycoop_hands.txt",std::ios::binary)<<"auto";std::filesystem::remove_all(skins);}
   assert(model_box_command(j,"stopcomputer")&&img==shipped&&!modelBox.who&&logged("MODEL box closed"));
   assert(!model_box_command(j,"stopcomputer")&&!model_box_command(j,"computercheck"));   // the game's own again
   assert(model_box_command(j,"sc_modelbox")&&picture()=="gfx/vgui/sc_mb4.tga");   // kept for the next time
@@ -271,6 +290,23 @@ int main(int argc,char** argv_){
    model_clothes(j,cs,"simon_aom",50.f);assert(messageBegins==1);model_clothes(j,cs,"simon_aom",55.f);assert(messageBegins==2&&(std::vector<int>(message.begin()+2,message.end())==std::vector<int>{0,1,4,0}));
    model_clothes(j,cs,"simon_aom",56.f);assert(messageBegins==2);model_clothes(j,cs,"simon_aom",60.f);assert(messageBegins==3);
    model_clothes(j,cs,"simon",65.f);assert(messageBegins==4&&(std::vector<int>(message.begin()+2,message.end())==std::vector<int>{0,0,0,0}));
+   // v0.10.5: a hand skin. The report names it and its parts (word 6); clothes on with the model's state (the
+   // skin's sleeve path replaces that state's file), then the three paths, once per HUD reset; a map's own arms win.
+   argv={"sc_mdl","simon","hs_mine","1","0","0","5"};assert(model_report_command(j,"sc_mdl")&&modelReports[1].hands=="hs_mine"&&modelReports[1].skins==5);
+   argv={"sc_mdl","simon","hs_Mine!","1","0","0","5"};assert(model_report_command(j,"sc_mdl")&&modelReports[1].hands=="hs_mine");   // not a folder name: ignored
+   argv={"sc_mdl","simon","simon_camo","1","0","0","5"};assert(model_report_command(j,"sc_mdl")&&modelReports[1].skins==0);   // parts only with a skin
+   const int initBefore=initHud,resetBefore=resetHud;initHud=90;resetHud=89;customSleeveMessage=81;customFingersMessage=82;customGloveMessage=83;
+   cs.hands="hs_mine";cs.skins=5;model_clothes(j,cs,"simon",70.f);
+   assert(messageBegins==8&&message[1]==83&&messageText=="models/handskins/mine/glove.tga"&&logged("MODEL player=1 hand skin mine (parts 5)"));
+   model_clothes(j,cs,"simon",75.f);assert(messageBegins==9&&(std::vector<int>(message.begin()+2,message.end())==std::vector<int>{0,1,0,0}));   // the clothes only: sent already
+   cs.skins=2;model_clothes(j,cs,"simon",80.f);assert(messageBegins==13&&messageText.empty());   // fingers only: clothes off again, the glove path cleared
+   hands_wire_begin(1,89,j);model_clothes(j,cs,"simon",85.f);assert(messageBegins==17);   // ResetHUD: sent again
+   hands_wire_begin(1,81,j);hands_wire_string("models/x/x_sleeve.tga");assert(logged("MODEL player=1 has the map's own arms"));
+   hands_wire_begin(1,89,j);model_clothes(j,cs,"simon",90.f);assert(messageBegins==18);   // the map's arms stay
+   hands_wire_begin(1,90,j);hands_wire_begin(1,81,j);hands_wire_string(nullptr);model_clothes(j,cs,"simon",95.f);assert(messageBegins==22);   // InitHUD (its own empty paths): the skin again
+   cs.hands="auto";cs.skins=0;model_clothes(j,cs,"simon",100.f);assert(messageBegins==26&&messageText.empty()&&logged("MODEL player=1 hand skin off"));
+   model_clothes(j,cs,"simon",105.f);assert(messageBegins==27);
+   initHud=initBefore;resetHud=resetBefore;customSleeveMessage=customFingersMessage=customGloveMessage=0;modelReports.clear();handsHudSerial.clear();handsMapArms.clear();
    clothesMessage=0;engine[51]=nullptr;}
   for(const auto& item:{player/"Caps",player/"police1",player/"zed",player/"no file",player/"simon_aom",player/"simon_twitcher",player/L"café"})std::filesystem::remove_all(item);std::filesystem::remove(std::filesystem::path(gameDir)/"storycoop_model.txt");}
  // Campaign maps are recognized for the pause guard; the 3D menu is not.

@@ -72,3 +72,7 @@ Nothing in v0.10 has run in the game yet. Close Cry of Fear, open "Cry of Fear C
 48. Two players, player 2 picks Twitcher hands: his sleeves are Twitcher's on his screen; the host's sleeves stay what the host picked.
 49. Two players, any locked door opened with a key item both players carry: after player 1 uses the key, player 2's copy of it is taken too (`KEYITEM ... used by player=1: taken from 1 other player(s)`). The metro fuse sockets still keep the second fuse until both sockets are filled.
 50. An older choice of Afraid of Monsters hands (storycoop_hands.txt "simon_aom") shows as Awesome on the Hands page.
+51. Hand skin: copy cryoffear\models\costumes\Camo\Camo_Sleeve.tga to the mod's `handskins\test\sleeve.tga` and click Run Co-op Mod: the start shows `Hand skin added: test (sleeve)`. On the Hands page the last entry is "Hands: test (your own skin)" with the arm in camouflage (gfx\vgui\sc_mbhc<n>.tga).
+52. Solo with that skin: your first-person sleeves are camouflage with every weapon; the host log has `MODEL player=1 hand skin test (parts 1)`. Change it, run the mod again: `Hand skin added` again and the new picture.
+53. Two players, player 2 has a skin the host does not have: player 2 sees his skin, the host sees his own hands. Player 2 changes to Twitcher hands: the log has `hand skin off` and his sleeves are Twitcher's.
+54. A skin folder whose name has a space, "Red Jacket", is skipped with `Hand skin Red Jacket skipped`; a file that is not a 24-bit TGA is not listed.

@@ -35,7 +35,7 @@ test('the player folder holds the launcher, READ ME and only the files it uses',
  const out=fs.mkdtempSync(path.join(os.tmpdir(),'coop-player-'));fs.rmdirSync(out);
  try{
   const summary=playerPackage([pkg,out]),root=path.join(out,PLAYER_FOLDER);
-  assert.deepEqual(fs.readdirSync(root).sort(),[LAUNCHER_EXE,'READ ME.txt','files','playermodels'].sort());
+  assert.deepEqual(fs.readdirSync(root).sort(),[LAUNCHER_EXE,'READ ME.txt','files','playermodels','handskins'].sort());
   const catalog=JSON.parse(read(root,'files','release.json'));assert.equal(summary.version,catalog.coopFixes.id);
   for(const m of catalog.maps)assert.equal(sha256(read(root,'files','plans',m.map+'.json')),m.planSha256);
   assert.equal(sha256(read(root,'files','native','storycoop_rc4.dll')),catalog.runtimeAdapter.sha256);
