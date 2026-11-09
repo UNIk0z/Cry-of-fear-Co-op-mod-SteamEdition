@@ -617,6 +617,11 @@ def setup(game, uninstall=False, check_only=False):
                 kept += 1
         elif s in older.get(rel, ()):
             moves.append(rel)
+        elif rel == 'cl_dlls/storycoop_rc4.dll':
+            # Only this project writes the adapter: one from an unlisted build
+            # (an earlier pack of the same version) is set aside like an older one.
+            say('Setting aside a co-op adapter from an unlisted build: %s' % path)
+            moves.append(rel)
         elif uninstall:
             skipped.append(rel)
         else:

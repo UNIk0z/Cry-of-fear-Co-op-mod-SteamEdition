@@ -80,6 +80,10 @@ foreach ($rel in @($expected.Keys | Sort-Object)) {
     # coop-fixes-013: a game file this package would replace (title, client.dll)
     # in another game version is left alone; the installer skips that extra.
     elseif ($originals.ContainsKey($rel)) { $otherVersion.Add($rel); $otherSha[$rel]=$sha }
+    # v0.10.5 (repacked release): only this project ever writes storycoop_rc4.dll,
+    # so an adapter from a build not listed in known-builds.json (an earlier pack
+    # of the same version) is set aside like any older one instead of stopping.
+    elseif ($rel -eq 'cl_dlls\storycoop_rc4.dll') { Write-Output "Setting aside a co-op adapter from an unlisted build: $path"; $moves.Add($rel) }
     else { $unknown.Add($rel) }
 }
 if ($unknown.Count -and -not $Uninstall) { $unknown | ForEach-Object { Write-Output "Unknown file (not from any co-op build): $(Join-Path $game $_)" }; throw 'Unknown files sit where the co-op files go. Nothing changed. Move them away yourself, or ask for help.' }

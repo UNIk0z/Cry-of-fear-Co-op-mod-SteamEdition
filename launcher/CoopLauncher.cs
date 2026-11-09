@@ -410,10 +410,25 @@ namespace CofCoop
             {
                 string sha = "";
                 try { using (SHA256 h = SHA256.Create()) using (FileStream f = File.OpenRead(dll)) sha = Hex(h.ComputeHash(f)); } catch { }
-                state = sha == Str(Get(catalog, "runtimeAdapter", "sha256")) ? "co-op " + version + " installed" : "a different co-op version is installed";
+                string older = sha == Str(Get(catalog, "runtimeAdapter", "sha256")) ? null : KnownBuild(sha);
+                state = older == null && sha == Str(Get(catalog, "runtimeAdapter", "sha256")) ? "co-op " + version + " installed"
+                    : older != null ? "co-op " + older + " (older build) installed" : "a different co-op version is installed";
             }
             infoText = "Game: " + Shorten(Path.GetDirectoryName(game.TrimEnd('\\')), 46) + "  |  " + state;
             Invalidate(StatusArea());
+        }
+
+        // The co-op version an earlier build's adapter belongs to (known-builds.json), or null.
+        string KnownBuild(string adapterSha)
+        {
+            try
+            {
+                Dictionary<string, object> known = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(File.ReadAllText(Path.Combine(filesDir, "known-builds.json")));
+                IEnumerable builds = Get(known, "builds") as IEnumerable;
+                if (builds != null) foreach (object b in builds) if (adapterSha.Length > 0 && Str(Get(b, "adapter")) == adapterSha) return Str(Get(b, "id"));
+            }
+            catch { }
+            return null;
         }
 
         static string Hex(byte[] bytes) { return BitConverter.ToString(bytes).Replace("-", "").ToLowerInvariant(); }
