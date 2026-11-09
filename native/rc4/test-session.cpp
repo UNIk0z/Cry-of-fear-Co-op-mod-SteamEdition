@@ -251,7 +251,7 @@ int main(int argc,char** argv_){
   assert(model_box_command(j,"stopcomputer")&&modelBox.who==j&&modelBox.handsPage&&picture()=="gfx/vgui/sc_mbh9.tga"&&messageText.rfind("\nHands: same as the model\n(Awesome)\n\nHands 1 of 10",0)==0&&saved()=="simon_aom");   // the model chosen stays; its sleeve for "same"
   assert(model_box_command(j,"computercheck")&&picture()=="gfx/vgui/sc_mbh0.tga"&&messageText.rfind("\nHands: Simon\n\nHands 2 of 10",0)==0&&savedHands()=="simon"&&saved()=="simon_aom");
   assert(model_box_command(j,"computercheck")&&picture()=="gfx/vgui/sc_mbh1.tga"&&messageText.rfind("\nHands: David Leatherhoff\n\nHands 3 of 10",0)==0&&savedHands()=="simon_leatherhoff");
-  for(int k=0;k<6;++k)assert(model_box_command(j,"computercheck"));
+  for(int k=0;k<7;++k)assert(model_box_command(j,"computercheck"));
   assert(picture()=="gfx/vgui/sc_mbh11.tga"&&savedHands()=="simon_twitcher"&&model_box_command(j,"computercheck")&&savedHands()=="auto");   // wraps
   {std::ofstream(std::filesystem::path(gameDir)/"storycoop_hands.txt",std::ios::binary)<<"simon_blackmetal";assert(hands_saved()=="simon_awesome");std::ofstream(std::filesystem::path(gameDir)/"storycoop_hands.txt",std::ios::binary)<<"auto";}   // an older sleeve-less choice
   assert(model_box_command(j,"stopcomputer")&&img==shipped&&!modelBox.who&&logged("MODEL box closed"));

@@ -89,7 +89,7 @@ export const V0101_PARENT='d9a66a8c9d06178c8b608e09aad91c7f7e093deae22995f8635a3
 export const V0102_PARENT='418e7abd9bf0647714781579cfa27df94c9079e95d581acb36b4ef46b5133913';
 // v0.10.4's parent: the v0.10.3 per-player rebuild (Claude, 2026-11-09).
 // v0.10.5's parent: the v0.10.4 release (Claude, 2026-11-09). Filled from that package's release.json when v0.10.5 is packed.
-export const V0104_PARENT='V0104_PARENT_FILLED_AT_PACKAGING';
+export const V0104_PARENT='86f7d83dbab3b9c84d9d7f2e8efef26cc6870a2df942477eb739a16e37eccc56';
 export const V0103_PARENT='0c101a84a8dd458273b7742b9fbbd160bd2b12eefe8bca75e3d88211417662d8';
 // Settings files the v0.9 builds installed unchanged (CRLF and LF packs): an untouched one is replaced once.
 export const V09_DEFAULTS={'storycoop_server.cfg':['d25b65bc7a2929ed25dd45e8b137372d31b7b6a079efcbd1291c2d2d2730c104','d61d3d0a9277d691785a4582cb511f369c6ff41b0c25bffe644e43530f91864c','777c2f6b0f906b58355ec0b0018bc2547b0541b526ea5352073364fa1436d1cb','a422ed1b59d22d50c3a1855126ea33cb621df0ec1cb7fce740682812ae98f57c','115a40b5513abd457ce4f40c3e31d412f00dabf600dfe18cd619630c7d203bc8','72609e49074f769ac1bb0091c5e904c5f0e509eb435aa10316dcb82ba16129a0'],'storycoop_comfort.cfg':['1f411d1f8e88d0b33774d4551a490ab8e5a39e28dc50aee48b2ccc3dcdb94f31','6e5b1029c702c22c4ce16d6397291a18d1d16d5bc2717982b4c361b4718affff','be1c7316e1863f5252b87d09ee0542dbc4c8aa1ed33bec070ed99761ec0ba923','cf894686a853e27f86d1de229f7144631e3b424db8d1cb790bd8192f484bb80e']};
