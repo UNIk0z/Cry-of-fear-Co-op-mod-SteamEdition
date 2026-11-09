@@ -335,7 +335,7 @@ void pause_poll(){
 // hw.dll 01D21AF5) and stay as they are. The old "Continue" (newest slot) id
 // still works for an older entry file.
 int menuMode=0;
-// 1 new game, 2 newest slot (older entry), 11..13 slot 1..3.
+// 1 new game, 2 newest slot (older entry), 11..15 slot 1..5.
 int menu_mode(const char* id){
  if(!id)return 0;if(!std::strcmp(id,"sc4coop_new"))return 1;if(!std::strcmp(id,"sc4coop_continue"))return 2;
  return !std::strncmp(id,"sc4coop_slot",12)&&id[12]>='1'&&id[12]<='5'&&!id[13]?10+(id[12]-'0'):0;
@@ -343,7 +343,7 @@ int menu_mode(const char* id){
 bool menu_command(const char* command){
  if(!command||std::strcmp(command,"campaign"))return false;menuMode=menu_mode(eng<const char*(__cdecl*)(int)>(83)(1));
  if(menuMode==1)log("[STORYCOOP_RC4] MENU host new co-op game selected; difficulty next\n");
- else if(menuMode){char line[100]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MENU load co-op %s selected; difficulty next\n",menuMode==2?"newest save":menuMode==11?"slot 1":menuMode==12?"slot 2":"slot 3");log(line);}
+ else if(menuMode){char line[100]{};if(menuMode==2)std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MENU load co-op newest save selected; difficulty next\n");else std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MENU load co-op slot %d selected; difficulty next\n",menuMode-10);log(line);}
  return false;
 }
 bool menu_slot_usable(const std::filesystem::path& dir,int slot,Checkpoint& value,bool& backup,std::filesystem::file_time_type& time){
@@ -621,7 +621,7 @@ void __cdecl stuff_command(Edict* e,const char* format,...){
 // (CmdStart) and then every 5 s without a fade-in, so it is always there.
 // v0.1 (user): the build is named v0.1 (v0.2 since 2026-10-16), and Special Thanks lists Mesilll,
 // Michal Eminov and caixa in that order (it misspelled "Michael" before). v0.6 (Katz 2026-10-25): joah added; v0.7 (Katz): written Joah230.
-constexpr const char* MenuCredit="Co-op mod v0.10.1 developed by Anas Sammak (koolkat)\nSpecial thanks: Mesilll, Michal Eminov, caixa, Joah230";
+constexpr const char* MenuCredit="Co-op mod v0.10.6 developed by Anas Sammak (koolkat)\nSpecial thanks: Mesilll, Michal Eminov, caixa, Joah230";
 struct MenuCreditState{int serial=-1;float next=0,active=-1;bool logged=false,shown=false;};
 MenuCreditState menuCredit;
 void menu_credit_reset(){const bool logged=menuCredit.logged;menuCredit={};menuCredit.logged=logged;}
