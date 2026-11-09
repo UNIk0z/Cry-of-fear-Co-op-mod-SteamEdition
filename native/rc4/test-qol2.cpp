@@ -259,6 +259,12 @@ int main(int argc,char** argv_){
   assert(card_lock_name("inventoryitems/fuse.txt")=="fuse"&&card_locks_left("inventoryitems/fuse.txt")==2);
   store<unsigned char>(pd(s1),0x180,0);assert(card_locks_left("inventoryitems/fuse.txt")==1);   // UnlockDoor cleared m_isLocked
   store(s2,0,1);assert(card_locks_left("inventoryitems/fuse.txt")==0&&card_locks_left("inventoryitems/rope.txt")==0);   // the second socket removed by the map
+  // v0.10.5 (review): a door the key opened is no lock left any more (inter_door m_sLockedBy +0x190, inter_door_coop +0x114).
+  {std::ofstream(dir/"inventoryitems"/"key1.txt")<<"\"map_name\"\n{\n\tdata\t\"key1\"\n}\n";}
+  auto d1=&entities[29],d2=&entities[30];for(auto [d,type,at]:{std::tuple{d1,"inter_door",0x190},std::tuple{d2,"inter_door_coop",0x114}}){*d={};store(d,0,0);store(d,4,400+index(d));store(ev(d),0,intern(type));allocate(d,0x400);store<int>(pd(d),at,intern("key1"));
+   KeyValue kv{const_cast<char*>(type),const_cast<char*>("lockedby"),const_cast<char*>("key1"),0};evidence_keyvalue(d,&kv);}
+  assert(card_locks_left("inventoryitems/key1.txt")==2);store<int>(pd(d1),0x190,0);assert(card_locks_left("inventoryitems/key1.txt")==1);store<int>(pd(d2),0x114,0);assert(card_locks_left("inventoryitems/key1.txt")==0);
+  store(d1,0,1);store(d2,0,1);
   // 4. E on a key inside a door: the door the trace hit gives way to the key.
   auto door=&entities[27];*door={};store(door,0,0);store(door,4,427);store(ev(door),0,intern("func_door"));
   for(int k=0;k<3;++k){store(ev(door),0xc4+k*4,k==0?40.f:-40.f);store(ev(door),0xd0+k*4,k==0?48.f:80.f);}

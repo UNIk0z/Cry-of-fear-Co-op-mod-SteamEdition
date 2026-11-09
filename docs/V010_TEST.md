@@ -63,3 +63,12 @@ Nothing in v0.10 has run in the game yet. Close Cry of Fear, open "Cry of Fear C
 42. The shotgun, the M16 and the revolver each drop their own box (9, 20 and 5 rounds).
 43. SETTINGS in "Cry of Fear Co-op.exe" shows a sixth key, "Drop ammo key" (Q); changing it and saving moves the drop to that key.
 44. A player who kept his own storycoop_comfort.cfg from v0.10.3: Q still drops ammo after Install (`COMFORT drop ammo bound to Q` in his log), unless his config.cfg uses Q for something else.
+
+## v0.10.5 (docs/V0105_RELEASE.md)
+
+45. Main menu, Player Model: the first page shows Simon and his outfits as before. Done opens the page titled "Hands": its picture is an arm in a sleeve, not the player model. Next goes through Same as the model, Simon, Leatherhoff, ModDB, Hello Kitty, Camo, HLC, Awesome, Sick Simon, Twitcher (10), and the picture changes with each.
+46. Solo: pick Camo hands, start Chapter 1. Your first-person sleeves are camouflage with every weapon (knife, phone, Glock). The host log has `MENU co-op main menu set up in memory` (not "menu off").
+47. Pick Simon hands with a Camo player model: the sleeves are Simon's grey ones. Pick "Same as the model" with the Hello Kitty model: Hello Kitty sleeves.
+48. Two players, player 2 picks Twitcher hands: his sleeves are Twitcher's on his screen; the host's sleeves stay what the host picked.
+49. Two players, any locked door opened with a key item both players carry: after player 1 uses the key, player 2's copy of it is taken too (`KEYITEM ... used by player=1: taken from 1 other player(s)`). The metro fuse sockets still keep the second fuse until both sockets are filled.
+50. An older choice of Afraid of Monsters hands (storycoop_hands.txt "simon_aom") shows as Awesome on the Hands page.

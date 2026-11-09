@@ -140,7 +140,10 @@ void model_line(ModelState& s,unsigned what,const char* format,int index,const c
 void model_clothes(Edict* e,ModelState& s,const std::string& want,float now){
  // v0.8 (Katz's item 8): the hands are chosen on their own; "auto" follows the player model.
  const int state=s.hands.empty()||s.hands=="auto"?model_outfit(want):model_outfit(s.hands);
- if(clothesMessage<=0||!engine[51]||!client_ready(e)||(!state&&!s.clothes)||now<s.clothesNext)return;
+ // v0.10.5: plain Simon's hands are sent too (clothes off, state 0). The game's own message after a spawn says
+ // "clothes on" whenever the host has unlocked any outfit, with state 0; since v0.10.5 the view model's sleeve
+ // reads that (client-menu.hpp 100668EE), and "on" with state 0 has no sleeve file (decomp LoadSleeveTexture).
+ if(clothesMessage<=0||!engine[51]||!client_ready(e)||now<s.clothesNext)return;
  s.clothes=state;s.clothesNext=now+5.f;
  eng<void(__cdecl*)(int,int,const float*,Edict*)>(46)(1,clothesMessage,nullptr,e);
  eng<void(__cdecl*)(int)>(51)(0);for(int v:{state?1:0,state,0})eng<void(__cdecl*)(int)>(48)(v);

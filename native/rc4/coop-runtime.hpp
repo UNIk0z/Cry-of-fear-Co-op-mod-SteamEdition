@@ -1990,7 +1990,15 @@ int card_locks_left(const std::string& card){
  for(const auto& [ent,r]:lockRecords){
   if(serial(ent)!=r.serial||_stricmp(r.key.c_str(),name.c_str()))continue;
   // CBaseButton::m_isLocked (+0x180, the pinned hl.dll's save table entry at 102116C0) is cleared by UnlockDoor.
-  if(r.type=="func_button"||r.type=="func_rot_button"){void* p=engine[64]?eng<void*(__cdecl*)(Edict*)>(64)(ent):nullptr;if(!p||!load<unsigned char>(p,0x180))continue;}
+  // v0.10.5 (review): a door or valve stays in lockRecords after its key opened it (the records come from the
+  // map's keys), so before this every door counted as a lock left forever and the others kept every key that
+  // was used. Their m_sLockedBy is cleared by UnlockDoor / the valve's unlock (decomp CoF_InterDoor.cpp 219,
+  // CoF_InterDoorCoop.cpp 361, CoF_FuncValve.cpp 189); offsets from the pinned hl.dll's save tables
+  // (inter_door 10212490 +0x190, inter_door_coop 10212550 +0x114, func_valve 10212460 +0x180). Any other
+  // kind still counts while it exists, as before.
+  std::size_t lockAt=0;bool byte=false;
+  if(r.type=="func_button"||r.type=="func_rot_button"){lockAt=0x180;byte=true;}else if(r.type=="inter_door")lockAt=0x190;else if(r.type=="inter_door_coop")lockAt=0x114;else if(r.type=="func_valve")lockAt=0x180;
+  if(lockAt){void* p=engine[64]?eng<void*(__cdecl*)(Edict*)>(64)(ent):nullptr;if(!p||!(byte?load<unsigned char>(p,lockAt)!=0:load<int>(p,lockAt)!=0))continue;}
   ++left;}
  return left;
 }

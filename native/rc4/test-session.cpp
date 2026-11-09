@@ -267,10 +267,10 @@ int main(int argc,char** argv_){
   // The wearer's own clothes state goes to their client only when it is ready, and again later.
   {clothesMessage=77;engine[51]=engine[48];ModelState cs;messageBegins=0;
    allocations.at(j).commands=true;allocations.at(j).hudDue=0;store(globals,0,50.f);
-   model_clothes(j,cs,"simon",50.f);assert(messageBegins==0);   // plain Simon: the game's own state stays
-   model_clothes(j,cs,"simon_aom",50.f);assert(messageBegins==1&&message[1]==77&&(std::vector<int>(message.begin()+2,message.end())==std::vector<int>{0,1,4,0}));
-   model_clothes(j,cs,"simon_aom",51.f);assert(messageBegins==1);model_clothes(j,cs,"simon_aom",55.f);assert(messageBegins==2);
-   model_clothes(j,cs,"simon",60.f);assert(messageBegins==3&&(std::vector<int>(message.begin()+2,message.end())==std::vector<int>{0,0,0,0}));
+   model_clothes(j,cs,"simon",50.f);assert(messageBegins==1&&message[1]==77&&(std::vector<int>(message.begin()+2,message.end())==std::vector<int>{0,0,0,0}));   // v0.10.5: plain Simon's hands too (clothes off)
+   model_clothes(j,cs,"simon_aom",50.f);assert(messageBegins==1);model_clothes(j,cs,"simon_aom",55.f);assert(messageBegins==2&&(std::vector<int>(message.begin()+2,message.end())==std::vector<int>{0,1,4,0}));
+   model_clothes(j,cs,"simon_aom",56.f);assert(messageBegins==2);model_clothes(j,cs,"simon_aom",60.f);assert(messageBegins==3);
+   model_clothes(j,cs,"simon",65.f);assert(messageBegins==4&&(std::vector<int>(message.begin()+2,message.end())==std::vector<int>{0,0,0,0}));
    clothesMessage=0;engine[51]=nullptr;}
   for(const auto& item:{player/"Caps",player/"police1",player/"zed",player/"no file",player/"simon_aom",player/"simon_twitcher",player/L"café"})std::filesystem::remove_all(item);std::filesystem::remove(std::filesystem::path(gameDir)/"storycoop_model.txt");}
  // Campaign maps are recognized for the pause guard; the 3D menu is not.

@@ -59,7 +59,7 @@ play **Simon's single-player story** together instead.
 | 🧩 **Two-half items** | Both halves go to every player with room, like other key items. If halves still end up with different players, they go to one player so they can be combined. |
 | 🗺️ **Maps keep their state** | A map you go back to stays as you left it: taken items, dead enemies, opened doors and solved puzzles. |
 | 🪜 **Ladders for everyone** | Every player can climb the same ladder at the same time. |
-| 🧍 **Player models** | Pick Simon, one of his 11 outfits or your own model in the *Player Model* box, which shows a preview. Pressing Done then lets you pick your hands. The others see your outfit too. Your own model shows for them when the host has the same file. |
+| 🧍 **Player models** | Pick Simon, one of his 11 outfits or your own model in the *Player Model* box, which shows a preview. The others see your outfit too. Your own model shows for them when the host has the same file. |
 | 🔓 **Unlock extras** | A host option that opens the Chapter 1 secret room with every unlockable. |
 | 🆘 **Unstuck (K)** | Stuck in a wall or a prop? **K** puts you free. Lost in another room? **K** brings you to your partner. Works alone too. |
 | ❤️ **Down and revive** | The others see "*name* is down". Revive time and the auto respawn time are host options. A revived player groans in his own voice as he gets up. |
@@ -176,6 +176,8 @@ Every bug report needs the **log file**. That's how we can see what happened.
 - RebuiltSimon (`cryoffear/addons`) crashed joining players in our tests. v0.10.2 has a fix
   for that crash that has not been tested yet. If the game crashes with RebuiltSimon or another
   add-on installed, move the `addons` folder out while playing co-op.
+- Choosing your hands (the Hands page after Player Model) did not change the first-person
+  hands in co-op. v0.10.5 has a fix that has not been tested yet.
 
 ## Credits
 
