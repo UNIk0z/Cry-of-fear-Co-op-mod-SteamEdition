@@ -245,10 +245,15 @@ int main(int argc,char** argv_){
   assert(model_box_command(j,"computercheck")&&saved()=="simon_aom");
   // v0.8: Done on the model page opens the hands page in the same panel; Done there closes it.
   auto savedHands=[&]{std::ifstream f(std::filesystem::path(gameDir)/"storycoop_hands.txt",std::ios::binary);std::string s;f>>s;return s;};
-  assert(hands_saved()=="auto"&&(local_hands()==std::vector<std::string>{"auto","simon","simon_aom","simon_twitcher"}));
-  assert(model_box_command(j,"stopcomputer")&&modelBox.who==j&&modelBox.handsPage&&picture()=="gfx/vgui/sc_mb4.tga"&&messageText.rfind("\nHands: same as the model\n\nHands 1 of 4",0)==0&&saved()=="simon_aom");   // the model chosen stays; its look for "same"
-  assert(model_box_command(j,"computercheck")&&picture()=="gfx/vgui/sc_mb0.tga"&&messageText.rfind("\nHands: Simon\n\nHands 2 of 4",0)==0&&savedHands()=="simon"&&saved()=="simon_aom");
-  assert(model_box_command(j,"computercheck")&&savedHands()=="simon_aom"&&model_box_command(j,"computercheck")&&model_box_command(j,"computercheck")&&savedHands()=="auto");   // wraps
+  // v0.10.5: every costume sleeve the game has, Awesome once (AoM, Black Metal and Psykskallar wear it); the page shows the arm (sc_mbh<state>).
+  assert(hands_saved()=="auto"&&(local_hands()==std::vector<std::string>{"auto","simon","simon_leatherhoff","simon_moddb","simon_hellokitty","simon_camo","simon_hlc","simon_awesome","simon_sick","simon_twitcher"}));
+  assert(hands_state("simon_aom")==9&&hands_state("simon_blackmetal")==9&&hands_state("simon_psykskallar")==9&&hands_state("simon_camo")==5&&!hands_state("simon")&&!hands_state("auto"));
+  assert(model_box_command(j,"stopcomputer")&&modelBox.who==j&&modelBox.handsPage&&picture()=="gfx/vgui/sc_mbh9.tga"&&messageText.rfind("\nHands: same as the model\n(Awesome)\n\nHands 1 of 10",0)==0&&saved()=="simon_aom");   // the model chosen stays; its sleeve for "same"
+  assert(model_box_command(j,"computercheck")&&picture()=="gfx/vgui/sc_mbh0.tga"&&messageText.rfind("\nHands: Simon\n\nHands 2 of 10",0)==0&&savedHands()=="simon"&&saved()=="simon_aom");
+  assert(model_box_command(j,"computercheck")&&picture()=="gfx/vgui/sc_mbh1.tga"&&messageText.rfind("\nHands: David Leatherhoff\n\nHands 3 of 10",0)==0&&savedHands()=="simon_leatherhoff");
+  for(int k=0;k<6;++k)assert(model_box_command(j,"computercheck"));
+  assert(picture()=="gfx/vgui/sc_mbh11.tga"&&savedHands()=="simon_twitcher"&&model_box_command(j,"computercheck")&&savedHands()=="auto");   // wraps
+  {std::ofstream(std::filesystem::path(gameDir)/"storycoop_hands.txt",std::ios::binary)<<"simon_blackmetal";assert(hands_saved()=="simon_awesome");std::ofstream(std::filesystem::path(gameDir)/"storycoop_hands.txt",std::ios::binary)<<"auto";}   // an older sleeve-less choice
   assert(model_box_command(j,"stopcomputer")&&img==shipped&&!modelBox.who&&logged("MODEL box closed"));
   assert(!model_box_command(j,"stopcomputer")&&!model_box_command(j,"computercheck"));   // the game's own again
   assert(model_box_command(j,"sc_modelbox")&&picture()=="gfx/vgui/sc_mb4.tga");   // kept for the next time
@@ -298,7 +303,7 @@ int main(int argc,char** argv_){
   assert(client_menu_apply(older.data(),older.size(),loaded,why)==1&&older==once);
   auto foreign=once;foreign[0x2DE46+1]=0x07;const auto before=foreign;assert(client_menu_apply(foreign.data(),foreign.size(),loaded,why)==0&&foreign==before&&why.find("1002DE46")!=std::string::npos);
  }
- assert(client_patches().size()==68);
+ assert(client_patches().size()==69);
  // Every adapter line is also kept in a per-session log beside the saves.
  {bool found=false;std::error_code error;for(const auto& item:std::filesystem::directory_iterator(std::filesystem::path(gameDir)/"storycoop_logs",error)){const auto n=item.path().filename().string();if(n.rfind("rc4-",0)==0){std::ifstream in(item.path());std::string all((std::istreambuf_iterator<char>(in)),{});found=all.find("MENU host new co-op game")!=std::string::npos;}}assert(found);}
  // v0.3 crash report: code, module+offset, map, the last steps and stack code addresses in one line, then a minidump.

@@ -10,6 +10,8 @@ textures by a small software renderer. The panel's text (model name, number)
 sits at (194,162), 211 x 152; Next (157,320) and Done (238,320), 75 x 23; the
 red power button (478,447) closes it. The package ships only an XOR delta of each
 picture and Install rebuilds it from the player's own file.
+v0.10.5: the Hands page has its own pictures, sc_mbh<clothes state>.tga, titled
+"Hands", each showing the first-person arm in that costume's sleeve.
 Needs Pillow (on the packaging PC only).
 """
 import importlib.util
@@ -30,6 +32,14 @@ OUTFITS = [('sc_mb0', None, None), ('sc_mb1', 'Leatherhoff', 'Leatherhoff'), ('s
            ('sc_mb4', 'AoM', 'AoM'), ('sc_mb5', 'Camo', 'Camo'), ('sc_mb6', 'HLC', 'HLC'), ('sc_mb7', 'Black_Metal', 'Black_Metal'),
            ('sc_mb8', 'Team_Psykskallar', 'Team_Psykskallar'), ('sc_mb9', 'Awesome', 'Awesome'), ('sc_mb10', 'Sick_Simon', 'Sick_Simon'), ('sc_mb11', 'Twitcher', 'Twitcher')]
 BOX = (80, 98, 188, 312)  # the preview frame on the picture
+# v0.10.5 (Katz: "then its hand model selection with hand model skins display"): the Hands page has its
+# own pictures, the first-person arms (models/weapons/v_actions.mdl, "emptyidle") in each costume's
+# sleeve. Named by the client's clothes state; the game paints states 4, 7 and 8 with the Awesome
+# sleeve (decomp gl_studiomodel.cpp LoadSleeveTexture), so they share sc_mbh9.
+HANDS = [('sc_mbh0', None, None), ('sc_mbh1', 'Leatherhoff', 'Leatherhoff'), ('sc_mbh2', 'ModDB', 'ModDB'), ('sc_mbh3', 'Hello_Kitty', 'Hello_Kitty'),
+         ('sc_mbh5', 'Camo', 'Camo'), ('sc_mbh6', 'HLC', 'HLC'), ('sc_mbh9', 'Awesome', 'Awesome'), ('sc_mbh10', 'Sick_Simon', 'Sick_Simon'),
+         ('sc_mbh11', 'Twitcher', 'Twitcher')]
+HANDS_MODEL = os.path.join('models', 'weapons', 'v_actions.mdl')
 
 
 def i32(b, o):
@@ -40,10 +50,10 @@ def floats(b, o, n):
     return struct.unpack_from('<%df' % n, b, o)
 
 
-def bone_matrices(b):
-    """Every bone's world matrix in the first frame of the "idle" sequence."""
+def bone_matrices(b, sequence=b'idle'):
+    """Every bone's world matrix in the first frame of the given sequence ("idle" for the player model)."""
     num, at = i32(b, 140), i32(b, 144)
-    seq = next(o for o in (i32(b, 168) + 176 * n for n in range(i32(b, 164))) if b[o:o + 32].split(b'\0')[0] == b'idle')
+    seq = next(o for o in (i32(b, 168) + 176 * n for n in range(i32(b, 164))) if b[o:o + 32].split(b'\0')[0] == sequence)
     anim = i32(b, seq + 124)
     out = []
     for n in range(num):
@@ -72,9 +82,9 @@ def bone_matrices(b):
     return out
 
 
-def triangles(b):
+def triangles(b, sequence=b'idle'):
     """(texture index, [(x, y, z, s, t) * 3]) of every triangle of the first body group."""
-    bones = bone_matrices(b)
+    bones = bone_matrices(b, sequence)
     skin = i32(b, 200)
     part = i32(b, 208)
     model = i32(b, part + 72)
@@ -139,11 +149,21 @@ def costume_file(game, folder, stem, part):
     return None
 
 
-def render(tris, textures, costume, size):
-    """A z-buffered, flat-lit drawing, three quarters from the front, 3x supersampled."""
-    yaw = math.radians(25)
-    c, s = math.cos(yaw), math.sin(yaw)
-    pts = [(-(x * s + y * c), -z, x * c - y * s) for _tex, tri in tris for x, y, z, _s, _t in tri]
+def front(x, y, z):
+    """The player model three quarters from the front: (screen x, screen y, depth), nearer is larger."""
+    c, s = math.cos(math.radians(25)), math.sin(math.radians(25))
+    return -(x * s + y * c), -z, x * c - y * s
+
+
+def arm_view(x, y, z):
+    """The left first-person arm seen from above the hand, the arm standing up and the hand at the bottom."""
+    c, s = math.cos(math.radians(70)), math.sin(math.radians(70))
+    return -y, -(-x * s + z * c), -(x * c + z * s)
+
+
+def render(tris, textures, costume, size, project=front):
+    """A z-buffered, flat-lit drawing (project: model space to screen and depth), 3x supersampled."""
+    pts = [project(x, y, z) for _tex, tri in tris for x, y, z, _s, _t in tri]
     minx, maxx = min(p[0] for p in pts), max(p[0] for p in pts)
     miny, maxy = min(p[1] for p in pts), max(p[1] for p in pts)
     w, h = size[0] * 3, size[1] * 3
@@ -158,7 +178,7 @@ def render(tris, textures, costume, size):
             pixels[i] = costume[name].load()
     sizes = {i: tex[1].size for i, tex in textures.items()}
     for tex, tri in tris:
-        v = [(-(x * s_ + y * c_), -z, x * c_ - y * s_, u, t) for x, y, z, u, t in tri for s_, c_ in [(s, c)]]
+        v = [project(x, y, z) + (u, t) for x, y, z, u, t in tri]
         ax, ay, az = v[0][0] * k + ox, v[0][1] * k + oy, v[0][2]
         bx, by, bz = v[1][0] * k + ox, v[1][1] * k + oy, v[1][2]
         cx, cy, cz = v[2][0] * k + ox, v[2][1] * k + oy, v[2][2]
@@ -189,7 +209,7 @@ def render(tris, textures, costume, size):
     return color.resize(size, Image.LANCZOS)
 
 
-def base_picture(source):
+def base_picture(source, title='Player Model'):
     header, img, tail = joinbox.read_tga(source)
     if img.size != (554, 480):
         raise SystemExit('unexpected computer_logon.tga size')
@@ -210,7 +230,7 @@ def base_picture(source):
     draw.rectangle((192, 164, 476, 312), fill=tuple(min(255, c + 22) for c in form), outline=(150, 118, 100))   # under the panel's text
     bold = lambda size: ImageFont.truetype(FONTS + 'tahomabd.ttf', size)
     plain = lambda size: ImageFont.truetype(FONTS + 'tahoma.ttf', size)
-    joinbox.text(draw, (79, 73), 'Player Model', bold(13), (126, 120, 132))
+    joinbox.text(draw, (79, 73), title, bold(13), (126, 120, 132))
     joinbox.text(draw, (335, 118), 'CRY OF FEAR', ImageFont.truetype(FONTS + 'arialbd.ttf', 26), (250, 246, 248), (92, 66, 62), 'mm')
     joinbox.text(draw, (335, 142), 'Co-op', plain(14), (238, 226, 226), (92, 66, 62), 'mm')
     dark = (40, 26, 22)
@@ -251,6 +271,23 @@ def main(game, simon, out):
         joinbox.write_tga(os.path.join(out, name + '.tga'), header, framed(picture, render(tris, textures, costume, size)), tail)
         print('made', name)
     joinbox.write_tga(os.path.join(out, 'sc_mbx.tga'), header, framed(picture, None), tail)
+    hands(game, source, out, size)
+
+
+def hands(game, source, out, size):
+    """The Hands page's pictures (HANDS)."""
+    header, picture, tail = base_picture(source, 'Hands')
+    data = open(os.path.join(game, HANDS_MODEL), 'rb').read()
+    # The left arm only (every triangle at least 20 units to the left): it fills the tall frame.
+    tris, textures = [t for t in triangles(data, b'emptyidle') if min(p[1] for p in t[1]) >= 20], model_textures(data)
+    sleeves = [n for n, _ in textures.values() if 'sleeve' in n]
+    for name, folder, stem in HANDS:
+        path = costume_file(game, folder, stem, 'sleeve') if folder else None
+        if folder and not path:
+            raise SystemExit('missing sleeve texture of ' + folder)
+        costume = {target: read_costume(path) for target in sleeves} if path else {}
+        joinbox.write_tga(os.path.join(out, name + '.tga'), header, framed(picture, render(tris, textures, costume, size, arm_view)), tail)
+        print('made', name)
 
 
 if __name__ == '__main__':

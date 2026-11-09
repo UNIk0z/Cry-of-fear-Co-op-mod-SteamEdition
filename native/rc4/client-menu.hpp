@@ -61,6 +61,14 @@ std::vector<ClientPatch> client_patches(){
  p.push_back({0x10064942,{0xe8,0xe9,0x4c,0x00,0x00},{0x33,0xc0,0x90,0x90,0x90},false});
  // Sleeve: "push edx; push 0; cmp ecx,2; jbe police" -> "cmp ecx,2; jbe ret; push edx; push 0".
  p.push_back({0x10064A80,{0x52,0x6a,0x00,0x83,0xf9,0x02,0x76,0x07},{0x83,0xf9,0x02,0x76,0x2f,0x52,0x6a,0x00},false});
+ // v0.10.5 (Katz 2026-11-09: "hand models dont work people reported"): the hands chosen on the
+ // Hands page never showed. In multiplayer the sleeve of the view model (and the head shield and
+ // attach camera) goes to LoadPoliceSleeveTexture (decomp gl_studiomodel.cpp, "if (bMultiplayer)"
+ // at 100668B9), which never reads the clothes state that model_clothes sends; only the
+ // single-player branch (10066917: clothes or custom sleeve -> LoadSleeveTexture 10064D60, else the
+ // model's own) paints the costume sleeve. The multiplayer call "push 0; call 10064A40" becomes
+ // "jmp 10066917": the view model's sleeve is the chosen costume's, every other model keeps its own.
+ p.push_back({0x100668EE,{0x6a,0x00},{0xeb,0x27},false});
  // v0.5.1 (Join, Katz 2026-10-23: "a box with 2 fields ... cancel or join"): the
  // Join button's "optionshack 0" is handled inside the engine (hw.dll 01D21AF5)
  // and never reaches the server; "sc_joinbox" does, and the menu map's own
@@ -309,8 +317,14 @@ std::vector<std::string> local_player_models(){
 // (the client's clothes state paints the first-person sleeves, model_clothes). Kept in
 // cryoffear/storycoop_hands.txt beside the model's file.
 struct ModelBox {Edict* who=nullptr;int serial=-1;std::string current,picture,hands;bool handsPage=false;} modelBox;
-std::vector<std::string> local_hands(){std::vector<std::string> out{"auto","simon"};const auto dir=game_dir_path();if(dir.empty())return out;for(const auto& o:ModelOutfits){const std::string m=o.model;std::error_code e2;if(std::filesystem::is_regular_file(dir/"models"/"player"/m/(m+".mdl"),e2))out.push_back(m);}return out;}
-std::string hands_saved(){const auto dir=game_dir_path();std::string name;if(!dir.empty()){std::ifstream f(dir/L"storycoop_hands.txt",std::ios::binary);if(f)f>>name;}for(auto& c:name)c=static_cast<char>(std::tolower(static_cast<unsigned char>(c)));return name=="auto"||name=="simon"||model_outfit(name)?name:"auto";}
+// v0.10.5: the hands are the costume sleeves the game has (decomp gl_studiomodel.cpp LoadSleeveTexture):
+// Afraid of Monsters, Black Metal and Team Psykskallar have none and are drawn with the Awesome
+// sleeve, so the page lists Awesome once. A sleeve is a game file: it does not need the outfit model.
+int hands_state(const std::string& hands){const int s=model_outfit(hands);return s==4||s==7||s==8?9:s;}
+std::vector<std::string> local_hands(){std::vector<std::string> out{"auto","simon"};for(const auto& o:ModelOutfits){const std::string m=o.model;if(hands_state(m)==model_outfit(m))out.push_back(m);}return out;}
+std::string hands_saved(){const auto dir=game_dir_path();std::string name;if(!dir.empty()){std::ifstream f(dir/L"storycoop_hands.txt",std::ios::binary);if(f)f>>name;}for(auto& c:name)c=static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+ if(const int s=hands_state(name);s&&s!=model_outfit(name))return ModelOutfits[s-1].model;   // an older choice of a sleeve-less outfit
+ return name=="auto"||name=="simon"||model_outfit(name)?name:"auto";}
 constexpr std::uint32_t ModelBoxPicture=0x10147380;constexpr std::size_t ModelBoxPictureBytes=47;
 const char* const ModelBoxPictureShipped="gfx/vgui/puzzle/computer/computer_loggedon.tga";
 bool model_box_set_picture(const std::string& path){
@@ -329,9 +343,14 @@ void model_box_show(Edict* e,const std::vector<std::string>& models){
  if(computerMessage<=0||!live(e))return;
  const std::string& shown=modelBox.handsPage?modelBox.hands:modelBox.current;const auto at=std::find(models.begin(),models.end(),shown);
  const std::string look=shown=="auto"?modelBox.current:shown;const int outfit=model_outfit(look);
- const std::string picture=look=="simon"?"gfx/vgui/sc_mb0.tga":outfit?"gfx/vgui/sc_mb"+std::to_string(outfit)+".tga":"gfx/vgui/sc_mbx.tga";
+ // v0.10.5 (Katz: "first its simon model with simon model skin display and then its hand model selection
+ // with hand model skins display"): the Hands page shows the first-person arm in the chosen sleeve
+ // (sc_mbh<state>.tga, scripts/menu/make-modelbox.py), not the player model. A custom model has Simon's hands.
+ const std::string picture=modelBox.handsPage?"gfx/vgui/sc_mbh"+std::to_string(hands_state(look))+".tga"
+  :look=="simon"?"gfx/vgui/sc_mb0.tga":outfit?"gfx/vgui/sc_mb"+std::to_string(outfit)+".tga":"gfx/vgui/sc_mbx.tga";
  if(!model_box_set_picture(picture))return;
- const std::string text=modelBox.handsPage?"\nHands: "+(shown=="auto"?std::string("same as the model"):model_label(shown))+"\n\nHands "+std::to_string(at-models.begin()+1)+" of "+std::to_string(models.size())+"\n\nNext: next hands\nDone: keep these"
+ const std::string handsName=hands_state(look)?model_label(ModelOutfits[hands_state(look)-1].model):std::string("Simon");
+ const std::string text=modelBox.handsPage?"\nHands: "+(shown=="auto"?"same as the model\n("+handsName+")":handsName)+"\n\nHands "+std::to_string(at-models.begin()+1)+" of "+std::to_string(models.size())+"\n\nNext: next hands\nDone: keep these"
   :"\n"+model_label(modelBox.current)+"\n\nModel "+std::to_string(at-models.begin()+1)+" of "+std::to_string(models.size())+"\n\nNext: next model\nDone: keep it, then the hands";
  eng<void(__cdecl*)(int,int,const float*,Edict*)>(46)(1,computerMessage,nullptr,e);
  for(int v:{1,0,0,1})eng<void(__cdecl*)(int)>(48)(v);   // logged on, wrong user, wrong password, silent
