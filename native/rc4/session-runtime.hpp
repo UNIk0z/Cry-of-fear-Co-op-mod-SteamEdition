@@ -115,6 +115,7 @@ bool host_has_model(const std::string& name){
 }
 int model_string(const std::string& name){auto it=modelStrings.find(name);if(it!=modelStrings.end())return it->second;const int v=engine[67]?eng<int(__cdecl*)(const char*)>(67)(name.c_str()):0;modelStrings[name]=v;return v;}
 bool simonModel=false;int simonString=0;std::map<int,ModelState> modelStates;
+std::map<int,unsigned> handsHudSerial;std::map<int,bool> handsMapArms;
 constexpr std::uint32_t WorldPointerRva=0x223190;   // hl.dll 10223190: the CWorld (10120EFC)
 constexpr std::size_t WorldPlayerModels=0xe0;
 void* world_memory(){
@@ -149,7 +150,6 @@ void model_line(ModelState& s,unsigned what,const char* format,int index,const c
 // client (decomp multiplay_gamerules.cpp InitHUD); a map's own arms (cof_customiseplayermodels, sent
 // again at the first weapon deploy, weapons.cpp 1778) win over a player's skin until the next InitHUD.
 struct HandsWire {Edict* to=nullptr;bool custom=false;};HandsWire handsWire;
-std::map<int,unsigned> handsHudSerial;std::map<int,bool> handsMapArms;
 void hands_wire_begin(int dest,int type,Edict* e){
  handsWire={};if(dest!=1||!live(e)||std::strcmp(classname(e),"player"))return;const int index=eng<int(__cdecl*)(Edict*)>(71)(e);if(index<1||index>32)return;
  if(type>0&&(type==initHud||type==resetHud)){++handsHudSerial[index];if(type==initHud)handsMapArms[index]=false;return;}
