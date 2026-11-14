@@ -525,7 +525,7 @@ void __cdecl prethink(Edict* e){crumb("prethink",e);objective_share();deploy_gua
 // for (see carry_level_change), then the engine's own ChangeLevel runs.
 // v0.3: the Drowned's victim lookup (see drowned_index in coop-runtime.hpp).
 Edict* __cdecl entity_of_index(int index){return drowned_index(index,eng<Edict*(__cdecl*)(int)>(72)(index));}
-void __cdecl change_level(char* map,char* landmark){carry_level_change(map);state_level_change(map);eng<void(__cdecl*)(char*,char*)>(6)(map,landmark);}
+void __cdecl change_level(char* map,char* landmark){if(level_change_first(map)){carry_level_change(map);state_level_change(map);}eng<void(__cdecl*)(char*,char*)>(6)(map,landmark);}
 // v0.3: trigger_command exits run "changelevel <map>" as a server command.
 void __cdecl server_command_hook(char* text){
  if(text&&scoped()){const char* s=text;while(*s==' '||*s=='\t')++s;if(!_strnicmp(s,"changelevel",11)&&(s[11]==' '||s[11]=='\t')){s+=11;while(*s==' '||*s=='\t')++s;char map[40]{};int n=0;while(*s&&*s!=' '&&*s!=';'&&*s!='\n'&&*s!='\r'&&n<39)map[n++]=*s++;state_level_change(map);}}

@@ -24,11 +24,13 @@ try {
     . (Join-Path $PSScriptRoot 'find-cof.ps1'); $game=Find-CofGameDirectory
     $adapter=if ($game) { Join-Path $game 'cl_dlls\storycoop_rc4.dll' } else { $null }
     if ($adapter -and [IO.File]::Exists($adapter)) {
-        $sha=(Get-FileHash -LiteralPath $adapter -Algorithm SHA256).Hash.ToLowerInvariant()
+        # v0.10.7: a blocked read prints the steps (find-cof.ps1 Get-CofSha; this block only informs).
+        $sha=Get-CofSha $adapter
         $catalog=Get-Content -Raw -LiteralPath $catalogPath | ConvertFrom-Json
         if ($sha -ceq $catalog.runtimeAdapter.sha256) { Write-Output "Installed in the game: co-op $current." }
         else { Write-Output 'Installed in the game: a different co-op version. Click Install in "Cry of Fear Co-op.exe" in this folder to install this one.' }
-    } elseif ($game) { Write-Output 'Installed in the game: none yet. Click Install in "Cry of Fear Co-op.exe" in this folder.' }
+    } elseif ($game -and (Test-CofAdapterGone $game)) { Write-Output 'Installed in the game: the co-op maps, but not the co-op adapter.'; Write-CofBlocked $adapter }
+    elseif ($game) { Write-Output 'Installed in the game: none yet. Click Install in "Cry of Fear Co-op.exe" in this folder.' }
 } catch {}
 Write-Output 'Checking GitHub for a newer version...'
 try {

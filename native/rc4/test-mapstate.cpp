@@ -239,10 +239,20 @@ int main(int argc,char** argv){
   // Back on the map: the group comes back as it was left.
   stad("s4_stad_e1");lines.clear();state_activate();
   assert(load<float>(ev(&entities[5]),0x164)==42.f&&load<float>(ev(&entities[4]),0x164)==43.f&&target(5)=="1stop1"&&logged({"trains-repaired=0"}));
+  assert(!logged({"kept as served (incomplete record)"}));
+  // v0.10.7 (F5): the button has a record but its train does not (its save wrote nothing, say). Restored alone,
+  // the button would get m_activated and a null m_pMoveWith and never ride the train again: the group stays as served.
+  {auto partial=saved;partial.entities.erase(std::remove_if(partial.entities.begin(),partial.entities.end(),[&](const StateEntity& x){return x.key==rec(5);}),partial.entities.end());
+   mapStates["s4_stad"]=partial;stad("s4_stad_e1");lines.clear();state_activate();
+   assert(logged({"MAPSTATE group 1trainbutton kept as served (incomplete record)"})&&keepKeys.count(rec(4))&&keepKeys.count(rec(5)));
+   assert(load<float>(ev(&entities[4]),0x164)==100.f);                                  // as served; v0.10.6: the button alone restored (43)
+   assert(!logged({"group 2trainbutton kept"}));                                           // a complete group is restored as before
+   mapStates["s4_stad"]=saved;}
   // A v0.10.5 save (the tester's slot1): no record of the groups. The trains go where their used trigger sent them.
   auto old=saved;old.entities.erase(std::remove_if(old.entities.begin(),old.entities.end(),[&](const StateEntity& x){return x.key==rec(4)||x.key==rec(5)||x.key==rec(14)||x.key==rec(17)||x.key==rec(18)||x.key==rec(21);}),old.entities.end());
   mapStates["s4_stad"]=old;stad("s4_stad_e1");lines.clear();state_activate();
   assert(target(5)=="1stop2"&&logged({"MAPSTATE repaired 1trainbutton: starts at 1stop2"}));   // its PostSpawn puts it, and the button, at the fuse box
+  assert(!logged({"kept as served (incomplete record)"}));                                      // no entry at all: as served without a line
   assert(target(14)=="2stop2"&&logged({"MAPSTATE repaired 2trainbutton: starts at 2stop2"}));   // through the manager
   assert(target(18)=="l1"&&target(10)==""&&logged({"trains-repaired=2"}));                     // a cycle has no stop; nothing used on exitcar
   // The trigger not used yet: the train stays at its first corner.
@@ -250,5 +260,5 @@ int main(int argc,char** argv){
   mapStates=keep;}
  // --- New campaign.
  mapStates["x"]={};stateLoaded=true;state_reset();assert(mapStates.empty()&&!stateLoaded);
- std::puts("PASS map state: BSP identity with ordinals, first visit as served, kept on level change (taken pickup, killtarget, dead monster, fired once-trigger, removed load-time entity), transitions/exits kept as served, movewith groups saved and restored whole (kept as served whole when a member leads out), v0.10.5 saves without a group record: a train whose trigger was used goes to its waiting corner (direct, through a manager; not a cycle), player-owned and frozen monsters not kept, restore onto the other entry alias with removals, recreated play-time monster with remapped reference and rebased time, relink per restored entity, game over not kept, kill switch, slot file round trip/corruption/CRC pairing/.bak fallback, older-save timeline reset and rope re-offer rule, new campaign reset; Drowned victim = her live player enemy only inside her own think. NOT Cry of Fear gameplay verification.");
+ std::puts("PASS map state: BSP identity with ordinals, first visit as served, kept on level change (taken pickup, killtarget, dead monster, fired once-trigger, removed load-time entity), transitions/exits kept as served, movewith groups saved and restored whole (kept as served whole when a member leads out, or when a member has no usable record: v0.10.7), v0.10.5 saves without a group record: a train whose trigger was used goes to its waiting corner (direct, through a manager; not a cycle), player-owned and frozen monsters not kept, restore onto the other entry alias with removals, recreated play-time monster with remapped reference and rebased time, relink per restored entity, game over not kept, kill switch, slot file round trip/corruption/CRC pairing/.bak fallback, older-save timeline reset and rope re-offer rule, new campaign reset; Drowned victim = her live player enemy only inside her own think. NOT Cry of Fear gameplay verification.");
 }

@@ -20,12 +20,32 @@ function Write-CofBlocked([string]$Path) {
     Write-Output '  1. Open Windows Security > Virus & threat protection > Protection history.'
     Write-Output '     Open the entry for this file and choose Actions > Allow on device (or Restore).'
     Write-Output '  2. Virus & threat protection settings > Manage settings > Exclusions > Add an exclusion >'
-    Write-Output '     Folder: the extracted "Cry of Fear Co-op" folder (and the cryoffear game folder if the file is there).'
+    Write-Output '     Folder, twice: the extracted "Cry of Fear Co-op" folder, and the game''s cryoffear\cl_dlls'
+    Write-Output '     folder (Install puts the co-op adapter storycoop_rc4.dll there).'
     Write-Output '  3. Extract the ZIP again over the same folder (the antivirus may have removed the file).'
     Write-Output '  4. Click Install again.'
     Write-Output ('HELP: Windows Defender blocked '+[IO.Path]::GetFileName($Path)+' (a false alarm).')
-    Write-Output 'HELP: Allow it in Windows Security > Protection history, exclude the co-op folder,'
+    Write-Output 'HELP: Allow it in Windows Security > Protection history, exclude the co-op folder and cl_dlls,'
     Write-Output 'HELP: extract the ZIP again and click Install. All steps: READ ME.txt.'
+}
+# v0.10.7 (code review F2): Get-FileHash in Windows PowerShell 5.1 catches the read error and writes a new
+# one without it, so the antivirus code is lost; this hash keeps it. A blocked read prints the steps.
+function Get-CofSha([string]$Path) {
+    try { $stream=[IO.File]::OpenRead($Path) }
+    catch { if (Test-CofBlocked $_.Exception) { Write-CofBlocked $Path; throw ('Windows Defender blocked '+[IO.Path]::GetFileName($Path)+' (a false alarm). See the steps above.') }; throw }
+    $digest=[Security.Cryptography.SHA256]::Create()
+    try { return ([BitConverter]::ToString($digest.ComputeHash($stream))).Replace('-','').ToLowerInvariant() } finally { $digest.Dispose(); $stream.Dispose() }
+}
+# v0.10.7 (code review F2; tester's launcher.log 2026-11-10: "Already current: 236 file(s)" but no adapter in
+# cl_dlls): an antivirus can take the installed adapter away after Install. The co-op maps are there and
+# storycoop_rc4.dll is not: the same steps as a blocked file.
+function Test-CofAdapterGone([string]$GameDirectory) {
+    return [IO.File]::Exists((Join-Path $GameDirectory 'maps\cof_campaign_story4.bsp')) -and -not [IO.File]::Exists((Join-Path $GameDirectory 'cl_dlls\storycoop_rc4.dll'))
+}
+function Assert-CofAdapter([string]$GameDirectory) {
+    if (-not (Test-CofAdapterGone $GameDirectory)) { return }
+    Write-CofBlocked (Join-Path $GameDirectory 'cl_dlls\storycoop_rc4.dll')
+    throw 'storycoop_rc4.dll is missing from cryoffear\cl_dlls although the co-op maps are installed: Windows Defender (or another antivirus) most likely removed it (a false alarm). See the steps above.'
 }
 function Find-CofGameDirectory {
     $roots=New-Object System.Collections.Generic.List[string]

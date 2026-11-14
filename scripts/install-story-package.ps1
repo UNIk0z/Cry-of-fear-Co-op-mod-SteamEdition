@@ -15,7 +15,10 @@ $ErrorActionPreference='Stop'
 # an antivirus blocks (ERROR_VIRUS_INFECTED 0x800700E1, ERROR_VIRUS_DELETED 0x800700E2), or a package file it
 # already took away, names the file and ends the installer with exit code 3 (setup-coop.ps1 prints the steps).
 # The package files are all read before anything is written, so nothing is installed then.
-$script:CoopBlocked=$null; $script:CoopRead={ param([string]$Path) ,[IO.File]::ReadAllBytes($Path) }
+# v0.10.7 (code review F2): a write, move or replace the antivirus stops (the same two codes) names the game
+# file being written ($script:CoopTarget). F3: an optional file whose read was blocked and that is skipped
+# clears the mark (Skip-CoopBlocked), so a later, unrelated error is not reported as a block.
+$script:CoopBlocked=$null; $script:CoopTarget=$null; $script:CoopRead={ param([string]$Path) ,[IO.File]::ReadAllBytes($Path) }
 function Test-CoopBlocked($Exception) {
     for ($e=$Exception; $null -ne $e; $e=$e.InnerException) { if ($e.HResult -eq -2147024671 -or $e.HResult -eq -2147024670) { return $true } }
     return $false
@@ -28,7 +31,11 @@ function Read-CoopBytes([string]$Path) {
         throw
     }
 }
+function Skip-CoopBlocked {
+    if ($script:CoopBlocked) { Write-Output ('Optional file skipped: the antivirus blocked '+$script:CoopBlocked); $script:CoopBlocked=$null }
+}
 trap {
+    if (-not $script:CoopBlocked -and (Test-CoopBlocked $_.Exception)) { $script:CoopBlocked=if ($script:CoopTarget) { $script:CoopTarget } else { 'a co-op file (the error did not name it)' } }
     if ($script:CoopBlocked) {
         Write-Output ('COOP-BLOCKED '+$script:CoopBlocked)
         Write-Output ('Windows Defender (or another antivirus) blocked or removed this file: '+$script:CoopBlocked)
@@ -338,7 +345,7 @@ foreach ($extra in @($catalog.extras | Where-Object { $null -ne $_ })) {
         $xfBytes=[Convert]::FromBase64String($extra.transforms); $xf=New-Object 'double[]' ($xfBytes.Length/8); for ($i=0; $i -lt $xf.Length; $i++) { $xf[$i]=[BitConverter]::ToDouble($xfBytes,$i*8) }
         $extraBytes=$null; try { $extraBytes=New-SimonModel ((Read-CoopBytes $policePath)) ((Read-CoopBytes $simonPath)) ([int[]]@($extra.boneMap)) $xf } catch { $extraBytes=$null }
         if ($null -eq $extraBytes -or (Get-PatchSha $extraBytes) -cne $extra.sha256 -or $extraBytes.Length -ne $extra.fileBytes) {
-            if ($extra.optional) { Write-Output 'Simon player model skipped: the model built on this PC did not match the expected result. Players keep their own models.'; continue }
+            if ($extra.optional) { Skip-CoopBlocked; Write-Output 'Simon player model skipped: the model built on this PC did not match the expected result. Players keep their own models.'; continue }
             throw 'Generated extra mismatch. Nothing installed.'
         }
         $simonBuilt=$extraBytes
@@ -391,6 +398,7 @@ if (-not $Remove) {
     if ($drive.IsReady -and $drive.AvailableFreeSpace -lt $needed) { throw "Insufficient disk space: need $needed bytes. Nothing installed." }
 }
 foreach ($item in $prepared) {
+    $script:CoopTarget=$item.path
     if ($Remove -and $item.ContainsKey('restore')) {
         $restoreTemp=$item.path+'.storycoop-restore-'+[Guid]::NewGuid().ToString('N')+'.tmp'
         Write-NewPatchFile $restoreTemp $item.restoreBytes
@@ -429,15 +437,16 @@ if (-not $Remove) {
         if (($listed -join '|') -cne ($entryNames -join '|')) {
             $entryBytes=New-Object 'System.Collections.Generic.List[byte[]]'
             foreach ($p in $entryPaths) { $entryBytes.Add((Read-CoopBytes $p)) }
-            foreach ($p in $entryPaths) { [IO.File]::Delete($p) }
+            foreach ($p in $entryPaths) { $script:CoopTarget=$p; [IO.File]::Delete($p) }
             # Written directly: a temporary name renamed afterwards takes a different directory slot.
-            for ($i=0; $i -lt $entryPaths.Count; $i++) { [IO.File]::WriteAllBytes($entryPaths[$i],$entryBytes[$i]) }
+            for ($i=0; $i -lt $entryPaths.Count; $i++) { $script:CoopTarget=$entryPaths[$i]; [IO.File]::WriteAllBytes($entryPaths[$i],$entryBytes[$i]) }
             $listed=@([IO.Directory]::EnumerateFiles($maps,'*-*bsp') | ForEach-Object { [IO.Path]::GetFileName($_) } | Where-Object { $entryNames -contains $_ })
             if (($listed -join '|') -ceq ($entryNames -join '|')) { Write-Output 'Create Server entries rewritten in chapter order.' } else { Write-Output 'Create Server entries rewritten, but this drive still lists them out of order.' }
         }
     }
 }
 if ($null -ne $menuPrepared) {
+    $script:CoopTarget=$menuPath
     if ($Remove) {
         $restoreTemp=$menuPath+'.storycoop-restore-'+[Guid]::NewGuid().ToString('N')+'.tmp'
         Write-NewPatchFile $restoreTemp $menuPrepared

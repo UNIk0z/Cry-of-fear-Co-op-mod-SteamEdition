@@ -373,24 +373,67 @@ int main(int argc,char** argv_){
   auto tp=make(31,"cof_teleport","teleportst11_2","teleportst11_2ld");assert(find_next(nullptr,"targetname","teleportst11_2")==tp);
   auto dest=make(32,"info_teleport_destination","teleportst11_2ld","");store(ev(dest),8,-410.f);store(ev(dest),12,-152.f);store(ev(dest),16,-344.f);
   auto t80=make(33,"trigger_once","","sc_level_368");box(t80,-477,-574,-536,-395,-480,-403);make(34,"cof_changelevel","sc_level_368","");
-  stand(p1,-552,-529,-491);stand(p2,-516,-529,-491);
-  // CTriggerMultiple::MultiTouch (wait 2, then sleeps) and CCofTeleport::Use (moves its activator only).
-  static float wakeAt=0;static Edict* teleportDest=nullptr;teleportDest=dest;wakeAt=0;
+  stand(p1,-552,-529,-491);stand(p2,-516,-529,-491);store(ev(dest),0x54,90.f);
+  // v0.10.7 (F1): an exit beside the destination, as at the stad (the door and its trigger next to the arrival).
+  auto t81=make(35,"trigger_once","","sc_level_368");box(t81,-470,-140,-400,-350,-40,-250);
+  // CTriggerMultiple::MultiTouch (wait 2, then sleeps) and CCofTeleport::Use (puts its activator exactly on
+  // its target, copies the target's yaw). The world for this block: floor under z -307 (standing on the
+  // destination), and the players are solid to a hull trace that does not ignore monsters.
+  static float wakeAt=0;wakeAt=0;
   struct Native {static void touch(Edict* t,Edict* o){if(std::strcmp(classname(t),"trigger_multiple")||load<float>(globals,0)<wakeAt)return;wakeAt=load<float>(globals,0)+2.f;Edict* x=find_next(nullptr,"targetname",str(load<int>(ev(t),0x1cc)));if(x)use(x,o);}
-                 static void use(Edict* h,Edict* a){if(!std::strcmp(classname(h),"cof_teleport")&&teleportDest){store(ev(a),8,load<float>(ev(teleportDest),8));store(ev(a),12,load<float>(ev(teleportDest),12));store(ev(a),16,load<float>(ev(teleportDest),16)+37.f);}else use_(h,a);}};
-  void* touchBefore=original[4];void* useBefore=original[3];original[4]=reinterpret_cast<void*>(&Native::touch);original[3]=reinterpret_cast<void*>(&Native::use);
+                 static void use(Edict* h,Edict* a){if(std::strcmp(classname(h),"cof_teleport")){use_(h,a);return;}
+                  auto k=helpers.find(h);const std::string to=k!=helpers.end()&&k->second.count("target")?k->second["target"]:str(load<int>(ev(h),0x1cc));
+                  Edict* d=find_next(nullptr,"targetname",to.c_str());if(!d)return;const float x=load<float>(ev(d),8),y=load<float>(ev(d),12),z=load<float>(ev(d),16)+37.f;
+                  store(ev(a),8,x);store(ev(a),12,y);store(ev(a),16,z);store(ev(a),0x54,load<float>(ev(d),0x54));
+                  store(ev(a),0xc4,x-16);store(ev(a),0xc8,y-16);store(ev(a),0xcc,z-36);store(ev(a),0xd0,x+16);store(ev(a),0xd4,y+16);store(ev(a),0xd8,z+36);}
+                 static bool solid_at(const float* p,Edict* skip,bool players){if(p[2]<-307.5f)return true;if(!players)return false;
+                  for(int i:{1,2}){Edict* e=&entities[i];if(e==skip)continue;bool in=true;for(int k=0;k<3;++k)if(std::fabs(p[k]-load<float>(ev(e),8+k*4))>=(k==2?72.f:32.f))in=false;if(in)return true;}return false;}
+                 static void trace(const float* a,const float* b,int ignore,int,Edict* skip,Trace* t){*t={};const bool pl=ignore==0;if(solid_at(a,skip,pl)){t->startSolid=1;t->allSolid=solid_at(b,skip,pl);return;}t->fraction=1;
+                  if(b[2]<a[2]){if(b[2]<-307.5f)t->fraction=(a[2]+307.5f)/(a[2]-b[2]);return;}
+                  for(float s=0.f;s<=1.f;s+=0.02f){const float p[3]={a[0]+(b[0]-a[0])*s,a[1]+(b[1]-a[1])*s,a[2]};if(solid_at(p,skip,pl)){t->fraction=s;return;}}}};
+  void* touchBefore=original[4];void* useBefore=original[3];void* hullBefore=engine[34];original[4]=reinterpret_cast<void*>(&Native::touch);original[3]=reinterpret_cast<void*>(&Native::use);engine[34]=reinterpret_cast<void*>(&Native::trace);
   now(5.f);lines.clear();dispatch_touch(t79,p1);
-  assert(std::fabs(load<float>(ev(p1),8)+410.f)<1.f);                                    // the first player is carried into the subway
-  assert(std::fabs(load<float>(ev(p2),8)+410.f)<1.f&&logged("TRANSIT player=2 carried by teleportst11_2 with player=1"));   // v0.10.5: player 2 stays at -516 in the dark room
+  assert(std::fabs(load<float>(ev(p1),8)+410.f)<1.f&&std::fabs(load<float>(ev(p1),12)+152.f)<1.f);   // the first player is carried into the subway
+  // v0.10.5: player 2 stays at -516 in the dark room; v0.10.6: player 2 lands inside player 1 at -410 -152.
+  {const float dx=load<float>(ev(p2),8)+410.f,dy=load<float>(ev(p2),12)+152.f,y=load<float>(ev(p2),12);
+   assert(dx*dx+dy*dy>=32.f*32.f&&dx*dx+dy*dy<100.f*100.f);                 // beside him, not in him
+   assert(y+24.f<-140.f);                                                      // not inside the exit beside the destination
+   assert(lastAngles=="0 90.00 0");                                            // the teleport's yaw is kept
+   assert(logged("TRANSIT player=2 carried by teleportst11_2 with player=1 (he stood in the same trigger), beside him"));}
+  // Collision off (host option): no overlap to undo, both stand on the destination as the teleport puts them.
+  sessionOptions.have=true;sessionOptions.collision=0;stand(p1,-552,-529,-491);stand(p2,-516,-529,-491);now(13.f);lines.clear();dispatch_touch(t79,p1);
+  assert(std::fabs(load<float>(ev(p2),8)+410.f)<1.f&&std::fabs(load<float>(ev(p2),12)+152.f)<1.f&&!logged("beside him"));sessionOptions=SessionOptions{};
   // Not for a trigger that leads out, nor for a player outside the trigger.
-  stand(p1,-552,-529,-491);stand(p2,-200,-529,-491);now(9.f);dispatch_touch(t79,p1);assert(std::fabs(load<float>(ev(p2),8)+200.f)<1.f);
-  original[4]=touchBefore;original[3]=useBefore;teleportDest=nullptr;exitsArrivedIn.clear();arrivalGrace.clear();
-  for(int i:{30,31,32,33,34}){release(&entities[i]);store(&entities[i],0,1);}}
+  stand(p1,-552,-529,-491);stand(p2,-200,-529,-491);now(17.f);dispatch_touch(t79,p1);assert(std::fabs(load<float>(ev(p2),8)+200.f)<1.f);
+  original[4]=touchBefore;original[3]=useBefore;engine[34]=hullBefore;exitsArrivedIn.clear();arrivalGrace.clear();
+  for(int i:{30,31,32,33,34,35}){release(&entities[i]);store(&entities[i],0,1);}}
+
+ // --- v0.10.7 (F4): a second ChangeLevel in the same frame. The engine runs only the first on a map
+ //     (decomp pr_cmds.c PF_changelevel_I, last_spawncount); the adapter's bookkeeping must do the same.
+ {nextFree=40;qol2_map_changed();coop_map_changed();engine[6]=reinterpret_cast<void*>(&changelevel_);player(1,0,0);player(2,200,0);
+  const int mapBefore=load<int>(globals,0x0c);store(globals,0x0c,intern("s4_buscity_e0"));now(30.f);
+  auto make=[&](int i,const char* type,const char* name,const char* target){auto e=&entities[i];*e={};store(e,0,0);store(e,4,700+i);store(ev(e),0,intern(type));if(*name)store(ev(e),0x1d0,intern(name));if(*target)store(ev(e),0x1cc,intern(target));
+   store(ev(e),0xc4,-100.f);store(ev(e),0xc8,-100.f);store(ev(e),0xcc,0.f);store(ev(e),0xd0,400.f);store(ev(e),0xd4,100.f);store(ev(e),0xd8,100.f);return e;};
+  auto story=make(36,"trigger_once","","storything");make(37,"multi_manager","storything","");
+  static int storyTouches=0;storyTouches=0;struct Native {static void touch(Edict* t,Edict*){if(!std::strcmp(classname(t),"trigger_once"))++storyTouches;}};
+  void* touchBefore=original[4];original[4]=reinterpret_cast<void*>(&Native::touch);
+  arrivalGrace[p1]=1.f;arrivalGrace[p2]=1.f;checkpointMapTime=0.f;
+  lines.clear();change_level(const_cast<char*>("s4_city_e1"),const_cast<char*>("landbc"));   // player 1's exit
+  change_level(const_cast<char*>("s4_park_e0"),const_cast<char*>("lm"));                    // player 2's move, same frame
+  assert(logged("CARRY level change to s4_city_e1")&&!logged("CARRY level change to s4_park_e0:")&&logged("CARRY level change to s4_park_e0 ignored"));
+  assert(pendingArrival.a&&!std::strcmp(pendingArrival.a->to,"s4_city_e1"));   // v0.10.6: reset for s4_park_e0, a map the engine never loads
+  dispatch_touch(story,p2);assert(storyTouches==0);                            // v0.10.6: the story trigger fires on a map that is about to end
+  now(31.5f);dispatch_touch(story,p2);assert(storyTouches==1);                 // a change the engine never ran does not shut the triggers for good
+  coop_map_changed();store(globals,0x0c,intern("s4_city_e1"));now(1.f);lines.clear();
+  change_level(const_cast<char*>("s4_buscity_e1"),const_cast<char*>("landbc"));assert(logged("CARRY level change to s4_buscity_e1:"));   // the next map counts its own first change
+  original[4]=touchBefore;pendingArrival={};loadWait={};arrivalGrace.clear();exitsArrivedIn.clear();coop_map_changed();store(globals,0x0c,mapBefore);
+  for(int i:{36,37}){release(&entities[i]);store(&entities[i],0,1);}}
 
  std::puts("PASS v0.10 fixture: options, hardcore, scaling, dodge, ping, scare, run timer, black and white, outline, hunted, bosses");
  std::puts("PASS v0.10.2 fixture: co-op doors without the wait (sc_doorwait 0), ownerless touches, unblocking pickup copies, key inside a door, fuse sockets, phone for everyone, story facing, no teleports, arrival loop");
  std::puts("PASS v0.10.3 fixture: doors that change the map wait for every living player (co-op zones and plain doors, the ending door), sc_doorwait 0 as v0.10.2");
  std::puts("PASS v0.10.4 fixture: Q drops one box of the held gun's ammo (from the reserve, in front, precached boxes only, once a second, not alone or dual wielding)");
  std::puts("PASS v0.10.6 fixture: the load wait holds on the new map only (not released by the old map's last frame); every player in a transit trigger_multiple goes through its cof_teleport with the first");
+ std::puts("PASS v0.10.7 fixture: transit-carried players land beside the first one, outside exits (not on him); a second ChangeLevel in one frame keeps the first change and shuts player triggers for 1 s");
  return 0;
 }

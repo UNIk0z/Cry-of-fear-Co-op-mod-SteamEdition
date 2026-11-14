@@ -4,8 +4,10 @@ $ErrorActionPreference='Stop'
 # coop-fixes-008: on another PC the game lives elsewhere; find it through Steam.
 # v0.5: Steam's own copy of the game first; the developer default only when Steam knows none
 # (a stale D:\ copy used to win and the launcher reported "not installed").
-if (-not $PSBoundParameters.ContainsKey('GameDirectory') -and [IO.File]::Exists((Join-Path $PSScriptRoot 'find-cof.ps1'))) {
-    . (Join-Path $PSScriptRoot 'find-cof.ps1'); $found=Find-CofGameDirectory; if ($found) { $GameDirectory=$found }
+# v0.10.7: always loaded when it is there (the antivirus checks below), also with -GameDirectory.
+$cof=[IO.File]::Exists((Join-Path $PSScriptRoot 'find-cof.ps1')); if ($cof) { . (Join-Path $PSScriptRoot 'find-cof.ps1') }
+if (-not $PSBoundParameters.ContainsKey('GameDirectory') -and $cof) {
+    $found=Find-CofGameDirectory; if ($found) { $GameDirectory=$found }
 }
 $launchMap=$Map
 # coop-fixes-005: open the game's real main menu with the co-op adapter loaded.
@@ -100,6 +102,8 @@ if ($ShowCommand) { Write-Output ('"'+$SteamExe+'" '+($launchArguments -join ' '
 if (Get-Process -Name 'cof','cryoffear' -ErrorAction SilentlyContinue) { throw 'Close Cry of Fear normally before launching this Steam session.' }
 # v0.3: Steam running as administrator ignores a launch request from a normal window.
 if ($MenuOnly -and (Get-Command Test-SteamElevated -ErrorAction SilentlyContinue) -and (Test-SteamElevated) -and -not (Test-CofAdmin)) { Invoke-CofElevated $PSCommandPath @('-MenuOnly') 'Steam is running as administrator, so the game must be started as administrator too (or restart Steam normally).' }
+# v0.10.7: the co-op maps without the adapter is an antivirus that removed it (find-cof.ps1 Assert-CofAdapter).
+if ($NativeRC4 -and $cof) { Assert-CofAdapter $GameDirectory }
 if ($NativeRC4 -and -not [IO.File]::Exists((Join-Path $GameDirectory 'cl_dlls\storycoop_rc4.dll'))) { throw ('The co-op mod is not installed in '+$GameDirectory+'. Click Install in "Cry of Fear Co-op.exe" first (game closed), then start it again.') }
 # coop-fixes-012: the launcher checks which co-op version this PC has. v0.5: a
 # different installed version is named and still started (it was reported as
@@ -108,8 +112,8 @@ if ($MenuOnly -and [IO.File]::Exists((Join-Path $PSScriptRoot 'release.json'))) 
     $release=Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'release.json') | ConvertFrom-Json
     # v0.10.6: an installed adapter an antivirus will not let us read is named, with the steps (find-cof.ps1).
     $adapterFile=Join-Path $GameDirectory 'cl_dlls\storycoop_rc4.dll'
-    try { $sha=(Get-FileHash -LiteralPath $adapterFile -Algorithm SHA256).Hash.ToLowerInvariant() }
-    catch { if ((Get-Command Test-CofBlocked -ErrorAction SilentlyContinue) -and (Test-CofBlocked $_.Exception)) { Write-CofBlocked $adapterFile; throw 'Windows Defender blocked storycoop_rc4.dll (a false alarm). See the steps above.' }; throw }
+    # v0.10.7: not Get-FileHash, which drops the antivirus code from its error (find-cof.ps1 Get-CofSha).
+    $sha=Get-CofSha $adapterFile
     if ($sha -cne $release.runtimeAdapter.sha256) {
         $name='an older or unknown version'
         if ([IO.File]::Exists((Join-Path $PSScriptRoot 'known-builds.json'))) { $known=@((Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'known-builds.json') | ConvertFrom-Json).builds | Where-Object { $_.adapter -ceq $sha }); if ($known.Count) { $name='co-op '+[string]$known[0].id } }

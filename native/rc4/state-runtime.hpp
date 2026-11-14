@@ -242,6 +242,19 @@ void state_activate(){
  const bool runtimeOk=s.layout?s.layout==stateLayout:s.map==map_name();
  if(runtimeOk){for(const auto& r:loadRuntime)if(serial(r.e)==r.serial)fresh[r.key]=r.e;}
  else log("[STORYCOOP_RC4] MAPSTATE load-time entities kept as served (this alias creates a different set)\n");
+ // v0.10.7 (code review F5): a group is restored all or nothing. A restored child gets m_activated and its
+ // saved m_pMoveWith; when its parent has no record in this table the pointer comes back null and Activate
+ // returns before InitMoveWith (decomp cbase.cpp 571), so the child no longer rides its parent. A group with
+ // a live member that has no usable record and was not removed stays as served whole. A group with no entry
+ // at all (a v0.10.5 save) is as served anyway and is left to state_repair_trains, without a line.
+ {std::map<std::string,std::string> recorded;for(const auto& x:s.entities)recorded[x.key]=x.type;const std::set<std::string> gone(s.removed.begin(),s.removed.end());
+  std::map<std::string,std::pair<bool,bool>> groups;   // group -> {a member has no usable record, the save has an entry for a member}
+  for(std::size_t i=1;i<spawnRecords.size();++i){const auto& r=spawnRecords[i];if(!r.e||r.key.empty()||serial(r.e)!=r.serial||keepKeys.count(r.key))continue;const auto g=state_group(r.e);if(g.empty())continue;
+   auto it=recorded.find(r.key);const bool entry=it!=recorded.end()||gone.count(r.key);auto& f=groups[g];
+   if(!gone.count(r.key)&&(it==recorded.end()||it->second!=classname(r.e)))f.first=true;if(entry)f.second=true;}
+  for(const auto& [g,f]:groups){if(!f.first||!f.second)continue;
+   for(std::size_t i=1;i<spawnRecords.size();++i){const auto& r=spawnRecords[i];if(r.e&&!r.key.empty()&&serial(r.e)==r.serial&&state_group(r.e)==g)keepKeys.insert(r.key);}
+   char line[200]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MAPSTATE group %.60s kept as served (incomplete record)\n",g.c_str());log(line);}}
  int removed=0,restored=0,created=0,unmatched=0,kept=0,failed=0,deleted=0;std::set<std::string> spent;
  for(const auto& key:s.removed){if(keepKeys.count(key)){++kept;continue;}auto it=fresh.find(key);if(it==fresh.end())continue;state_spent(it->second,spent);state_kill(it->second);fresh.erase(it);++removed;}
  std::vector<SaveTable> table(s.entities.size());

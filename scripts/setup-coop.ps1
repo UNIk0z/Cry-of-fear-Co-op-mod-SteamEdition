@@ -15,13 +15,9 @@ param([string]$GameDirectory,[switch]$CheckOnly,[switch]$Uninstall)
 # game's own menu title back and installs nothing. Unknown files are left alone.
 # Saves (storycoop_saves), logs and every original game file stay in place.
 $ErrorActionPreference='Stop'
-function Get-Sha([string]$Path) {
-    # v0.10.6: a file an antivirus will not let us read is named, with the steps (find-cof.ps1).
-    try { $stream=[IO.File]::OpenRead($Path) } catch { if (Test-CofBlocked $_.Exception) { Write-CofBlocked $Path; throw ('Windows Defender blocked '+[IO.Path]::GetFileName($Path)+' (a false alarm). See the steps above.') }; throw }
-    $digest=[Security.Cryptography.SHA256]::Create()
-    try { return ([BitConverter]::ToString($digest.ComputeHash($stream))).Replace('-','').ToLowerInvariant() } finally { $stream.Dispose(); $digest.Dispose() }
-}
 . (Join-Path $PSScriptRoot 'find-cof.ps1')
+# v0.10.6: a file an antivirus will not let us read is named, with the steps (find-cof.ps1 Get-CofSha, v0.10.7).
+function Get-Sha([string]$Path) { return Get-CofSha $Path }
 Write-CofStep 2 'Finding Cry of Fear'
 if (-not $GameDirectory) { $GameDirectory=Find-CofGameDirectory }
 if (-not $GameDirectory) { throw 'Cry of Fear was not found in any Steam library. Run again with -GameDirectory "<...>\steamapps\common\Cry of Fear\cryoffear".' }
@@ -177,7 +173,9 @@ $stepDone=0; $stepTotal=[Math]::Max(1,$expected.Count); $blocked=$null
 if ($LASTEXITCODE -eq 3 -and $blocked) { Write-CofBlocked $blocked; throw ('Windows Defender blocked '+[IO.Path]::GetFileName($blocked)+' (a false alarm), so the co-op files were not installed. See the steps above.') }
 if ($LASTEXITCODE -ne 0) { throw 'The package installer stopped (see above). Old files were set aside; nothing else changed.' }
 Write-CofStep 92 'Checking the installed files'
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer -MapsDirectory (Join-Path $game 'maps') -VerifyOnly | Out-Null
+# v0.10.7 (code review F2): the antivirus can take or lock a file just written into the game folder.
+$blocked=$null; & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer -MapsDirectory (Join-Path $game 'maps') -VerifyOnly | ForEach-Object { if ($_ -match '^COOP-BLOCKED (.+)$') { $blocked=$Matches[1] } }
+if ($LASTEXITCODE -eq 3 -and $blocked) { Write-CofBlocked $blocked; throw ('Windows Defender blocked '+[IO.Path]::GetFileName($blocked)+' right after it was installed (a false alarm). See the steps above.') }
 if ($LASTEXITCODE -ne 0) { throw 'Verification failed after install.' }
 $bad=@($expected.Keys | Where-Object { -not [IO.File]::Exists((Join-Path $game $_)) -or (Get-Sha (Join-Path $game $_)) -cne $expected[$_] })
 $simon=$catalog.extras | Where-Object { $_.target -eq 'models/player/simon/simon.mdl' }
@@ -191,6 +189,9 @@ $built=@($catalog.extras | Where-Object { $null -ne $_ -and $null -ne $_.deltaFr
 $bad=@($bad | Where-Object { -not ($built -contains $_ -and -not [IO.File]::Exists((Join-Path $game $_))) })
 # v0.9: a player's own settings files (sc_setup.scr, storycoop_server.cfg, storycoop_comfort.cfg) may hold his changes.
 $bad=@($bad | Where-Object { -not ($mutable.ContainsKey($_) -and [IO.File]::Exists((Join-Path $game $_))) })
+# v0.10.7: a co-op binary written a moment ago and gone now was taken by the antivirus (the adapter first).
+$gone=@($bad | Where-Object { $_ -match '\.dll$' -and -not [IO.File]::Exists((Join-Path $game $_)) } | Sort-Object { $_ -ne 'cl_dlls\storycoop_rc4.dll' })
+if ($gone.Count) { Write-CofBlocked (Join-Path $game $gone[0]); throw ('Windows Defender (or another antivirus) removed '+[IO.Path]::GetFileName($gone[0])+' right after it was installed (a false alarm). See the steps above.') }
 if ($bad.Count) { $bad | ForEach-Object { Write-Output "Not as expected: $_" }; throw 'Verification failed after install.' }
 Write-CofStep 100 'Done'
 if ($originals.Count) { Write-Output "DONE: co-op $version installed and verified ($($expected.Count) files). Saves were not touched; of the game's own files only the menu title and the main menu (cl_dlls\client.dll) are replaced; Uninstall puts the originals back." }

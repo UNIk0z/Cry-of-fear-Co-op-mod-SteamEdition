@@ -10,12 +10,12 @@ if (-not $GameDirectory) { throw 'Cry of Fear was not found in any Steam library
 $catalog=Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'release.json') | ConvertFrom-Json
 $first=$catalog.maps | Where-Object { $_.map -ceq 'cof_campaign_story4' }
 $map=Join-Path $GameDirectory 'maps\cof_campaign_story4.bsp'
-$digest=[Security.Cryptography.SHA256]::Create()
-$ok=[IO.File]::Exists($map) -and ([BitConverter]::ToString($digest.ComputeHash([IO.File]::ReadAllBytes($map))).Replace('-','').ToLowerInvariant() -ceq $first.outputSha256)
+# v0.10.7: an adapter an antivirus removed or will not let us read gives the steps (find-cof.ps1).
+Assert-CofAdapter $GameDirectory
+$ok=[IO.File]::Exists($map) -and ((Get-CofSha $map) -ceq $first.outputSha256)
 # The maps can be identical between builds; the adapter tells the versions apart.
 $dll=Join-Path $GameDirectory 'cl_dlls\storycoop_rc4.dll'
-$ok=$ok -and [IO.File]::Exists($dll) -and ([BitConverter]::ToString($digest.ComputeHash([IO.File]::ReadAllBytes($dll))).Replace('-','').ToLowerInvariant() -ceq $catalog.runtimeAdapter.sha256)
-$digest.Dispose()
+$ok=$ok -and [IO.File]::Exists($dll) -and ((Get-CofSha $dll) -ceq $catalog.runtimeAdapter.sha256)
 if (-not [IO.File]::Exists($dll)) { throw ('The co-op mod is not installed in '+$GameDirectory+'. Close Cry of Fear and click Install in "Cry of Fear Co-op.exe" in this folder first.') }
 if (-not $ok) { Write-Warning ('This PC has a different co-op version than this folder ('+$catalog.coopFixes.id+'). Joining anyway; if the game refuses, close it and click Install in "Cry of Fear Co-op.exe" in this folder. Both players need the same version.') }
 Write-CofAddonWarning $GameDirectory

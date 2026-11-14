@@ -2179,9 +2179,25 @@ bool trigger_is_exit(Edict* t){
 // out while the load wait held the first player in. An exit a player touches while he cannot use it yet (the
 // load wait or his first 3 s) now stays shut for him until he has left it: no touch for 1 s.
 std::map<std::pair<Edict*,int>,std::map<Edict*,float>> exitsArrivedIn;
+// v0.10.7 (code review F4): the engine runs only the first pfnChangeLevel on a map (PF_changelevel_I keeps
+// last_spawncount, decomp pr_cmds.c 2459). A second one in the same frame (the next player's move touching
+// another exit) reset the arrival and the load wait for a map that is never loaded and logged the wrong
+// CARRY map. Now only the first call is counted until the next map, and player trigger touches are shut for
+// 1 s after it, so nothing more fires on a map that is about to end (a used trigger_once is saved as used).
+struct LevelChangeAsked {bool on=false;float at=0;std::string map;int ignored=0;};
+LevelChangeAsked levelChangeAsked;
+bool level_change_first(const char* map){
+ auto& c=levelChangeAsked;const char* to=map&&*map?map:"?";
+ if(!c.on){c.on=true;c.at=globals?load<float>(globals,0):0.f;c.map=to;return true;}
+ if(c.ignored++<8){char line[200]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] CARRY level change to %.40s ignored: the engine runs only the first one on a map (%.40s)\n",to,c.map.c_str());log(line);}
+ return false;
+}
+// shortcut: 1 s of server time, so a change the engine never runs cannot shut the triggers for good.
+bool level_change_closing(){const auto& c=levelChangeAsked;if(!c.on||!globals)return false;const float now=load<float>(globals,0);return now>=c.at&&now-c.at<1.f;}
 bool arrival_touch_blocked(Edict* trigger,Edict* other){
  if(!globals||!live(other)||!live(trigger)||std::strcmp(classname(other),"player"))return false;
  const char* type=classname(trigger);if(std::strncmp(type,"trigger_",8)||!std::strcmp(type,"trigger_hurt"))return false;
+ if(level_change_closing())return true;
  const float now=load<float>(globals,0);
  // Not settled yet counts from the map's start, so a player whose inventory never comes back still has the exits after 20 s.
  auto g=arrivalGrace.find(other);const bool early=loadWait.armed||now<(g!=arrivalGrace.end()?g->second:checkpointMapTime+20.f);
@@ -2202,6 +2218,9 @@ bool arrival_touch_blocked(Edict* trigger,Edict* other){
 // everyone go together, one player was carried out and the others stayed in the dark room facing the way
 // back ("ARRIVAL player=2 left the exit he arrived in" on s4_stad_e1). When such a trigger carries a
 // player away, every other ready player standing in it now goes through the same teleport with him.
+// v0.10.7 (code review F1): CCofTeleport::Use puts every activator exactly on its target, so the carried
+// players stood inside the first one (player collision is on by default). Each is now moved to a free spot
+// beside him that is not inside a trigger that leads out (arrival_landing), with the teleport's yaw.
 int transitLines=0;
 void transit_touch(Edict* trigger,Edict* other,const float* before){
  if(!scoped()||!globals||!original[3]||!live(trigger)||!live(other)||std::strcmp(classname(trigger),"trigger_multiple")||std::strcmp(classname(other),"player"))return;
@@ -2211,12 +2230,18 @@ void transit_touch(Edict* trigger,Edict* other,const float* before){
  std::vector<Edict*> teleports;
  for(auto t:skip_named(target)){auto v=vars(t);if(std::strcmp(classname(t),"cof_teleport")||!v||load<int>(v,0x1d8))return;teleports.push_back(t);}   // plain player teleports only (no monster "message")
  if(teleports.empty())return;
+ std::vector<std::array<float,6>> exits;bool exitsRead=false;
  for(auto o:connected_players()){
   auto q=vars(o);if(o==other||!q||!view_alive(o)||!client_ready(o))continue;
   bool in=true;for(int k=0;k<3;++k)if(load<float>(q,0xd0+k*4)<load<float>(tv,0xc4+k*4)||load<float>(q,0xc4+k*4)>load<float>(tv,0xd0+k*4))in=false;
   if(!in)continue;
   for(auto t:teleports)native<void(__cdecl*)(Edict*,Edict*)>(3)(t,o);
-  if(transitLines<40){++transitLines;char line[200]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] TRANSIT player=%d carried by %.40s with player=%d (he stood in the same trigger)\n",eng<int(__cdecl*)(Edict*)>(71)(o),target,eng<int(__cdecl*)(Edict*)>(71)(other));log(line);}
+  const char* where="";
+  if(!collision_off()){
+   if(!exitsRead){exits=exit_volumes();exitsRead=true;}
+   std::array<float,3> at{};const bool beside=arrival_landing({load<float>(ov,8),load<float>(ov,12),load<float>(ov,16)},o,exits,at)&&teleport_to(o,at,load<float>(q,0x54));
+   where=beside?", beside him":", no clear spot beside him: left on the destination";}
+  if(transitLines<40){++transitLines;char line[240]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] TRANSIT player=%d carried by %.40s with player=%d (he stood in the same trigger)%s\n",eng<int(__cdecl*)(Edict*)>(71)(o),target,eng<int(__cdecl*)(Edict*)>(71)(other),where);log(line);}
  }
 }
 // --- When a scene ends (v0.8, Katz's items 9 and 11) -------------------------------------------
@@ -2260,4 +2285,4 @@ void wheelchair_frame(){
   for(int k=0;k<3;++k)store(v,0x20+k*4,load<float>(v,0x20+k*4)*cap/s);
   if(!wheelchairCutLogged){wheelchairCutLogged=true;char line[120]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] WHEELCHAIR speed %.0f held to its cap %.0f\n",s,cap);log(line);}}
 }
-void coop_map_changed(){load_wait_map_changed();collision_restore();wardrobeDone=false;teamCards.known.clear();teamCards.dropping.clear();teamCards.floor.clear();teamCards.next=0;staleCards.clear();storyTeleports.clear();climbFollows.clear();storyAnchor={};storyLateDone.clear();arrivalGrace.clear();exitTriggers.clear();exitsArrivedIn.clear();bossExitAt=-1;bossSave={};bossOverAt=-1;bossBarSeen=false;bossBarChecked=false;bossBar=nullptr;bossBarSerial=-1;bossDownBefore.clear();bossBarShown.clear();sceneWatch={};wheelchairCutLogged=false;subtitleMuteUntil=-1;pickupCopies.clear();pickupOwner.clear();pickupOwnerSerial.clear();deployLogged.clear();doorHides.clear();stripClears.clear();fadesDone=false;doorPressUsed.clear();itemCopiesDone=false;pickupOwnersNext=0;pickupExtrasDone=false;pickupExtras.clear();forcedVisible.clear();bossOver=false;fallBacks.clear();doorGlobals.clear();doorLocks.clear();trainEscape={};floorWallsDone=false;quickNotices.clear();fallWatch.clear();equipWants.clear();nightmareLogged=false;morphineWatch.clear();prologueSkip={};partyLimitLogged=-1;joinWait={};skipScene={};skipAfter={};skipJump.clear();skipLines=0;evidence_reset();drowned_reset();give_reset();stuckUsed.clear();nightmareRegroup={};nameStates.clear();lastPlaces.clear();sceneSeen.clear();sceneFollowers.clear();idleProbes.clear();doorMusicLines=0;sceneMoveLines=0;}
+void coop_map_changed(){levelChangeAsked={};load_wait_map_changed();collision_restore();wardrobeDone=false;teamCards.known.clear();teamCards.dropping.clear();teamCards.floor.clear();teamCards.next=0;staleCards.clear();storyTeleports.clear();climbFollows.clear();storyAnchor={};storyLateDone.clear();arrivalGrace.clear();exitTriggers.clear();exitsArrivedIn.clear();bossExitAt=-1;bossSave={};bossOverAt=-1;bossBarSeen=false;bossBarChecked=false;bossBar=nullptr;bossBarSerial=-1;bossDownBefore.clear();bossBarShown.clear();sceneWatch={};wheelchairCutLogged=false;subtitleMuteUntil=-1;pickupCopies.clear();pickupOwner.clear();pickupOwnerSerial.clear();deployLogged.clear();doorHides.clear();stripClears.clear();fadesDone=false;doorPressUsed.clear();itemCopiesDone=false;pickupOwnersNext=0;pickupExtrasDone=false;pickupExtras.clear();forcedVisible.clear();bossOver=false;fallBacks.clear();doorGlobals.clear();doorLocks.clear();trainEscape={};floorWallsDone=false;quickNotices.clear();fallWatch.clear();equipWants.clear();nightmareLogged=false;morphineWatch.clear();prologueSkip={};partyLimitLogged=-1;joinWait={};skipScene={};skipAfter={};skipJump.clear();skipLines=0;evidence_reset();drowned_reset();give_reset();stuckUsed.clear();nightmareRegroup={};nameStates.clear();lastPlaces.clear();sceneSeen.clear();sceneFollowers.clear();idleProbes.clear();doorMusicLines=0;sceneMoveLines=0;}

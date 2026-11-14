@@ -87,3 +87,13 @@ Nothing in v0.10 has run in the game yet. Close Cry of Fear, open "Cry of Fear C
 60. A new game: place the stad fuse, come back later in the snow, take the fuse at the fuse box, leave and return: the box stays empty. On s4_subway2st1 (the metro) the two take-back buttons are still at their sockets after leaving and coming back.
 61. Other arrivals into a transit room, for example s4_hamn2 from s4_hamn, s4_park3, s4_buscity2: both players come out into the map together.
 62. Enter s4_subway1st1 from the tunnel (s4_subtunnel1) while carrying a fuse: you keep it (no `Chapter 4 fuse(s) left behind`).
+
+## v0.10.7 (docs/V0107_RELEASE.md)
+
+63. Solo or two players: any arrival through a transit room (s4_stad <-> s4_subway1st1 first, then s4_hamn2 from s4_hamn, s4_park3, s4_buscity2). Both players come out side by side, not inside each other, and nobody is standing in the door or trigger that leads back. The host log has `TRANSIT player=N carried by ... , beside him`. If it says `no clear spot beside him`, note the map and where you stood.
+64. Same arrival with the host option collision off (sc_collision 0): both come out on the same spot, as in v0.10.6, and can walk apart.
+65. Two players walk into two different exits at the same moment (for example both doors of a room, or one through a door while the other steps into a level-change trigger). The game goes to one map; the host log has one `CARRY level change to <map>:` line and, if the second was asked for, `CARRY level change to <other> ignored`. On the new map both arrive at the right place.
+66. Install with the adapter removed after Install, without Defender: install v0.10.7, close the launcher, delete `cryoffear\cl_dlls\storycoop_rc4.dll` by hand, then click Run Co-op Mod. The launcher shows the Defender HELP lines ("exclude the co-op folder and cl_dlls") instead of "not installed"; launcher.log has the four steps with both folders. Click Install: it puts the adapter back.
+67. Same with Join (delete the adapter, Join Simon's Story): the same steps, the game does not start.
+68. The update check (Check for updates) with the adapter deleted: it says "the co-op maps, but not the co-op adapter" and prints the steps.
+69. A save made with v0.10.6 on s4_stad (fuse placed and taken back once): load it with v0.10.7. The host log has no `MAPSTATE group ... kept as served (incomplete record)` line, and the fuse box stays as it was left. If such a line appears on any map, send the log.

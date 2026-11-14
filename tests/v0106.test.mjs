@@ -57,8 +57,8 @@ test('installer: every file read goes through the guard; setup-coop and the laun
  assert.ok(!after.includes('[IO.File]::ReadAllBytes(')&&after.includes('(Read-CoopBytes '));
  const setup=read('scripts/setup-coop.ps1');
  assert.ok(setup.includes("if ($LASTEXITCODE -eq 3 -and $blocked) { Write-CofBlocked $blocked;")&&setup.includes("'^COOP-BLOCKED (.+)$'"));
- assert.ok(setup.includes('if (Test-CofBlocked $_.Exception) { Write-CofBlocked $Path;'));
- assert.ok(read('scripts/host-story-coop.ps1').includes('Write-CofBlocked $adapterFile'));
+ assert.ok(read('scripts/find-cof.ps1').includes('if (Test-CofBlocked $_.Exception) { Write-CofBlocked $Path;')&&setup.includes('Get-CofSha $Path'));   // v0.10.7: one hash for setup, host, join and update
+ assert.ok(read('scripts/host-story-coop.ps1').includes('Get-CofSha $adapterFile'));
  assert.ok(read('launcher/CoopLauncher.cs').includes('entry.StartsWith("HELP: ", StringComparison.Ordinal)'));
  for(const f of ['scripts/install-story-package.ps1','scripts/setup-coop.ps1','scripts/find-cof.ps1','scripts/host-story-coop.ps1'])assert.ok(ascii(read(f)),f+' must stay ASCII for Windows PowerShell 5.1');
 });
