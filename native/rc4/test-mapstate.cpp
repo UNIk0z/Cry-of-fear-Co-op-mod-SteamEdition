@@ -96,7 +96,8 @@ int main(int argc,char** argv){
  assert(state_source("s4_apartment5_e1")=="s4_apartment5"&&state_source("s4_start_e0")=="s4_start"&&state_source("s4_start2")=="s4_start2"&&state_source("s4_x_e")=="s4_x_e"&&state_source("s4_a_eb")=="s4_a_eb");
  // --- First visit: nothing kept yet, the map stays as served.
  spawn_map("s4_test_e1",false);lines.clear();state_activate();
- assert(logged({"MAPSTATE first visit of s4_test"})&&spawnRecords[8].key!=spawnRecords[9].key&&keepKeys.count(spawnRecords[5].key)&&keepKeys.count(spawnRecords[6].key)&&keepKeys.count(spawnRecords[11].key)&&keepKeys.count(spawnRecords[12].key)&&!keepKeys.count(spawnRecords[4].key));
+ assert(logged({"MAPSTATE first visit of s4_test"})&&spawnRecords[8].key!=spawnRecords[9].key&&keepKeys.count(spawnRecords[5].key)&&keepKeys.count(spawnRecords[6].key)&&!keepKeys.count(spawnRecords[4].key));
+ assert(!keepKeys.count(spawnRecords[11].key)&&!keepKeys.count(spawnRecords[12].key));   // v0.10.6: a movewith group is kept and restored whole
  assert(loadRuntime.size()==2&&loadRuntime[0].key=="rt:env_laser_sprite#0");
  // --- Play: rope taken, rope button killtargeted, zombie dead, bath trigger
  // fired, exit trigger fired, rope model shown, gate toggled, one sprite
@@ -196,7 +197,58 @@ int main(int argc,char** argv){
   const std::string card="\"map_name\"\r\n{\r\n\tdata\t\"leftplate\"\r\n}\r\n\r\n\"combined_with\"\r\n{\r\n\tdata\t\"rightplate\"\r\n}\r\n";
   assert(half_value(card,"map_name")=="leftplate"&&half_value(card,"combined_with")=="rightplate"&&half_value(card,"combined_result").empty());
   auto zombie=make(41,"monster_zombie","");drowned_begin(zombie);assert(drowned_index(1,&entities[1])==&entities[1]);drowned_end();drowned_reset();}
+ // --- v0.10.6 (tester's slot1, s4_stad): the fuse take-back button (func_button *30, movewith 1trainbutton)
+ // rides on func_train 1trainbutton, which the one-shot trigger_once *32 sends from 1stop1 to 1stop2 at the
+ // fuse box. v0.3-v0.10.5 kept movewith groups as served: no record of the train or the button in the save,
+ // the trigger gone, and the button back at 1stop1 on every visit. s4_subway2st1's pair goes through a manager.
+ {const auto keep=mapStates;mapStates.clear();
+  auto stad=[&](const char* name){
+   for(int i=3;i<48;++i){entities[i]={};store(&entities[i],0,1);}mem.clear();nextFree=30;set_map(name);
+   make(3,"trigger_once","",0,0,0,"*32");store(ev(&entities[3]),0x1cc,intern("1trainbutton"));
+   make(4,"func_button","",0,0,0,"*30");store(ev(&entities[4]),0x1cc,intern("multipoff2"));
+   make(5,"func_train","1trainbutton",-645,60,-300,"*31");store(ev(&entities[5]),0x1cc,intern("1stop1"));
+   make(6,"path_corner","1stop1",-645,60,-300);store(ev(&entities[6]),0x1cc,intern("1stop2"));store(ev(&entities[6]),0x1a4,2);
+   make(7,"path_corner","1stop2",-491,-113,-300);store(ev(&entities[7]),0x1a4,3);
+   make(8,"trigger_once","",0,0,0,"*20");store(ev(&entities[8]),0x1cc,intern("sc_level_9"));make(9,"cof_changelevel","sc_level_9");
+   make(10,"func_train","exitcar",0,0,0,"*40");make(11,"trigger_once","",0,0,0,"*41");store(ev(&entities[11]),0x1cc,intern("sc_level_9"));   // a group with a way out in it
+   make(12,"trigger_once","",0,0,0,"*57");store(ev(&entities[12]),0x1cc,intern("multitrigshit"));
+   make(13,"multi_manager","multitrigshit");mem[&entities[13]].resize(0x200);store(pd(&entities[13]),MmCount,1);store(pd(&entities[13]),MmNames,intern("2trainbutton"));
+   make(14,"func_train","2trainbutton",-1316,1264,-536,"*44");store(ev(&entities[14]),0x1cc,intern("2stop1"));
+   make(15,"path_corner","2stop1",-1316,1264,-536);store(ev(&entities[15]),0x1cc,intern("2stop2"));store(ev(&entities[15]),0x1a4,2);
+   make(16,"path_corner","2stop2",-1282,1437,-536);store(ev(&entities[16]),0x1a4,3);
+   make(17,"func_button","",0,0,0,"*43");
+   make(18,"func_train","loop",0,0,0,"*60");store(ev(&entities[18]),0x1cc,intern("l1"));make(19,"path_corner","l1");store(ev(&entities[19]),0x1cc,intern("l2"));make(20,"path_corner","l2");store(ev(&entities[20]),0x1cc,intern("l1"));
+   make(21,"func_wall","",0,0,0,"*61");make(22,"trigger_once","",0,0,0,"*62");store(ev(&entities[22]),0x1cc,intern("loop"));   // a train that runs a cycle
+   state_map_begin();const std::string worldKey=state_identity(&entities[0]);world_spawned(&entities[0],true,0,worldKey);
+   for(int i=3;i<=22;++i){
+    const char* parent=i==4?"1trainbutton":i==11?"exitcar":i==17?"2trainbutton":i==21?"loop":nullptr;
+    if(parent){KeyValue kv{const_cast<char*>(classname(&entities[i])),const_cast<char*>("movewith"),const_cast<char*>(parent),0};state_keyvalue(&entities[i],&kv);}
+    const std::string key=state_identity(&entities[i]);world_spawned(&entities[i],false,0,key);}
+  };
+  auto rec=[&](int i){return spawnRecords[i-2].key;};auto target=[&](int i){return std::string(str(load<int>(ev(&entities[i]),0x1cc)));};
+  stad("s4_stad_e2");lines.clear();state_activate();
+  assert(!keepKeys.count(rec(4))&&!keepKeys.count(rec(5)));                              // v0.10.5: both kept as served, never saved
+  assert(keepKeys.count(rec(10))&&keepKeys.count(rec(11)));                               // a member leads out: the whole group stays as served
+  // Play: *32 sends the train (with the button) to the fuse box; *57 fires the manager; *62 starts the loop.
+  store(&entities[3],0,1);store(&entities[12],0,1);store(&entities[22],0,1);
+  store(ev(&entities[5]),8,-491.f);store(ev(&entities[5]),12,-113.f);store(ev(&entities[5]),0x164,42.f);store(ev(&entities[4]),0x164,43.f);
+  state_level_change("s4_subway1st1_e0");state_deactivate();
+  const auto saved=mapStates.at("s4_stad");
+  auto has=[&](const MapState& s,const std::string& k){return std::any_of(s.entities.begin(),s.entities.end(),[&](const StateEntity& x){return x.key==k;});};
+  assert(has(saved,rec(4))&&has(saved,rec(5))&&!has(saved,rec(10)));
+  // Back on the map: the group comes back as it was left.
+  stad("s4_stad_e1");lines.clear();state_activate();
+  assert(load<float>(ev(&entities[5]),0x164)==42.f&&load<float>(ev(&entities[4]),0x164)==43.f&&target(5)=="1stop1"&&logged({"trains-repaired=0"}));
+  // A v0.10.5 save (the tester's slot1): no record of the groups. The trains go where their used trigger sent them.
+  auto old=saved;old.entities.erase(std::remove_if(old.entities.begin(),old.entities.end(),[&](const StateEntity& x){return x.key==rec(4)||x.key==rec(5)||x.key==rec(14)||x.key==rec(17)||x.key==rec(18)||x.key==rec(21);}),old.entities.end());
+  mapStates["s4_stad"]=old;stad("s4_stad_e1");lines.clear();state_activate();
+  assert(target(5)=="1stop2"&&logged({"MAPSTATE repaired 1trainbutton: starts at 1stop2"}));   // its PostSpawn puts it, and the button, at the fuse box
+  assert(target(14)=="2stop2"&&logged({"MAPSTATE repaired 2trainbutton: starts at 2stop2"}));   // through the manager
+  assert(target(18)=="l1"&&target(10)==""&&logged({"trains-repaired=2"}));                     // a cycle has no stop; nothing used on exitcar
+  // The trigger not used yet: the train stays at its first corner.
+  old.removed.erase(std::remove(old.removed.begin(),old.removed.end(),rec(3)),old.removed.end());mapStates["s4_stad"]=old;stad("s4_stad_e1");lines.clear();state_activate();assert(target(5)=="1stop1"&&target(14)=="2stop2");
+  mapStates=keep;}
  // --- New campaign.
  mapStates["x"]={};stateLoaded=true;state_reset();assert(mapStates.empty()&&!stateLoaded);
- std::puts("PASS map state: BSP identity with ordinals, first visit as served, kept on level change (taken pickup, killtarget, dead monster, fired once-trigger, removed load-time entity), transitions/exits/movewith kept as served, player-owned and frozen monsters not kept, restore onto the other entry alias with removals, recreated play-time monster with remapped reference and rebased time, relink per restored entity, game over not kept, kill switch, slot file round trip/corruption/CRC pairing/.bak fallback, older-save timeline reset and rope re-offer rule, new campaign reset; Drowned victim = her live player enemy only inside her own think. NOT Cry of Fear gameplay verification.");
+ std::puts("PASS map state: BSP identity with ordinals, first visit as served, kept on level change (taken pickup, killtarget, dead monster, fired once-trigger, removed load-time entity), transitions/exits kept as served, movewith groups saved and restored whole (kept as served whole when a member leads out), v0.10.5 saves without a group record: a train whose trigger was used goes to its waiting corner (direct, through a manager; not a cycle), player-owned and frozen monsters not kept, restore onto the other entry alias with removals, recreated play-time monster with remapped reference and rebased time, relink per restored entity, game over not kept, kill switch, slot file round trip/corruption/CRC pairing/.bak fallback, older-save timeline reset and rope re-offer rule, new campaign reset; Drowned victim = her live player enemy only inside her own think. NOT Cry of Fear gameplay verification.");
 }

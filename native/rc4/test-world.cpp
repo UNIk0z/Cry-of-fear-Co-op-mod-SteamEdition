@@ -555,6 +555,6 @@ int main(int argc,char** argv){
   auto tape=std::string("inventoryitems/cassettetape.txt");carryDone[&entities[1]]=serial(&entities[1]);carryDone[&entities[2]]=serial(&entities[2]);tick();put(&entities[1],0,tape);tick();assert(!holds_card(&entities[2],tape));
   for(int i=0;i<6;++i)store(pd(&entities[1]),0x2200+i*4,0);teamCards={};carryDone.clear();nextFree=20;}
   // Review 2026-11-04: a wait the last game left armed is gone in a new one.
-  load_wait_level_change(2);assert(loadWait.armed);reset();assert(!loadWait.armed);
+  load_wait_level_change(2);coop_map_changed();assert(loadWait.armed);reset();assert(!loadWait.armed&&!loadWait.pending);
  std::puts("PASS world/campaign checkpoint fixtures: saves at any RC2/RC4 recorder (BSP-indexed), per-player poses, removed pickups and key-unlocked doors restored after load with authored-target/hidden/story-toggled exclusions, safe TraceHull landings (occupied, wall, water), tape reminder set on restore, boat partner gathered at the dock only, stuck command and nightmare photo regroup. NOT Cry of Fear gameplay verification.");
 }

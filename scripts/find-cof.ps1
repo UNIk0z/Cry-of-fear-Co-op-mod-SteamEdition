@@ -7,6 +7,26 @@
 function Write-CofStep([int]$Percent,[string]$Text) {
     if ($env:COF_LAUNCHER -eq '1') { [Console]::Out.WriteLine('##cof-progress '+$Percent+' '+$Text); [Console]::Out.Flush() }
 }
+# v0.10.6 (tester's launcher.log 2026-11-10): Windows Defender (or another antivirus) refused to let a co-op
+# file be read: ERROR_VIRUS_INFECTED 0x800700E1 or ERROR_VIRUS_DELETED 0x800700E2 in the exception chain.
+function Test-CofBlocked($Exception) {
+    for ($e=$Exception; $null -ne $e; $e=$e.InnerException) { if ($e.HResult -eq -2147024671 -or $e.HResult -eq -2147024670) { return $true } }
+    return $false
+}
+# The steps, in plain ASCII. launcher.log keeps every line; the launcher shows the HELP: lines.
+function Write-CofBlocked([string]$Path) {
+    Write-Output ('Windows Defender (or another antivirus) blocked this file: '+$Path)
+    Write-Output 'This is a known false alarm: the co-op files are new and not signed. To install:'
+    Write-Output '  1. Open Windows Security > Virus & threat protection > Protection history.'
+    Write-Output '     Open the entry for this file and choose Actions > Allow on device (or Restore).'
+    Write-Output '  2. Virus & threat protection settings > Manage settings > Exclusions > Add an exclusion >'
+    Write-Output '     Folder: the extracted "Cry of Fear Co-op" folder (and the cryoffear game folder if the file is there).'
+    Write-Output '  3. Extract the ZIP again over the same folder (the antivirus may have removed the file).'
+    Write-Output '  4. Click Install again.'
+    Write-Output ('HELP: Windows Defender blocked '+[IO.Path]::GetFileName($Path)+' (a false alarm).')
+    Write-Output 'HELP: Allow it in Windows Security > Protection history, exclude the co-op folder,'
+    Write-Output 'HELP: extract the ZIP again and click Install. All steps: READ ME.txt.'
+}
 function Find-CofGameDirectory {
     $roots=New-Object System.Collections.Generic.List[string]
     foreach ($key in @(@('HKCU:\Software\Valve\Steam','SteamPath'),@('HKLM:\SOFTWARE\WOW6432Node\Valve\Steam','InstallPath'),@('HKLM:\SOFTWARE\Valve\Steam','InstallPath'))) {

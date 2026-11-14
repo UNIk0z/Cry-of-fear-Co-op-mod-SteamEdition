@@ -1,3 +1,13 @@
+# Map state — v0.10.6 update (2026-11-13)
+
+slotN.cofmap is unchanged (version 3). Movewith groups (a train or door and the
+entities riding on it) are now saved and restored whole instead of kept as served
+(state-runtime.hpp state_group); a group with a member that leads out stays as
+served whole. Files from v0.10.5 and older have no record of these groups: a
+func_train whose one-shot trigger chain was used on the kept visit is put at the
+corner where that trigger left it (state_repair_trains, log `MAPSTATE repaired`).
+See V0106_RELEASE.md. Not run in game.
+
 # Save system — coop-fixes-004 update
 
 Checkpoint schema 3 (COFCKP01 version 3) appends the shared keypad code

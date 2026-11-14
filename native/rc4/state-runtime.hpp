@@ -19,9 +19,11 @@
 // Gone at the end of the visit = gone again: taken pickups, dead monsters
 // (DispatchSave skips them, as in single player), fired once-triggers and
 // killtargets are removed with the native killtarget flags. Kept as served,
-// never restored or removed: player starts, landmarks, level-change entities,
-// the triggers that fire a cof_changelevel (every exit must keep working) and
-// movewith parents/children (their link lists are rebuilt only by Spawn).
+// never restored or removed: player starts, landmarks, level-change entities
+// and the triggers that fire a cof_changelevel (every exit must keep working).
+// v0.10.6: movewith groups (a parent and its children) are kept and restored
+// whole, as single player does (below, state_group); v0.3-v0.10.5 kept them as
+// served, and a train carrying a button came back to its first corner.
 // A save writes slotN.cofmap beside slotN.cofsave, naming that checkpoint by
 // CRC; loading a save replaces the whole kept timeline with that file (or with
 // nothing for an older save) and a new campaign starts empty. Kill switch: the
@@ -36,7 +38,7 @@ std::map<std::string,MapState> mapStates;
 struct RuntimeRecord {Edict* e=nullptr;int serial=-1;std::string key;};
 std::vector<RuntimeRecord> loadRuntime;
 std::map<std::string,int> stateOrdinals;
-std::set<Edict*> moveWithUsers;std::set<std::string> moveWithNames,keepKeys;
+std::map<Edict*,std::string> moveWithOf;std::set<std::string> moveWithNames,keepKeys;   // a child's "movewith" parent name; every parent name
 bool stateLoaded=false;   // the loaded save had a matching map-state file
 std::uint32_t stateLayout=0;   // CRC of this map's load-time entity names (see state_activate)
 std::uint32_t state_crc(const unsigned char* p,std::size_t n);
@@ -57,10 +59,10 @@ bool state_off(){
 }
 bool state_scope(){return scoped()&&checkpoint_map(map_name());}
 void state_reset(){mapStates.clear();stateLoaded=false;}
-void state_map_begin(){stateOrdinals.clear();moveWithUsers.clear();moveWithNames.clear();keepKeys.clear();loadRuntime.clear();}
+void state_map_begin(){stateOrdinals.clear();moveWithOf.clear();moveWithNames.clear();keepKeys.clear();loadRuntime.clear();}
 void state_keyvalue(Edict* e,const KeyValue* kv){
  if(!kv||!kv->key||!kv->value||!*kv->value||std::strcmp(kv->key,"movewith"))return;
- moveWithUsers.insert(e);moveWithNames.insert(kv->value);
+ moveWithOf[e]=kv->value;moveWithNames.insert(kv->value);
 }
 // Before the native Spawn: entvars hold exactly the BSP keyvalues.
 std::string state_identity(Edict* e){
@@ -73,15 +75,65 @@ std::set<std::string> state_exit_names(){
  for(int n=0;n<256;++n){e=find_next(e,"classname","cof_changelevel");if(!e)break;const char* name=targetname(e);if(name&&*name)out.insert(name);}
  return out;
 }
-// Served transition entities and movewith groups always keep the map's own state.
+// Served transition entities always keep the map's own state.
 bool state_keep(Edict* e,const std::string& type,const std::set<std::string>& exits){
  for(const char* t:{"worldspawn","player","info_player_start","info_player_deathmatch","info_player_coop","info_landmark","info_teleport_destination","trigger_changelevel","trigger_coop_changelevel","inter_door_coop_changelevel","inter_door_exit","cof_changelevel","cof_lobby_start"})if(type==t)return true;
- if(type.rfind("cof_coop_spawn",0)==0||moveWithUsers.count(e))return true;
+ if(type.rfind("cof_coop_spawn",0)==0)return true;
  auto p=vars(e);if(!p)return false;
- const char* name=string_at(load<int>(p,0x1d0));if(name&&*name&&moveWithNames.count(name))return true;
  const char* target=string_at(load<int>(p,0x1cc));if(target&&*target&&exits.count(target))return true;
  if(type=="trigger_command"){const char* command=string_at(load<int>(p,0x1d4));if(command&&(std::strstr(command,"changelevel")||std::strstr(command,"map ")))return true;}
  return false;
+}
+// v0.10.6 (tester's slot1, s4_stad: the fuse could not be taken). A movewith group is the parent and every
+// entity whose "movewith" names it. Spirit links them in Activate (decomp cbase.cpp 571-628 InitMoveWith)
+// and saves the links (m_pMoveWith, m_pChildMoveWith, m_pSiblingMoveWith and m_activated, cbase.cpp
+// 831-839): restored with the whole group in the table, the links point at the fresh entities and Activate
+// does not link them again, as in a single-player load. A group is kept as served only as a whole: when
+// any member is (a child trigger that leads out, say), so are the others.
+std::string state_group(Edict* e){
+ auto it=moveWithOf.find(e);if(it!=moveWithOf.end())return it->second;
+ auto p=vars(e);const char* name=p?string_at(load<int>(p,0x1d0)):nullptr;return name&&*name&&moveWithNames.count(name)?name:std::string();
+}
+// v0.3-v0.10.5 saves have no record of a movewith group. The stad's fuse take-back button (func_button *30)
+// rides on func_train 1trainbutton, which the one-shot trigger_once *32 sends from 1stop1 to 1stop2 at the
+// fuse box; back on the map the trigger is gone with the visit and the train waits at 1stop1 again, so the
+// button never comes. A func_train with no saved record whose trigger chain was used up on the kept visit (a
+// removed entity's target, through relays and managers) is sent where that trigger left it: its target becomes
+// the first later corner that waits for a retrigger (path_corner flag 1) or ends the path, and its own
+// PostSpawn in Activate (plats.cpp 1100) puts it and its movewith children there, as the map does with the
+// first corner of every train. A cycle has no such corner and is left alone.
+bool state_reaches(const std::string& from,const std::string& name,int depth,std::set<std::string>& seen){
+ if(from==name)return true;if(depth>3||!seen.insert(from).second)return false;
+ for(auto e:skip_named(from)){const std::string c=classname(e);auto v=vars(e);if(!v)continue;
+  if(c=="trigger_relay"){const char* t=string_at(load<int>(v,0x1cc));if(t&&*t&&state_reaches(t,name,depth+1,seen))return true;}
+  if(c=="multi_manager")for(const auto& t:manager_targets(e,0))if(state_reaches(t,name,depth+1,seen))return true;}
+ return false;
+}
+void state_spent(Edict* e,std::set<std::string>& spent){
+ auto v=vars(e);if(!v)return;const char* t=string_at(load<int>(v,0x1cc));if(t&&*t)spent.insert(t);
+ if(!std::strcmp(classname(e),"multi_manager"))for(const auto& m:manager_targets(e,0))spent.insert(m);
+}
+int state_repair_trains(const MapState& s,const std::set<std::string>& spent){
+ if(spent.empty())return 0;
+ std::set<std::string> known(s.removed.begin(),s.removed.end());for(const auto& x:s.entities)known.insert(x.key);
+ int repaired=0;
+ for(std::size_t i=1;i<spawnRecords.size();++i){
+  const auto& r=spawnRecords[i];if(!r.e||r.key.empty()||serial(r.e)!=r.serial||r.type!="func_train"||known.count(r.key))continue;
+  auto v=vars(r.e);const char* name=v?string_at(load<int>(v,0x1d0)):nullptr;if(!name||!*name||!moveWithNames.count(name))continue;
+  bool used=false;for(const auto& t:spent){std::set<std::string> seen;if(state_reaches(t,name,0,seen)){used=true;break;}}if(!used)continue;
+  const char* first=string_at(load<int>(v,0x1cc));Edict* at=first&&*first?find_next(nullptr,"targetname",first):nullptr;
+  int stop=0;std::set<Edict*> walked;bool cycle=false;
+  while(at&&walked.insert(at).second){
+   auto av=vars(at);const int next=av?load<int>(av,0x1cc):0;const char* nextName=string_at(next);
+   Edict* to=nextName&&*nextName?find_next(nullptr,"targetname",nextName):nullptr;if(!to||std::strcmp(classname(to),"path_corner"))break;
+   if(walked.count(to)){cycle=true;break;}
+   stop=next;if(load<int>(vars(to),0x1a4)&1)break;at=to;
+  }
+  if(cycle||!stop)continue;
+  store(v,0x1cc,stop);++repaired;
+  char line[220]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MAPSTATE repaired %.40s: starts at %.40s, where the trigger used on an earlier visit left it (no record of it in the save)\n",name,string_at(stop));log(line);
+ }
+ return repaired;
 }
 bool state_client(Edict* e){if(!e||!live(e))return false;const int i=eng<int(__cdecl*)(Edict*)>(71)(e);return i>=1&&i<=load<int>(globals,0x90);}
 bool state_dead_monster(Edict* e,const std::string& type){
@@ -163,8 +215,9 @@ int state_activate_edicts(int count){stateEdictTop=0;state_activate();return cou
 void state_activate(){
  loadRuntime.clear();keepKeys.clear();stateChangeTo.clear();
  if(!state_scope()||!globals||!engine[72])return;
- const auto exits=state_exit_names();
- for(std::size_t i=1;i<spawnRecords.size();++i){const auto& r=spawnRecords[i];if(r.e&&!r.key.empty()&&serial(r.e)==r.serial&&state_keep(r.e,r.type,exits))keepKeys.insert(r.key);}
+ const auto exits=state_exit_names();std::set<std::string> keptGroups;
+ for(std::size_t i=1;i<spawnRecords.size();++i){const auto& r=spawnRecords[i];if(r.e&&!r.key.empty()&&serial(r.e)==r.serial&&state_keep(r.e,r.type,exits)){keepKeys.insert(r.key);const auto g=state_group(r.e);if(!g.empty())keptGroups.insert(g);}}
+ if(!keptGroups.empty())for(std::size_t i=1;i<spawnRecords.size();++i){const auto& r=spawnRecords[i];if(r.e&&!r.key.empty()&&serial(r.e)==r.serial&&keptGroups.count(state_group(r.e)))keepKeys.insert(r.key);}
  std::set<Edict*> bsp;for(const auto& r:spawnRecords)if(r.e&&serial(r.e)==r.serial)bsp.insert(r.e);
  std::map<std::string,int> order;const int clients=load<int>(globals,0x90),maxEntities=load<int>(globals,0x94);
  for(int i=clients+1;i<maxEntities;++i){
@@ -189,8 +242,8 @@ void state_activate(){
  const bool runtimeOk=s.layout?s.layout==stateLayout:s.map==map_name();
  if(runtimeOk){for(const auto& r:loadRuntime)if(serial(r.e)==r.serial)fresh[r.key]=r.e;}
  else log("[STORYCOOP_RC4] MAPSTATE load-time entities kept as served (this alias creates a different set)\n");
- int removed=0,restored=0,created=0,unmatched=0,kept=0,failed=0,deleted=0;
- for(const auto& key:s.removed){if(keepKeys.count(key)){++kept;continue;}auto it=fresh.find(key);if(it==fresh.end())continue;state_kill(it->second);fresh.erase(it);++removed;}
+ int removed=0,restored=0,created=0,unmatched=0,kept=0,failed=0,deleted=0;std::set<std::string> spent;
+ for(const auto& key:s.removed){if(keepKeys.count(key)){++kept;continue;}auto it=fresh.find(key);if(it==fresh.end())continue;state_spent(it->second,spent);state_kill(it->second);fresh.erase(it);++removed;}
  std::vector<SaveTable> table(s.entities.size());
  for(std::size_t j=0;j<s.entities.size();++j){
   const auto& x=s.entities[j];auto& t=table[j];t.id=x.id;t.location=x.location;t.size=x.size;t.classname=eng<int(__cdecl*)(const char*)>(67)(x.type.c_str());
@@ -211,7 +264,8 @@ void state_activate(){
   if(auto p=vars(e)){const std::array<float,3> at{load<float>(p,8),load<float>(p,12),load<float>(p,16)};eng<void(__cdecl*)(Edict*,const float*)>(28)(e,at.data());}
   scale_restored(e);++restored;
  }
- char line[300]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MAPSTATE restored %s on %s: restored=%d removed=%d recreated=%d kept-as-served=%d unmatched=%d create-failed=%d deleted-by-game=%d\n",state_source(map_name()).c_str(),map_name(),restored,removed,created,kept,unmatched,failed,deleted);log(line);crumb("mapstate done");
+ const int repaired=state_repair_trains(s,spent);
+ char line[320]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MAPSTATE restored %s on %s: restored=%d removed=%d recreated=%d kept-as-served=%d unmatched=%d create-failed=%d deleted-by-game=%d trains-repaired=%d\n",state_source(map_name()).c_str(),map_name(),restored,removed,created,kept,unmatched,failed,deleted,repaired);log(line);crumb("mapstate done");
 }
 // --- slotN.cofmap ------------------------------------------------------------
 // "COFMAP01", version 1, CRC of the checkpoint it belongs to, file size, CRC

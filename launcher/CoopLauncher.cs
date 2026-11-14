@@ -587,8 +587,15 @@ namespace CofCoop
 
         // The error PowerShell printed: "...\setup-coop.ps1 : message" plus
         // position lines; only the message is shown.
+        // v0.10.6 (tester's launcher.log: Windows Defender blocked a file; the raw error
+        // record, in the PC's own language, was shown): plain "HELP: " lines the scripts
+        // print (find-cof.ps1 Write-CofBlocked) are shown instead when there are any.
         string FirstError()
         {
+            string help = "";
+            foreach (string entry in output)
+                if (entry.StartsWith("HELP: ", StringComparison.Ordinal)) help = help.Length > 0 ? help + " " + entry.Substring(6).Trim() : entry.Substring(6).Trim();
+            if (help.Length > 0) return help.Length > 300 ? help.Substring(0, 297) + "..." : help;
             string message = "";
             foreach (string entry in output)
             {

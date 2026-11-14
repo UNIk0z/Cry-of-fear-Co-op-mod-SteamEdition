@@ -16,7 +16,9 @@ param([string]$GameDirectory,[switch]$CheckOnly,[switch]$Uninstall)
 # Saves (storycoop_saves), logs and every original game file stay in place.
 $ErrorActionPreference='Stop'
 function Get-Sha([string]$Path) {
-    $digest=[Security.Cryptography.SHA256]::Create(); $stream=[IO.File]::OpenRead($Path)
+    # v0.10.6: a file an antivirus will not let us read is named, with the steps (find-cof.ps1).
+    try { $stream=[IO.File]::OpenRead($Path) } catch { if (Test-CofBlocked $_.Exception) { Write-CofBlocked $Path; throw ('Windows Defender blocked '+[IO.Path]::GetFileName($Path)+' (a false alarm). See the steps above.') }; throw }
+    $digest=[Security.Cryptography.SHA256]::Create()
     try { return ([BitConverter]::ToString($digest.ComputeHash($stream))).Replace('-','').ToLowerInvariant() } finally { $stream.Dispose(); $digest.Dispose() }
 }
 . (Join-Path $PSScriptRoot 'find-cof.ps1')
@@ -169,8 +171,10 @@ if ($Uninstall) { Write-CofStep 100 'Done'; Write-Output 'DONE: the co-op mod is
 $installer=Join-Path $PSScriptRoot 'install-story-package.ps1'
 Write-CofStep 45 'Installing the co-op files (a few minutes the first time)'
 Write-Output 'Installing: the co-op maps are built from your own game files (a few minutes the first time). Please wait...'
-$stepDone=0; $stepTotal=[Math]::Max(1,$expected.Count)
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer -MapsDirectory (Join-Path $game 'maps') | ForEach-Object { if ($_ -match '^(Installed|Already installed and verified)[: ]') { $stepDone=[Math]::Min($stepDone+1,$stepTotal); Write-CofStep (45+[int](45*$stepDone/$stepTotal)) ('Installing co-op files ('+$stepDone+' of '+$stepTotal+')') }; $_ } | Where-Object { $_ -notmatch '^(Installed|Already installed and verified)[: ]|^EXPERIMENTAL: |^RC4 experimental adapter|^Preflighting |^Main menu: ' }
+$stepDone=0; $stepTotal=[Math]::Max(1,$expected.Count); $blocked=$null
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer -MapsDirectory (Join-Path $game 'maps') | ForEach-Object { if ($_ -match '^(Installed|Already installed and verified)[: ]') { $stepDone=[Math]::Min($stepDone+1,$stepTotal); Write-CofStep (45+[int](45*$stepDone/$stepTotal)) ('Installing co-op files ('+$stepDone+' of '+$stepTotal+')') }; if ($_ -match '^COOP-BLOCKED (.+)$') { $blocked=$Matches[1] }; $_ } | Where-Object { $_ -notmatch '^(Installed|Already installed and verified)[: ]|^EXPERIMENTAL: |^RC4 experimental adapter|^Preflighting |^Main menu: |^COOP-BLOCKED ' }
+# v0.10.6: exit code 3 is a file an antivirus blocked (install-story-package.ps1, read guard).
+if ($LASTEXITCODE -eq 3 -and $blocked) { Write-CofBlocked $blocked; throw ('Windows Defender blocked '+[IO.Path]::GetFileName($blocked)+' (a false alarm), so the co-op files were not installed. See the steps above.') }
 if ($LASTEXITCODE -ne 0) { throw 'The package installer stopped (see above). Old files were set aside; nothing else changed.' }
 Write-CofStep 92 'Checking the installed files'
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer -MapsDirectory (Join-Path $game 'maps') -VerifyOnly | Out-Null

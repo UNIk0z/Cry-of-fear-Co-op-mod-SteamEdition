@@ -16,11 +16,11 @@
 
 ## ⬇️ Download
 
-### **[Click here to download Cry of Fear Co-op v0.10.5](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.10.5/Cry.of.Fear.Co-op.v0.10.5.zip)**
+### **[Click here to download Cry of Fear Co-op v0.10.6](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.10.6/Cry.of.Fear.Co-op.v0.10.6.zip)**
 
-### **[Click here to download Cry of Fear Co-op v0.10.5 for Linux](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.10.5/Cry.of.Fear.Co-op.v0.10.5.Linux.tar.gz)**
+### **[Click here to download Cry of Fear Co-op v0.10.6 for Linux](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.10.6/Cry.of.Fear.Co-op.v0.10.6.Linux.tar.gz)**
 
-v0.10.5 is an update for v0.10.4. What changed is in the release notes; none of it has been played in the game yet.
+v0.10.6 is an update for v0.10.5. What changed is in the release notes; none of it has been played in the game yet.
 
 > [!NOTE]
 > **Linux is supported now.** Cry of Fear runs through Steam Proton, and Linux and Windows players can play together. See the Linux steps below the Windows ones.
@@ -37,7 +37,7 @@ v0.10.5 is an update for v0.10.4. What changed is in the release notes; none of 
 3. With Cry of Fear closed, open **`Cry of Fear Co-op.exe`** and click **Install** (every player). The program isn't signed, so Windows may warn about it: click **More info**, then **Run anyway**.
 4. To play, click **Run Co-op Mod**. See [Play](#2-play) below.
 
-**Linux (Steam Proton):** download the **[Linux package](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.10.5/Cry.of.Fear.Co-op.v0.10.5.Linux.tar.gz)** and extract it (`tar xzf` or your file manager). With the game closed, open a terminal in that folder, run `bash coop.sh` and pick **Install**. To play, run `bash coop.sh` again and pick **Run Co-op Mod** (if the game's own launcher window opens, click **LAUNCH**). It needs Python 3. The Linux version is new, so please report anything that breaks.
+**Linux (Steam Proton):** download the **[Linux package](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.10.6/Cry.of.Fear.Co-op.v0.10.6.Linux.tar.gz)** and extract it (`tar xzf` or your file manager). With the game closed, open a terminal in that folder, run `bash coop.sh` and pick **Install**. To play, run `bash coop.sh` again and pick **Run Co-op Mod** (if the game's own launcher window opens, click **LAUNCH**). It needs Python 3. The Linux version is new, so please report anything that breaks.
 
 > [!WARNING]
 > **This mod is unfinished,**
@@ -96,6 +96,14 @@ The download has these files:
 1. Download the ZIP from the link at the top and unzip it anywhere.
 2. Close Cry of Fear, open **`Cry of Fear Co-op.exe`** and click **Install**. It finds the game
    through Steam, moves any older version of the mod aside and installs this one.
+
+> [!NOTE]
+> **Windows Defender may block a file during the install.** The co-op files are not signed, and
+> Defender sometimes flags one as a virus by mistake (a false alarm). If the install stops with a
+> message about a virus, open **Windows Security** > **Protection history**, click **Allow on device**
+> (or **Restore**) for that file, add the extracted **Cry of Fear Co-op** folder as an exclusion,
+> extract the ZIP again and click **Install** again. v0.10.6 is meant to name the blocked file and show
+> these steps; that has not been tried against a real block yet.
 
 ### 2. Play
 

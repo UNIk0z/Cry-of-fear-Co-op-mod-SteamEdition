@@ -115,7 +115,7 @@ bool host_has_model(const std::string& name){
 }
 int model_string(const std::string& name){auto it=modelStrings.find(name);if(it!=modelStrings.end())return it->second;const int v=engine[67]?eng<int(__cdecl*)(const char*)>(67)(name.c_str()):0;modelStrings[name]=v;return v;}
 bool simonModel=false;int simonString=0;std::map<int,ModelState> modelStates;
-std::map<int,unsigned> handsHudSerial;std::map<int,bool> handsMapArms;
+std::map<int,unsigned> handsHudSerial;std::map<int,bool> handsMapArms;   // v0.10.5 hand skins (hands_wire_begin below), cleared by model_activate
 constexpr std::uint32_t WorldPointerRva=0x223190;   // hl.dll 10223190: the CWorld (10120EFC)
 constexpr std::size_t WorldPlayerModels=0xe0;
 void* world_memory(){
@@ -621,7 +621,7 @@ void __cdecl stuff_command(Edict* e,const char* format,...){
 // (CmdStart) and then every 5 s without a fade-in, so it is always there.
 // v0.1 (user): the build is named v0.1 (v0.2 since 2026-10-16), and Special Thanks lists Mesilll,
 // Michal Eminov and caixa in that order (it misspelled "Michael" before). v0.6 (Katz 2026-10-25): joah added; v0.7 (Katz): written Joah230.
-constexpr const char* MenuCredit="Co-op mod v0.10.5 developed by Anas Sammak (koolkat)\nSpecial thanks: Mesilll, Michal Eminov, caixa, Joah230";
+constexpr const char* MenuCredit="Co-op mod v0.10.6 developed by Anas Sammak (koolkat)\nSpecial thanks: Mesilll, Michal Eminov, caixa, Joah230";
 struct MenuCreditState{int serial=-1;float next=0,active=-1;bool logged=false,shown=false;};
 MenuCreditState menuCredit;
 void menu_credit_reset(){const bool logged=menuCredit.logged;menuCredit={};menuCredit.logged=logged;}

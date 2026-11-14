@@ -106,7 +106,10 @@ if ($NativeRC4 -and -not [IO.File]::Exists((Join-Path $GameDirectory 'cl_dlls\st
 # "not installed" although the game ran it); Install in the launcher updates it.
 if ($MenuOnly -and [IO.File]::Exists((Join-Path $PSScriptRoot 'release.json'))) {
     $release=Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'release.json') | ConvertFrom-Json
-    $sha=(Get-FileHash -LiteralPath (Join-Path $GameDirectory 'cl_dlls\storycoop_rc4.dll') -Algorithm SHA256).Hash.ToLowerInvariant()
+    # v0.10.6: an installed adapter an antivirus will not let us read is named, with the steps (find-cof.ps1).
+    $adapterFile=Join-Path $GameDirectory 'cl_dlls\storycoop_rc4.dll'
+    try { $sha=(Get-FileHash -LiteralPath $adapterFile -Algorithm SHA256).Hash.ToLowerInvariant() }
+    catch { if ((Get-Command Test-CofBlocked -ErrorAction SilentlyContinue) -and (Test-CofBlocked $_.Exception)) { Write-CofBlocked $adapterFile; throw 'Windows Defender blocked storycoop_rc4.dll (a false alarm). See the steps above.' }; throw }
     if ($sha -cne $release.runtimeAdapter.sha256) {
         $name='an older or unknown version'
         if ([IO.File]::Exists((Join-Path $PSScriptRoot 'known-builds.json'))) { $known=@((Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'known-builds.json') | ConvertFrom-Json).builds | Where-Object { $_.adapter -ceq $sha }); if ($known.Count) { $name='co-op '+[string]$known[0].id } }

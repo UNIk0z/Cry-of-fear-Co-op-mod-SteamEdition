@@ -76,3 +76,14 @@ Nothing in v0.10 has run in the game yet. Close Cry of Fear, open "Cry of Fear C
 52. Solo with that skin: your first-person sleeves are camouflage with every weapon; the host log has `MODEL player=1 hand skin test (parts 1)`. Change it, run the mod again: `Hand skin added` again and the new picture.
 53. Two players, player 2 has a skin the host does not have: player 2 sees his skin, the host sees his own hands. Player 2 changes to Twitcher hands: the log has `hand skin off` and his sleeves are Twitcher's.
 54. A skin folder whose name has a space, "Red Jacket", is skipped with `Hand skin Red Jacket skipped`; a file that is not a 24-bit TGA is not listed.
+
+## v0.10.6 (docs/V0106_RELEASE.md)
+
+55. Install with a blocked file, without Defender: in a fresh extraction of the v0.10.6 ZIP rename `files\native\storycoop_rc4.dll` to `storycoop_rc4.dll.off` and click Install. The launcher says "Windows Defender blocked storycoop_rc4.dll (a false alarm). Allow it in Windows Security > Protection history, exclude the co-op folder, extract the ZIP again and click Install." and launcher.log lists the four steps; nothing new is in the game folder. Rename the file back and click Install: it installs.
+56. Two players on s4_stad with the stad door to the subway open (the fuse placed). One of you goes through it: the host log has `CARRY level change to s4_subway1st1_e0`, then `MAPSTATE kept s4_stad` with no `LOADWAIT released` line between them, then on the subway `LOADWAIT s4_subway1st1_e0: waiting for 2 player(s)`. Nobody can move until both are in.
+57. Same arrival: when the wait ends, both players appear on the subway side of the door together, nobody stays in the dark room (`TRANSIT player=N carried by teleportst11_2 with player=M`). Walk away from the door into the subway: you stay on the subway.
+58. Use the subway's door back to the stad: both arrive on the stad side together (`TRANSIT ... teleportst11_1`), nobody in a dark room, no trip back to the subway unless someone uses the stad door again.
+59. The tester's slot1 (or any v0.10.5 save made after the stad fuse was placed and the snowy trigger at the stadium entrance passed): load it on s4_stad. The host log has `MAPSTATE repaired 1trainbutton: starts at 1stop2`, and E at the fuse box gives the fuse. Leave the map and come back: no `repaired` line, the fuse box stays empty, no second fuse.
+60. A new game: place the stad fuse, come back later in the snow, take the fuse at the fuse box, leave and return: the box stays empty. On s4_subway2st1 (the metro) the two take-back buttons are still at their sockets after leaving and coming back.
+61. Other arrivals into a transit room, for example s4_hamn2 from s4_hamn, s4_park3, s4_buscity2: both players come out into the map together.
+62. Enter s4_subway1st1 from the tunnel (s4_subtunnel1) while carrying a fuse: you keep it (no `Chapter 4 fuse(s) left behind`).

@@ -7,12 +7,44 @@ param(
     [switch]$Remove
 )
 $ErrorActionPreference='Stop'
+# BEGIN read guard (v0.10.6; tests/v0106.test.mjs runs this block on its own)
+# Tester's launcher.log 2026-11-10: Windows Defender refused a read of a package file ("Exception calling
+# ReadAllBytes ... the file contains a virus or potentially unwanted software", in the PC's own language,
+# with no file name) on a first install. A known false alarm on the unsigned co-op files (docs/V0102_STATUS.md:
+# Trojan:Win32/Bearfoos.A!ml is a machine-learning guess). Every read goes through Read-CoopBytes: a read that
+# an antivirus blocks (ERROR_VIRUS_INFECTED 0x800700E1, ERROR_VIRUS_DELETED 0x800700E2), or a package file it
+# already took away, names the file and ends the installer with exit code 3 (setup-coop.ps1 prints the steps).
+# The package files are all read before anything is written, so nothing is installed then.
+$script:CoopBlocked=$null; $script:CoopRead={ param([string]$Path) ,[IO.File]::ReadAllBytes($Path) }
+function Test-CoopBlocked($Exception) {
+    for ($e=$Exception; $null -ne $e; $e=$e.InnerException) { if ($e.HResult -eq -2147024671 -or $e.HResult -eq -2147024670) { return $true } }
+    return $false
+}
+function Read-CoopBytes([string]$Path) {
+    try { return ,(& $script:CoopRead $Path) }
+    catch {
+        $missing=$false; for ($e=$_.Exception; $null -ne $e; $e=$e.InnerException) { if ($e -is [IO.FileNotFoundException] -or $e -is [IO.DirectoryNotFoundException]) { $missing=$true } }
+        if ((Test-CoopBlocked $_.Exception) -or ($missing -and $PSScriptRoot -and $Path.StartsWith($PSScriptRoot,[StringComparison]::OrdinalIgnoreCase))) { $script:CoopBlocked=$Path }
+        throw
+    }
+}
+trap {
+    if ($script:CoopBlocked) {
+        Write-Output ('COOP-BLOCKED '+$script:CoopBlocked)
+        Write-Output ('Windows Defender (or another antivirus) blocked or removed this file: '+$script:CoopBlocked)
+        if ($PSScriptRoot -and $script:CoopBlocked.StartsWith($PSScriptRoot,[StringComparison]::OrdinalIgnoreCase)) { Write-Output 'This is a known false alarm on the co-op files. Nothing was installed.' }
+        else { Write-Output 'The installer stopped at this file. After the steps below, Install again finishes it.' }
+        exit 3
+    }
+    break
+}
+# END read guard
 function Get-PatchSha([byte[]]$Bytes) {
     $digest=[Security.Cryptography.SHA256]::Create()
     try { return ([BitConverter]::ToString($digest.ComputeHash($Bytes))).Replace('-','').ToLowerInvariant() }
     finally { $digest.Dispose() }
 }
-function Get-PatchFileSha([string]$Path) { return Get-PatchSha ([IO.File]::ReadAllBytes($Path)) }
+function Get-PatchFileSha([string]$Path) { return Get-PatchSha (Read-CoopBytes $Path) }
 function New-PatchedBsp([byte[]]$Bytes,$Plan) {
     # Same lossless append algorithm as install-shared-note.ps1; source/output
     # pins and CreateNew guards are retained. No Get-FileHash module dependency.
@@ -197,7 +229,7 @@ foreach ($entry in $selected) {
     if ((Get-PatchFileSha $manifestPath) -cne $entry.planSha256) { throw 'Changed package plan. Nothing installed.' }
     $plan=([IO.File]::ReadAllText($manifestPath) | ConvertFrom-Json)
     if ($plan.schemaVersion -ne $catalog.schemaVersion -or $plan.map -cne $entry.map -or $plan.sourceSha256 -cne $entry.sourceSha256 -or $plan.outputSha256 -cne $entry.outputSha256) { throw 'Plan/catalog mismatch.' }
-    $bytes=New-PatchedBsp ([IO.File]::ReadAllBytes((Join-Path $maps ($entry.sourceMap+'.bsp')))) $plan
+    $bytes=New-PatchedBsp ((Read-CoopBytes (Join-Path $maps ($entry.sourceMap+'.bsp')))) $plan
     # Keep only metadata after full preflight; a campaign can exceed 3 GB.
     $prepared.Add(@{path=$destination; exists=$exists; source=(Join-Path $maps ($entry.sourceMap+'.bsp')); plan=$plan; hash=$entry.outputSha256})
     $bytes=$null
@@ -211,7 +243,7 @@ if ($catalog.release -ceq 'story-state-rc4') {
     if ($adapterExists -and (Get-PatchFileSha $adapterDestination) -cne $adapter.sha256) { throw 'Unknown/changed RC4 adapter retained. Nothing installed or removed.' }
     if ($Remove) { $prepared.Add(@{path=$adapterDestination; exists=$adapterExists}) }
     else {
-        $adapterBytes=[IO.File]::ReadAllBytes((Join-Path $PSScriptRoot ('native\'+$adapter.file)))
+        $adapterBytes=(Read-CoopBytes (Join-Path $PSScriptRoot ('native\'+$adapter.file)))
         if ((Get-PatchSha $adapterBytes) -cne $adapter.sha256 -or $adapterBytes.Length -ne $adapter.fileBytes) { throw 'Changed RC4 runtime artifact. Nothing installed.' }
         $prepared.Add(@{path=$adapterDestination; exists=$adapterExists; artifactBytes=$adapterBytes; fileBytes=$adapterBytes.Length})
     }
@@ -235,7 +267,7 @@ foreach ($extra in @($catalog.extras | Where-Object { $null -ne $_ })) {
         if ($keptSha -and $keptSha -cne $extra.replaces.sha256) { throw "Unknown/changed file retained: $keep. Nothing installed or removed." }
         if ($current -ceq $extra.sha256 -and -not $keptSha) { throw "Replaced file has no verified original beside it: $extraPath. Nothing installed or removed." }
         if ($Remove) {
-            if ($current -ceq $extra.sha256) { $prepared.Add(@{path=$extraPath; restore=$keep; restoreBytes=[IO.File]::ReadAllBytes($keep); extra=$true}) }
+            if ($current -ceq $extra.sha256) { $prepared.Add(@{path=$extraPath; restore=$keep; restoreBytes=(Read-CoopBytes $keep); extra=$true}) }
             elseif ($keptSha -and $current -cne $extra.replaces.sha256) { throw "Unknown/changed file retained: $extraPath. Nothing installed or removed." }
             # Otherwise it was never replaced by this package: left alone.
             continue
@@ -246,8 +278,8 @@ foreach ($extra in @($catalog.extras | Where-Object { $null -ne $_ })) {
             if ($extra.optional) { Write-Output $replaced[$extra.target][1]; continue }
             throw 'Original file missing or changed. Nothing installed.'
         }
-        $originalBytes=[IO.File]::ReadAllBytes($extraPath); $extraBytes=$null
-        try { $extraBytes=Expand-XorDelta $originalBytes ([IO.File]::ReadAllBytes((Join-Path $PSScriptRoot ($extra.file.Replace('/','\'))))) } catch { $extraBytes=$null }
+        $originalBytes=(Read-CoopBytes $extraPath); $extraBytes=$null
+        try { $extraBytes=Expand-XorDelta $originalBytes ((Read-CoopBytes (Join-Path $PSScriptRoot ($extra.file.Replace('/','\'))))) } catch { $extraBytes=$null }
         if ($null -eq $extraBytes -or (Get-PatchSha $extraBytes) -cne $extra.sha256 -or $extraBytes.Length -ne $extra.fileBytes) { throw 'Generated extra mismatch. Nothing installed.' }
         $prepared.Add(@{path=$extraPath; exists=$false; replace=$keep; originalBytes=$originalBytes; artifactBytes=$extraBytes; fileBytes=$extraBytes.Length; extra=$true})
         continue
@@ -280,11 +312,11 @@ foreach ($extra in @($catalog.extras | Where-Object { $null -ne $_ })) {
         foreach ($candidate in @($titlePath,($titlePath+'.storycoop-original'))) { if ([IO.File]::Exists($candidate) -and (Get-PatchFileSha $candidate) -ceq $extra.deltaFrom.sha256) { $titleSource=$candidate; break } }
         if (-not $titleSource) { Write-Output $deltaKinds[$extra.target][2]; continue }
         $extraBytes=$null
-        try { $extraBytes=Expand-XorDelta ([IO.File]::ReadAllBytes($titleSource)) ([IO.File]::ReadAllBytes((Join-Path $PSScriptRoot ($extra.file.Replace('/','\'))))) } catch { $extraBytes=$null }
+        try { $extraBytes=Expand-XorDelta ((Read-CoopBytes $titleSource)) ((Read-CoopBytes (Join-Path $PSScriptRoot ($extra.file.Replace('/','\'))))) } catch { $extraBytes=$null }
         if ($null -eq $extraBytes -or (Get-PatchSha $extraBytes) -cne $extra.sha256 -or $extraBytes.Length -ne $extra.fileBytes) { throw 'Generated extra mismatch. Nothing installed.' }
     } elseif ($extra.file) {
         if ($extra.file -cnotmatch '^extras/(storycoop_[a-z0-9]+\.(custom|coopm)|sc_(host|join|mdl)(_mo)?\.tga|sc_joinbox\.tga|sc_setup\.scr|storycoop_(server|comfort)\.cfg|storycoop_hints\.txt|spray\.wav)$') { throw 'Invalid extra package file.' }
-        $extraBytes=[IO.File]::ReadAllBytes((Join-Path $PSScriptRoot ($extra.file.Replace('/','\'))))
+        $extraBytes=(Read-CoopBytes (Join-Path $PSScriptRoot ($extra.file.Replace('/','\'))))
     } elseif ($extra.build -ceq 'simon-outfit-model') {
         # v0.7: built from the Simon model made just above and this PC's costume textures. Optional: a missing or changed one only leaves that outfit out of the box.
         $outfitName=[IO.Path]::GetFileNameWithoutExtension($extra.target); $outfitParts=@(); $outfitTextures=@(); $outfitOk=$null -ne $simonBuilt
@@ -292,7 +324,7 @@ foreach ($extra in @($catalog.extras | Where-Object { $null -ne $_ })) {
             if ($source.path -cnotmatch '^models/costumes/[A-Za-z_]+/[A-Za-z_]+\.(tga|TGA)$' -or $source.part -cnotmatch '^(hoodie|jeans|face)$') { throw 'Invalid extra file catalog.' }
             $sourcePath=Join-Path $gameRoot ($source.path.Replace('/','\'))
             if (-not [IO.File]::Exists($sourcePath) -or (Get-PatchFileSha $sourcePath) -cne $source.sha256) { $outfitOk=$false; break }
-            $outfitParts+=$source.part; $outfitTextures+=,[IO.File]::ReadAllBytes($sourcePath)
+            $outfitParts+=$source.part; $outfitTextures+=,(Read-CoopBytes $sourcePath)
         }
         $extraBytes=$null; if ($outfitOk) { try { $extraBytes=New-SimonOutfitModel $simonBuilt $outfitName ([string[]]$outfitParts) ([object[]]$outfitTextures) } catch { $extraBytes=$null } }
         if ($null -eq $extraBytes -or (Get-PatchSha $extraBytes) -cne $extra.sha256 -or $extraBytes.Length -ne $extra.fileBytes) { Write-Output ('Outfit model skipped ('+$outfitName+'): its costume files are missing or a different version.'); continue }
@@ -304,7 +336,7 @@ foreach ($extra in @($catalog.extras | Where-Object { $null -ne $_ })) {
             throw 'Required extra source missing or changed. Nothing installed.'
         }
         $xfBytes=[Convert]::FromBase64String($extra.transforms); $xf=New-Object 'double[]' ($xfBytes.Length/8); for ($i=0; $i -lt $xf.Length; $i++) { $xf[$i]=[BitConverter]::ToDouble($xfBytes,$i*8) }
-        $extraBytes=$null; try { $extraBytes=New-SimonModel ([IO.File]::ReadAllBytes($policePath)) ([IO.File]::ReadAllBytes($simonPath)) ([int[]]@($extra.boneMap)) $xf } catch { $extraBytes=$null }
+        $extraBytes=$null; try { $extraBytes=New-SimonModel ((Read-CoopBytes $policePath)) ((Read-CoopBytes $simonPath)) ([int[]]@($extra.boneMap)) $xf } catch { $extraBytes=$null }
         if ($null -eq $extraBytes -or (Get-PatchSha $extraBytes) -cne $extra.sha256 -or $extraBytes.Length -ne $extra.fileBytes) {
             if ($extra.optional) { Write-Output 'Simon player model skipped: the model built on this PC did not match the expected result. Players keep their own models.'; continue }
             throw 'Generated extra mismatch. Nothing installed.'
@@ -318,10 +350,10 @@ foreach ($extra in @($catalog.extras | Where-Object { $null -ne $_ })) {
             if ($extra.optional) { Write-Output 'Simon player model skipped: models\player.mdl is missing or a different version. Players keep their own models.'; continue }
             throw 'Required extra source missing or changed. Nothing installed.'
         }
-        $extraBytes=[IO.File]::ReadAllBytes($copySource)
+        $extraBytes=(Read-CoopBytes $copySource)
     }
     if ((Get-PatchSha $extraBytes) -cne $extra.sha256 -or $extraBytes.Length -ne $extra.fileBytes) { throw 'Changed extra artifact. Nothing installed.' }
-    if ($extra.mutable -and $setupReplace) { $prepared.Add(@{path=$extraPath; exists=$false; replace=($extraPath+'.storycoop-old'); originalBytes=[IO.File]::ReadAllBytes($extraPath); artifactBytes=$extraBytes; fileBytes=$extraBytes.Length; extra=$true}); continue }
+    if ($extra.mutable -and $setupReplace) { $prepared.Add(@{path=$extraPath; exists=$false; replace=($extraPath+'.storycoop-old'); originalBytes=(Read-CoopBytes $extraPath); artifactBytes=$extraBytes; fileBytes=$extraBytes.Length; extra=$true}); continue }
     $prepared.Add(@{path=$extraPath; exists=$extraExists; artifactBytes=$extraBytes; fileBytes=$extraBytes.Length; extra=$true})
 }
 $menuPath=Join-Path $maps '..\resource\GameMenu.res'
@@ -331,7 +363,7 @@ $menuExists=[IO.File]::Exists($menuPath)
 if ($Remove -and $null -ne $catalog.menu) {
     if ([IO.File]::Exists($menuBackup)) {
         if ((Get-PatchFileSha $menuBackup) -cne $catalog.menu.sourceSha256 -or -not $menuExists -or (Get-PatchFileSha $menuPath) -cne $catalog.menu.outputSha256) { throw 'Unknown/changed menu or backup retained. Nothing removed.' }
-        $menuPrepared=[IO.File]::ReadAllBytes($menuBackup)
+        $menuPrepared=(Read-CoopBytes $menuBackup)
     }
 } elseif (-not $Remove) {
     $dll=Join-Path $maps '..\cl_dlls\hl.dll'
@@ -343,7 +375,7 @@ if ($Remove -and $null -ne $catalog.menu) {
             if (-not [IO.File]::Exists($menuBackup) -or (Get-PatchFileSha $menuBackup) -cne $catalog.menu.sourceSha256) { throw 'Patched menu has no verified original backup.' }
         } elseif ($menuHash -ceq $catalog.menu.sourceSha256) {
             if ([IO.File]::Exists($menuBackup) -and (Get-PatchFileSha $menuBackup) -cne $catalog.menu.sourceSha256) { throw 'Unknown menu backup retained.' }
-            $menuBytes=[IO.File]::ReadAllBytes($menuPath)
+            $menuBytes=(Read-CoopBytes $menuPath)
             $latin1=[Text.Encoding]::GetEncoding(28591); $menuText=$latin1.GetString($menuBytes)
             $lastBrace=$menuText.LastIndexOf('}')
             if ($lastBrace -lt 0) { throw 'Invalid native menu.' }
@@ -380,7 +412,7 @@ foreach ($item in $prepared) {
     }
     else {
         if ($item.ContainsKey('extra')) { [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($item.path)) }
-        if ($item.ContainsKey('artifactBytes')) { $bytes=$item.artifactBytes } else { $bytes=New-PatchedBsp ([IO.File]::ReadAllBytes($item.source)) $item.plan }; Write-NewPatchFile $item.path $bytes; $bytes=$null; Write-Output "Installed $($item.path)"
+        if ($item.ContainsKey('artifactBytes')) { $bytes=$item.artifactBytes } else { $bytes=New-PatchedBsp ((Read-CoopBytes $item.source)) $item.plan }; Write-NewPatchFile $item.path $bytes; $bytes=$null; Write-Output "Installed $($item.path)"
     }
 }
 # v0.5.2 (Katz 2026-10-23: "chapter 02 is higher than prologue"): the Create
@@ -396,7 +428,7 @@ if (-not $Remove) {
         $listed=@([IO.Directory]::EnumerateFiles($maps,'*-*bsp') | ForEach-Object { [IO.Path]::GetFileName($_) } | Where-Object { $entryNames -contains $_ })
         if (($listed -join '|') -cne ($entryNames -join '|')) {
             $entryBytes=New-Object 'System.Collections.Generic.List[byte[]]'
-            foreach ($p in $entryPaths) { $entryBytes.Add([IO.File]::ReadAllBytes($p)) }
+            foreach ($p in $entryPaths) { $entryBytes.Add((Read-CoopBytes $p)) }
             foreach ($p in $entryPaths) { [IO.File]::Delete($p) }
             # Written directly: a temporary name renamed afterwards takes a different directory slot.
             for ($i=0; $i -lt $entryPaths.Count; $i++) { [IO.File]::WriteAllBytes($entryPaths[$i],$entryBytes[$i]) }
@@ -412,7 +444,7 @@ if ($null -ne $menuPrepared) {
         try { [IO.File]::Replace($restoreTemp,$menuPath,[NullString]::Value) } finally { if ([IO.File]::Exists($restoreTemp)) { [IO.File]::Delete($restoreTemp) } }
         [IO.File]::Delete($menuBackup); Write-Output 'Restored original native menu.'
     } else {
-        if (-not [IO.File]::Exists($menuBackup)) { Write-NewPatchFile $menuBackup ([IO.File]::ReadAllBytes($menuPath)) }
+        if (-not [IO.File]::Exists($menuBackup)) { Write-NewPatchFile $menuBackup ((Read-CoopBytes $menuPath)) }
         $menuTemp=$menuPath+'.storycoop-menu-'+[Guid]::NewGuid().ToString('N')+'.tmp'
         Write-NewPatchFile $menuTemp $menuPrepared
         try { [IO.File]::Replace($menuTemp,$menuPath,[NullString]::Value) } finally { if ([IO.File]::Exists($menuTemp)) { [IO.File]::Delete($menuTemp) } }

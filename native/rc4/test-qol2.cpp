@@ -353,9 +353,44 @@ int main(int argc,char** argv_){
   store(pd(p1),0x252c,0u);now(84.f);lines.clear();qol2_client_command(p1,"sc_dropammo");assert(logged("CLIENT1:Hold a gun to drop its ammo."));
   store(globals,0x94,48);store(globals,0x14,0.f);for(int i:{30,40,41}){release(&entities[i]);store(&entities[i],0,1);}}
 
+ // --- v0.10.6 (docs/V0106_RELEASE.md): the s4_stad <-> s4_subway1st1 bounce (tester log 2026-11-10).
+ {nextFree=40;qol2_map_changed();coop_map_changed();player(1,0,0);player(2,200,0);now(90.f);
+  // 1. A plain door moved player 2 into the old map's exit: CARRY reads both, the old map runs one more
+  //    frame (StartFrame after SV_ReadPackets) with everyone in. The wait must still hold on the new map.
+  lines.clear();load_wait_level_change(2);load_wait_frame();
+  assert(!logged("LOADWAIT released"));   // v0.10.5: "LOADWAIT released (everyone is in), 0 player(s) were held"
+  coop_map_changed();                      // ServerDeactivate of the old map
+  allocations.at(p2).commands=false;now(1.f);lines.clear();load_wait_frame();
+  assert(loadWait.armed&&logged("LOADWAIT s4_start: waiting for 2 player(s)")&&(load<unsigned>(ev(p1),0x1a8)&FlFrozen));   // the host is held on the new map
+  allocations.at(p2).commands=true;lines.clear();load_wait_frame();assert(!loadWait.armed&&logged("LOADWAIT released (everyone is in), 1 player(s) were held")&&!(load<unsigned>(ev(p1),0x1a8)&FlFrozen));
+  // 2. The transit room: both spawned in subway *79 (trigger_multiple, wait 2 -> cof_teleport teleportst11_2).
+  //    The first touch carries its toucher; the trigger then sleeps 2 s, so the other stayed in the dark room
+  //    facing *80, the way back. Now he goes through the same teleport with the first.
+  auto box=[&](Edict* e,float x0,float y0,float z0,float x1,float y1,float z1){store(ev(e),0xc4,x0);store(ev(e),0xc8,y0);store(ev(e),0xcc,z0);store(ev(e),0xd0,x1);store(ev(e),0xd4,y1);store(ev(e),0xd8,z1);};
+  auto stand=[&](Edict* e,float x,float y,float z){store(ev(e),8,x);store(ev(e),12,y);store(ev(e),16,z);box(e,x-16,y-16,z-36,x+16,y+16,z+36);};
+  auto make=[&](int i,const char* type,const char* name,const char* target){auto e=&entities[i];*e={};store(e,0,0);store(e,4,650+i);store(ev(e),0,intern(type));if(*name)store(ev(e),0x1d0,intern(name));if(*target)store(ev(e),0x1cc,intern(target));return e;};
+  auto t79=make(30,"trigger_multiple","","teleportst11_2");box(t79,-585,-574,-536,-503,-480,-403);
+  auto tp=make(31,"cof_teleport","teleportst11_2","teleportst11_2ld");assert(find_next(nullptr,"targetname","teleportst11_2")==tp);
+  auto dest=make(32,"info_teleport_destination","teleportst11_2ld","");store(ev(dest),8,-410.f);store(ev(dest),12,-152.f);store(ev(dest),16,-344.f);
+  auto t80=make(33,"trigger_once","","sc_level_368");box(t80,-477,-574,-536,-395,-480,-403);make(34,"cof_changelevel","sc_level_368","");
+  stand(p1,-552,-529,-491);stand(p2,-516,-529,-491);
+  // CTriggerMultiple::MultiTouch (wait 2, then sleeps) and CCofTeleport::Use (moves its activator only).
+  static float wakeAt=0;static Edict* teleportDest=nullptr;teleportDest=dest;wakeAt=0;
+  struct Native {static void touch(Edict* t,Edict* o){if(std::strcmp(classname(t),"trigger_multiple")||load<float>(globals,0)<wakeAt)return;wakeAt=load<float>(globals,0)+2.f;Edict* x=find_next(nullptr,"targetname",str(load<int>(ev(t),0x1cc)));if(x)use(x,o);}
+                 static void use(Edict* h,Edict* a){if(!std::strcmp(classname(h),"cof_teleport")&&teleportDest){store(ev(a),8,load<float>(ev(teleportDest),8));store(ev(a),12,load<float>(ev(teleportDest),12));store(ev(a),16,load<float>(ev(teleportDest),16)+37.f);}else use_(h,a);}};
+  void* touchBefore=original[4];void* useBefore=original[3];original[4]=reinterpret_cast<void*>(&Native::touch);original[3]=reinterpret_cast<void*>(&Native::use);
+  now(5.f);lines.clear();dispatch_touch(t79,p1);
+  assert(std::fabs(load<float>(ev(p1),8)+410.f)<1.f);                                    // the first player is carried into the subway
+  assert(std::fabs(load<float>(ev(p2),8)+410.f)<1.f&&logged("TRANSIT player=2 carried by teleportst11_2 with player=1"));   // v0.10.5: player 2 stays at -516 in the dark room
+  // Not for a trigger that leads out, nor for a player outside the trigger.
+  stand(p1,-552,-529,-491);stand(p2,-200,-529,-491);now(9.f);dispatch_touch(t79,p1);assert(std::fabs(load<float>(ev(p2),8)+200.f)<1.f);
+  original[4]=touchBefore;original[3]=useBefore;teleportDest=nullptr;exitsArrivedIn.clear();arrivalGrace.clear();
+  for(int i:{30,31,32,33,34}){release(&entities[i]);store(&entities[i],0,1);}}
+
  std::puts("PASS v0.10 fixture: options, hardcore, scaling, dodge, ping, scare, run timer, black and white, outline, hunted, bosses");
  std::puts("PASS v0.10.2 fixture: co-op doors without the wait (sc_doorwait 0), ownerless touches, unblocking pickup copies, key inside a door, fuse sockets, phone for everyone, story facing, no teleports, arrival loop");
  std::puts("PASS v0.10.3 fixture: doors that change the map wait for every living player (co-op zones and plain doors, the ending door), sc_doorwait 0 as v0.10.2");
  std::puts("PASS v0.10.4 fixture: Q drops one box of the held gun's ammo (from the reserve, in front, precached boxes only, once a second, not alone or dual wielding)");
+ std::puts("PASS v0.10.6 fixture: the load wait holds on the new map only (not released by the old map's last frame); every player in a transit trigger_multiple goes through its cof_teleport with the first");
  return 0;
 }

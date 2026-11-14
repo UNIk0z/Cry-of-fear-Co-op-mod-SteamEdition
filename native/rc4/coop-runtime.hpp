@@ -41,6 +41,7 @@ bool carry_departing(Edict* e){
 // or the new map can rebuild anyone. A player who is dead keeps their last
 // good record (the once-a-second refresh), never an empty one.
 void load_wait_level_change(int players);void arrival_level_change(const char* map);   // below
+const std::map<std::string,unsigned>* state_pickup_masks();   // state-runtime.hpp
 void carry_level_change(const char* map){
  if(!scoped()||!globals)return;int banked=0,kept=0;
  for(int i=1;i<=load<int>(globals,0x90);++i){auto e=eng<Edict*(__cdecl*)(int)>(72)(i);if(!live(e)||std::strcmp(classname(e),"player"))continue;if(carry_departing(e))++banked;else ++kept;}
@@ -72,7 +73,11 @@ void carry_frame(Edict* e){
    // s4_subway2st1 with "fuse.txt" left over from Chapter 4 and placed them in
    // its sockets at once, before the subway's own fuses): the subway chapter
    // starts without Chapter 4 fuses, as in single player.
-   if(std::string(map_name()).rfind("s4_subway1st1",0)==0){int stripped=0;for(auto& item:saved.inventory)if(_strnicmp(item.c_str(),"fuse",4)==0||item.find("/fuse")!=std::string::npos){item.clear();++stripped;}
+   // v0.10.6: only on the chapter's first entry (from s4_stad, no kept state of the map yet). Taking the stad
+   // fuse back locks the stad door to this map again (multipoff2 -> lockshdoor, CCofInterDoorOnOff::Use,
+   // decomp effects.cpp 6654), so that fuse never comes in this way; a later entry (s4_subtunnel1 ->
+   // s4_subway1st1_e1, a backtrack) keeps whatever fuse the players carry.
+   if(!std::strcmp(map_name(),"s4_subway1st1_e0")&&!state_pickup_masks()){int stripped=0;for(auto& item:saved.inventory)if(_strnicmp(item.c_str(),"fuse",4)==0||item.find("/fuse")!=std::string::npos){item.clear();++stripped;}
     if(stripped){char note[120]{};std::snprintf(note,sizeof(note),"[STORYCOOP_RC4] CARRY player=%d: %d Chapter 4 fuse(s) left behind\n",index,stripped);carry_log(note);}}
    if(restore_player(e,saved,false,false,false))std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] CARRY player=%d kept inventory=%u weapons=%u tapes=%d phone=%d health=%.0f\n",index,static_cast<unsigned>(std::count_if(saved.inventory.begin(),saved.inventory.end(),[](const std::string& s){return !s.empty();})),static_cast<unsigned>(saved.weapons.size()),saved.tapes,saved.phoneMessage,saved.health);
    else std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] CARRY player=%d incomplete: %.150s\n",index,checkpointFailure.c_str());
@@ -773,9 +778,17 @@ void item_copies_frame(){
 // and FL_FROZEN stays while a scene camera holds the player), with "Waiting for
 // players k/N" on screen.
 constexpr unsigned FlGodmode=0x40u,FlNotarget=0x80u,FlFrozen=0x1000u;
-struct LoadWait {bool armed=false;int expected=0;unsigned long long since=0;std::map<std::pair<Edict*,int>,unsigned> held;int shown=-1;};
+// v0.10.6 (tester log 2026-11-10: "CARRY level change to s4_subway1st1_e0", then "LOADWAIT released
+// (everyone is in), 0 player(s) were held" before "MAPSTATE kept s4_stad", and no LOADWAIT line on the
+// subway): a change asked for from a player's move (a trigger touched in SV_ReadPackets) is run by the
+// engine only at the next frame's Cbuf_Execute (pr_cmds.c PF_changelevel_I), and the same frame's
+// SV_Physics still runs StartFrame (sv_main.c SV_Frame, sv_phys.c SV_Physics) on the old map, where
+// everyone is in: the wait let go before the new map existed. It is now only pending until the old
+// map ends (ServerDeactivate, coop_map_changed) and counts on the new map alone.
+struct LoadWait {bool armed=false,pending=false;int expected=0;unsigned long long since=0;std::map<std::pair<Edict*,int>,unsigned> held;int shown=-1;};
 LoadWait loadWait;
-void load_wait_level_change(int players){loadWait={};if(players>1){loadWait.armed=true;loadWait.expected=players;}}
+void load_wait_level_change(int players){loadWait={};if(players>1){loadWait.pending=true;loadWait.expected=players;}}
+void load_wait_map_changed(){if(loadWait.pending){loadWait.pending=false;loadWait.armed=true;}}
 // Review 2026-11-04: a new game or the main menu forgets a wait the last game left armed (quit while a partner was still loading):
 // the next game's first map held a lone host for 60 s with every trigger shut.
 void load_wait_reset(){loadWait={};}
@@ -2180,6 +2193,32 @@ bool arrival_touch_blocked(Edict* trigger,Edict* other){
  inside.erase(it);char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] ARRIVAL player=%d left the exit he arrived in; it works for him again\n",eng<int(__cdecl*)(Edict*)>(71)(other));log(line);
  return false;
 }
+// v0.10.6 (tester log 2026-11-10, s4_stad_e1 <-> s4_subway1st1_e0, docs/V0106_RELEASE.md). The two maps
+// share a dark transit room at the landmark st11: the co-op spawns stand in a trigger_multiple (stad *23,
+// subway *79, "wait" 2) whose cof_teleport carries the player into the map, two steps from a trigger_once
+// (stad *22, subway *80) that leads back, and the spawns face it. CTriggerMultiple::ActivateMultiTrigger
+// (decomp triggers.cpp 2866) fires for the first player in it and then ignores every touch for "wait"
+// seconds, and CCofTeleport::Use (effects.cpp 7131) moves its activator only: when the load wait let
+// everyone go together, one player was carried out and the others stayed in the dark room facing the way
+// back ("ARRIVAL player=2 left the exit he arrived in" on s4_stad_e1). When such a trigger carries a
+// player away, every other ready player standing in it now goes through the same teleport with him.
+int transitLines=0;
+void transit_touch(Edict* trigger,Edict* other,const float* before){
+ if(!scoped()||!globals||!original[3]||!live(trigger)||!live(other)||std::strcmp(classname(trigger),"trigger_multiple")||std::strcmp(classname(other),"player"))return;
+ auto tv=vars(trigger),ov=vars(other);if(!tv||!ov)return;
+ float moved=0;for(int k=0;k<3;++k){const float d=load<float>(ov,8+k*4)-before[k];moved+=d*d;}if(moved<64.f*64.f)return;   // the touch did not carry him away
+ const char* target=string_at(load<int>(tv,0x1cc));if(!target||!*target||trigger_is_exit(trigger))return;
+ std::vector<Edict*> teleports;
+ for(auto t:skip_named(target)){auto v=vars(t);if(std::strcmp(classname(t),"cof_teleport")||!v||load<int>(v,0x1d8))return;teleports.push_back(t);}   // plain player teleports only (no monster "message")
+ if(teleports.empty())return;
+ for(auto o:connected_players()){
+  auto q=vars(o);if(o==other||!q||!view_alive(o)||!client_ready(o))continue;
+  bool in=true;for(int k=0;k<3;++k)if(load<float>(q,0xd0+k*4)<load<float>(tv,0xc4+k*4)||load<float>(q,0xc4+k*4)>load<float>(tv,0xd0+k*4))in=false;
+  if(!in)continue;
+  for(auto t:teleports)native<void(__cdecl*)(Edict*,Edict*)>(3)(t,o);
+  if(transitLines<40){++transitLines;char line[200]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] TRANSIT player=%d carried by %.40s with player=%d (he stood in the same trigger)\n",eng<int(__cdecl*)(Edict*)>(71)(o),target,eng<int(__cdecl*)(Edict*)>(71)(other));log(line);}
+ }
+}
 // --- When a scene ends (v0.8, Katz's items 9 and 11) -------------------------------------------
 // "After every cutscene all players must teleport to where the triggering player is": a scene's
 // activator is its multi_manager's m_hActivator (EHANDLE +0x184/+0x188), else the last player a trigger
@@ -2221,4 +2260,4 @@ void wheelchair_frame(){
   for(int k=0;k<3;++k)store(v,0x20+k*4,load<float>(v,0x20+k*4)*cap/s);
   if(!wheelchairCutLogged){wheelchairCutLogged=true;char line[120]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] WHEELCHAIR speed %.0f held to its cap %.0f\n",s,cap);log(line);}}
 }
-void coop_map_changed(){collision_restore();wardrobeDone=false;teamCards.known.clear();teamCards.dropping.clear();teamCards.floor.clear();teamCards.next=0;staleCards.clear();storyTeleports.clear();climbFollows.clear();storyAnchor={};storyLateDone.clear();arrivalGrace.clear();exitTriggers.clear();exitsArrivedIn.clear();bossExitAt=-1;bossSave={};bossOverAt=-1;bossBarSeen=false;bossBarChecked=false;bossBar=nullptr;bossBarSerial=-1;bossDownBefore.clear();bossBarShown.clear();sceneWatch={};wheelchairCutLogged=false;subtitleMuteUntil=-1;pickupCopies.clear();pickupOwner.clear();pickupOwnerSerial.clear();deployLogged.clear();doorHides.clear();stripClears.clear();fadesDone=false;doorPressUsed.clear();itemCopiesDone=false;pickupOwnersNext=0;pickupExtrasDone=false;pickupExtras.clear();forcedVisible.clear();bossOver=false;fallBacks.clear();doorGlobals.clear();doorLocks.clear();trainEscape={};floorWallsDone=false;quickNotices.clear();fallWatch.clear();equipWants.clear();nightmareLogged=false;morphineWatch.clear();prologueSkip={};partyLimitLogged=-1;joinWait={};skipScene={};skipAfter={};skipJump.clear();skipLines=0;evidence_reset();drowned_reset();give_reset();stuckUsed.clear();nightmareRegroup={};nameStates.clear();lastPlaces.clear();sceneSeen.clear();sceneFollowers.clear();idleProbes.clear();doorMusicLines=0;sceneMoveLines=0;}
+void coop_map_changed(){load_wait_map_changed();collision_restore();wardrobeDone=false;teamCards.known.clear();teamCards.dropping.clear();teamCards.floor.clear();teamCards.next=0;staleCards.clear();storyTeleports.clear();climbFollows.clear();storyAnchor={};storyLateDone.clear();arrivalGrace.clear();exitTriggers.clear();exitsArrivedIn.clear();bossExitAt=-1;bossSave={};bossOverAt=-1;bossBarSeen=false;bossBarChecked=false;bossBar=nullptr;bossBarSerial=-1;bossDownBefore.clear();bossBarShown.clear();sceneWatch={};wheelchairCutLogged=false;subtitleMuteUntil=-1;pickupCopies.clear();pickupOwner.clear();pickupOwnerSerial.clear();deployLogged.clear();doorHides.clear();stripClears.clear();fadesDone=false;doorPressUsed.clear();itemCopiesDone=false;pickupOwnersNext=0;pickupExtrasDone=false;pickupExtras.clear();forcedVisible.clear();bossOver=false;fallBacks.clear();doorGlobals.clear();doorLocks.clear();trainEscape={};floorWallsDone=false;quickNotices.clear();fallWatch.clear();equipWants.clear();nightmareLogged=false;morphineWatch.clear();prologueSkip={};partyLimitLogged=-1;joinWait={};skipScene={};skipAfter={};skipJump.clear();skipLines=0;evidence_reset();drowned_reset();give_reset();stuckUsed.clear();nightmareRegroup={};nameStates.clear();lastPlaces.clear();sceneSeen.clear();sceneFollowers.clear();idleProbes.clear();doorMusicLines=0;sceneMoveLines=0;}

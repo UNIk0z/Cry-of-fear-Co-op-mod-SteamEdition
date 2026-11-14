@@ -536,7 +536,11 @@ void __cdecl postthink(Edict* e){crumb("postthink",e);collision_restore();idle_s
 void __cdecl disconnect(Edict* e){qol_disconnect(e);qol2_disconnect(e);pauseState.othersOpen=false;ladder_left(e);carry_departing(e);stuckUsed.erase(e);codeLayouts.erase(note_connection(e));camera_forget(e);boatDrivers.erase(e);checkpoint_disconnect(e);}
 // v0.3 crash report: Use/Touch only leave a breadcrumb, then the game's own.
 void __cdecl dispatch_use(Edict* e,Edict* other){crumb("use",e);if(scoped()&&pickup_blocked(e,other))return;native<void(__cdecl*)(Edict*,Edict*)>(3)(e,other);}
-void __cdecl dispatch_touch(Edict* e,Edict* other){crumb("touch",e);if(scoped()){if(pickup_blocked(e,other)||arrival_touch_blocked(e,other))return;orphan_owner_touch(e,other);pp_touch(e,other);train_escape_touch(e,other);if(collision_touch_blocked(e,other))return;}native<void(__cdecl*)(Edict*,Edict*)>(4)(e,other);}
+void __cdecl dispatch_touch(Edict* e,Edict* other){crumb("touch",e);if(scoped()){if(pickup_blocked(e,other)||arrival_touch_blocked(e,other))return;orphan_owner_touch(e,other);pp_touch(e,other);train_escape_touch(e,other);if(collision_touch_blocked(e,other))return;
+  // v0.10.6: where the toucher stood, for a transit trigger that carries him away (coop-runtime.hpp transit_touch).
+  auto ov=live(other)?vars(other):nullptr;const float before[3]{ov?load<float>(ov,8):0.f,ov?load<float>(ov,12):0.f,ov?load<float>(ov,16):0.f};
+  native<void(__cdecl*)(Edict*,Edict*)>(4)(e,other);if(ov)transit_touch(e,other,before);return;}
+ native<void(__cdecl*)(Edict*,Edict*)>(4)(e,other);}
 void wrap(Table& t){
  original=t;
  t[0]=reinterpret_cast<void*>(&game_init);t[1]=reinterpret_cast<void*>(&spawn);t[2]=reinterpret_cast<void*>(&think);
