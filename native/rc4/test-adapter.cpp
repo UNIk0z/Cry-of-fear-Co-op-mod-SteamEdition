@@ -66,9 +66,10 @@ int main(){
  table[1]=reinterpret_cast<void*>(&native_spawn);table[2]=reinterpret_cast<void*>(&native_think);table[18]=reinterpret_cast<void*>(&native_put);table[19]=reinterpret_cast<void*>(&native_command);table[21]=reinterpret_cast<void*>(&native_activate);table[22]=reinterpret_cast<void*>(&native_deactivate);table[23]=reinterpret_cast<void*>(&native_pre);
  table[39]=reinterpret_cast<void*>(&native_pack);
  table[37]=reinterpret_cast<void*>(&native_visibility);
- const auto untouched=table;wrap(table);for(std::size_t i=0;i<50;++i)if(i!=0&&i!=1&&i!=2&&i!=3&&i!=4&&i!=6&&i!=16&&i!=18&&i!=19&&i!=21&&i!=22&&i!=23&&i!=24&&i!=25&&i!=37&&i!=39&&i!=43)assert(table[i]==untouched[i]);
+ const auto untouched=table;wrap(table);for(std::size_t i=0;i<50;++i)if(i!=0&&i!=1&&i!=2&&i!=3&&i!=4&&i!=6&&i!=9&&i!=16&&i!=18&&i!=19&&i!=21&&i!=22&&i!=23&&i!=24&&i!=25&&i!=37&&i!=39&&i!=43)assert(table[i]==untouched[i]);
  assert(table[3]!=untouched[3]&&table[4]!=untouched[4]); // v0.3 crash report: Use/Touch leave a breadcrumb, then forward
  assert(table[6]!=untouched[6]); // v0.3 KeyValue: records lockedby keys for the ITEMUSE evidence line
+ assert(table[9]!=untouched[9]); // v0.10.8 SetAbsBox: a monster's abs box covers what it plays (coop-runtime.hpp monster_abs_box)
  assert(table[24]!=untouched[24]); // PostThink: ladder reservation refresh after each player's think
  assert(register_message("AddNote",-1)==7);put(&edicts[1]);put(&edicts[2]);assert(nativePuts==2&&puzzle_has_solution());
  auto solution=puzzle_solution();assert((solution==std::array<int,4>{1,2,3,4}));assert(!std::memcmp(static_cast<unsigned char*>(priv(&edicts[2]))+0x235c,solution.data(),16));

@@ -312,7 +312,7 @@ void __cdecl team_busy_command(){
  if(!engine[83])return;const char* a=eng<const char*(__cdecl*)(int)>(83)(1);const char* b=eng<const char*(__cdecl*)(int)>(83)(2);
  const int i=a?std::atoi(a):0,c=b?std::atoi(b):0;if(i>=1&&i<=32&&c>=0&&c<=4)teamTags[static_cast<std::size_t>(i)]=c;
 }
-// 8. HUD off for screenshots ("sc_hud", H by default): hud_draw (decomp hud_redraw.cpp 540: every
+// 8. HUD off for screenshots, "picture mode" ("sc_hud", ] by default since v0.10.8, H before): hud_draw (decomp hud_redraw.cpp 540: every
 // HUD element, the adapter's on-screen texts included; HUDControl_guess.cpp 1155: the bars) and the list.
 void __cdecl hud_toggle_command(){
  hudHidden=!hudHidden;if(engine[59])eng<void(__cdecl*)(const char*,float)>(59)("hud_draw",hudHidden?0.f:1.f);team_hud_pointer();
@@ -341,6 +341,33 @@ bool comfort_drop_key(const std::string& comfort,const std::string& config){
  if(at!=std::string::npos&&lower.compare(at+10,12,"sc_dropammo\"")!=0){session_log("[STORYCOOP_RC4] COMFORT no drop-ammo key: Q is taken in config.cfg (pick one in SETTINGS)\n");return false;}
  eng<void(__cdecl*)(const char*)>(39)("bind \"q\" \"sc_dropammo\"\n");session_log("[STORYCOOP_RC4] COMFORT drop ammo bound to Q\n");return true;
 }
+// v0.10.8 (Katz): picture mode (sc_hud) on ], ping on H, the scare removed. A comfort file with the old defaults
+// (H HUD, G ping) gets the new ones; every key bound to sc_scare is let go; a key config.cfg still binds to
+// sc_hud or sc_ping that the comfort file no longer uses is let go too (the game saved it from an older run).
+std::vector<std::pair<std::string,std::string>> binds_of(std::string text){
+ std::transform(text.begin(),text.end(),text.begin(),[](unsigned char c){return static_cast<char>(std::tolower(c));});
+ std::vector<std::pair<std::string,std::string>> out;
+ for(std::size_t at=text.find("bind \"");at!=std::string::npos;at=text.find("bind \"",at+6)){
+  if(at&&text[at-1]!='\n'&&text[at-1]!=' '&&text[at-1]!='\t')continue;   // "unbind", "bindlist"
+  const auto k1=at+6,k2=text.find('"',k1);if(k2==std::string::npos||text.compare(k2,3,"\" \"")!=0)continue;
+  const auto c1=k2+3,c2=text.find('"',c1);if(c2==std::string::npos)continue;out.emplace_back(text.substr(k1,k2-k1),text.substr(c1,c2-c1));}
+ return out;
+}
+int comfort_v0108_keys(const std::string& comfort,const std::string& config){
+ if(!engine[39])return 0;auto mine=binds_of(comfort);const auto game=binds_of(config);
+ auto has=[](const std::vector<std::pair<std::string,std::string>>& b,const char* key,const char* what){for(const auto& [k,c]:b)if(k==key&&c==what)return true;return false;};
+ std::vector<std::string> commands;std::set<std::string> gone;
+ auto let_go=[&](const std::string& k){if(gone.insert(k).second)commands.push_back("unbind \""+k+"\"\n");};
+ for(const auto& [k,c]:mine)if(c=="sc_scare")let_go(k);
+ for(const auto& [k,c]:game)if(c=="sc_scare")let_go(k);
+ const bool moved=has(mine,"h","sc_hud")&&has(mine,"g","sc_ping");
+ if(moved){for(auto& [k,c]:mine){if(c=="sc_hud")k="]";else if(c=="sc_ping")k="h";}let_go("g");gone.insert("h");gone.insert("]");commands.push_back("bind \"]\" \"sc_hud\"\n");commands.push_back("bind \"h\" \"sc_ping\"\n");}
+ for(const auto& [k,c]:game)if((c=="sc_hud"||c=="sc_ping")&&!has(mine,k.c_str(),"sc_hud")&&!has(mine,k.c_str(),"sc_ping"))let_go(k);
+ for(const auto& c:commands)eng<void(__cdecl*)(const char*)>(39)(c.c_str());
+ if(moved)session_log("[STORYCOOP_RC4] COMFORT v0.10.8 keys: picture mode on ], ping on H (the file had the old H and G)\n");
+ if(!commands.empty()){char line[120]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] COMFORT %d old co-op bind(s) changed (scare removed in v0.10.8)\n",static_cast<int>(commands.size()));session_log(line);}
+ return static_cast<int>(commands.size());
+}
 void comfort_frame(){
  if(comfortDone||!engine[39])return;if(!processStart)processStart=GetTickCount64();if(GetTickCount64()-processStart<4000)return;comfortDone=true;
  // The HUD key's hud_draw 0 is saved in config.cfg if the game was closed with the HUD hidden.
@@ -348,7 +375,8 @@ void comfort_frame(){
  const auto dir=game_dir_path();std::error_code error;
  if(dir.empty()||!std::filesystem::is_regular_file(dir/L"storycoop_comfort.cfg",error)){session_log("[STORYCOOP_RC4] COMFORT storycoop_comfort.cfg not found; keys and view as they are\n");return;}
  eng<void(__cdecl*)(const char*)>(39)("exec storycoop_comfort.cfg\n");session_log("[STORYCOOP_RC4] COMFORT storycoop_comfort.cfg run (co-op keys, FOV, head bob)\n");
- comfort_drop_key(read_text(dir/L"storycoop_comfort.cfg"),read_text(dir/L"config.cfg"));
+ const auto comfort=read_text(dir/L"storycoop_comfort.cfg"),config=read_text(dir/L"config.cfg");
+ comfort_drop_key(comfort,config);comfort_v0108_keys(comfort,config);
 }
 // 11. For the launcher's rejoin offer: storycoop_session.txt says whether this game is a joiner.
 // "joining <ip:port>" (join box), "joined <ip:port>" (a host's server asked for sc_report while this

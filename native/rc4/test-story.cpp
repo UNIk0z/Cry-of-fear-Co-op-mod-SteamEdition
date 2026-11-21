@@ -268,6 +268,9 @@ int main(int argc,char** argv_){
  profileBindings[1]="profile:host";rejoin_frame(e);assert(departedPlayers.count("profile:host")==0&&(logged("REJOIN player=1 inventory restored")||logged("REJOIN player=1 restore incomplete")));
  // A checkpoint restore still pending keeps priority over a departure.
  loadingCheckpoint=true;restoredPlayers.clear();checkpoint_disconnect(other);assert(departedPlayers.empty());loadingCheckpoint=false;
+ // v0.10.8: a game over keeps no departures (the dead player's own state, empty after a respawn, beat the arrival record and the save).
+ gameOverMap="s4_start_e0";lines.clear();checkpoint_disconnect(other);assert(departedPlayers.empty()&&!logged("REJOIN player=2 left"));
+ departedPlayers["profile:y"]=SavedPlayer{};rejoin_map_changed();assert(departedPlayers.empty());gameOverMap.clear();
  // A new map forgets the fan-outs; a new campaign forgets departures.
  departedPlayers["profile:x"].hasPose=true;rejoin_map_changed();assert(fanouts.empty()&&!departedPlayers["profile:x"].hasPose);rejoin_reset();profileBindings.clear();original[3]=nullptr;original[16]=nullptr;engine[14]=nullptr;
 

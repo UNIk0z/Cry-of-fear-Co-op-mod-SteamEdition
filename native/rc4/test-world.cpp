@@ -556,5 +556,15 @@ int main(int argc,char** argv){
   for(int i=0;i<6;++i)store(pd(&entities[1]),0x2200+i*4,0);teamCards={};carryDone.clear();nextFree=20;}
   // Review 2026-11-04: a wait the last game left armed is gone in a new one.
   load_wait_level_change(2);coop_map_changed();assert(loadWait.armed);reset();assert(!loadWait.armed&&!loadWait.pending);
+ // v0.10.8 (Katz: "if collisions get enabled then on change door the players get sometimes stuck in each other"): two players
+ // inside each other for 0.5 s with collision on: the higher slot goes to a clear spot (the trace sees the other). Collision off: left.
+ {player(1);player(2);nextFree=20;sessionOptions=SessionOptions{};auto box=[](Edict* e){for(int k=0;k<3;++k){store(ev(e),0xc4+k*4,load<float>(ev(e),8+k*4)-(k==2?37.f:17.f));store(ev(e),0xd0+k*4,load<float>(ev(e),8+k*4)+(k==2?37.f:17.f));}};
+  auto setup=[&](){place(&entities[1],0,0,36);place(&entities[2],6,0,36);for(int i:{1,2}){store(ev(&entities[i]),0x10c,3);store(ev(&entities[i]),0x108,3);box(&entities[i]);}};
+  setup();lines.clear();store(globals,0,300.f);player_overlap_frame();store(globals,0,300.3f);player_overlap_frame();assert(load<float>(ev(&entities[2]),8)==6.f);   // not yet 0.5 s
+  store(globals,0,300.6f);player_overlap_frame();const float dx=load<float>(ev(&entities[2]),8),dy=load<float>(ev(&entities[2]),12);
+  assert((std::fabs(dx)>=32.f||std::fabs(dy)>=32.f)&&load<float>(ev(&entities[1]),8)==0.f&&logged({"COLLISION player=2 was inside player=1: moved to a clear spot beside"}));
+  setup();store(ev(&entities[1]),0xc4,100.f);store(ev(&entities[1]),0xd0,130.f);lines.clear();store(globals,0,310.f);player_overlap_frame();store(globals,0,311.f);player_overlap_frame();assert(!logged({"COLLISION"}));   // side by side: no
+  setup();sessionOptions.have=true;sessionOptions.collision=0;lines.clear();store(globals,0,320.f);player_overlap_frame();store(globals,0,321.f);player_overlap_frame();assert(load<float>(ev(&entities[2]),8)==6.f&&!logged({"COLLISION"}));
+  sessionOptions=SessionOptions{};overlapSince.clear();}
  std::puts("PASS world/campaign checkpoint fixtures: saves at any RC2/RC4 recorder (BSP-indexed), per-player poses, removed pickups and key-unlocked doors restored after load with authored-target/hidden/story-toggled exclusions, safe TraceHull landings (occupied, wall, water), tape reminder set on restore, boat partner gathered at the dock only, stuck command and nightmare photo regroup. NOT Cry of Fear gameplay verification.");
 }

@@ -225,6 +225,15 @@ int main(int argc,char** argv_){
  serverCommands.clear();assert(!comfort_drop_key("bind \"q\" \"sc_dropammo\"\n","")&&!comfort_drop_key("bind \"l\" \"sc_dropammo\"\n","")&&serverCommands.empty());
  assert(!comfort_drop_key("bind \"j\" \"sc_scare\"\n","bind \"Q\" \"+lean\"\n")&&serverCommands.empty());
  assert(comfort_drop_key("bind \"j\" \"sc_scare\"\n","bind \"q\" \"sc_dropammo\"\n")&&serverCommands.back()=="bind \"q\" \"sc_dropammo\"\n");
+ // v0.10.8 (Katz): picture mode on ], ping on H, no scare. An old-default comfort file (H HUD, G ping, J scare) is moved over;
+ // the old G ping config.cfg kept from an older run is let go; config's own ] (invnext) is the player's and is replaced by the bind.
+ using V=std::vector<std::string>;
+ const std::string oldComfort="bind \"k\" \"sc_unstuck\"\r\nbind \"H\" \"sc_hud\"\r\nbind \"g\" \"sc_ping\"\r\nbind \"j\" \"sc_scare\"\r\n";
+ serverCommands.clear();assert(comfort_v0108_keys(oldComfort,"bind \"]\" \"invnext\"\nbind \"g\" \"sc_ping\"\nbind \"j\" \"sc_scare\"\nunbind \"x\"\n")==4);
+ assert((serverCommands==V{"unbind \"j\"\n","unbind \"g\"\n","bind \"]\" \"sc_hud\"\n","bind \"h\" \"sc_ping\"\n"}));
+ // The new file: nothing to do. A player's own keys (HUD on P, ping on G) stay; only the scare goes.
+ serverCommands.clear();assert(comfort_v0108_keys("bind \"]\" \"sc_hud\"\nbind \"h\" \"sc_ping\"\n","bind \"]\" \"sc_hud\"\nbind \"h\" \"sc_ping\"\n")==0&&serverCommands.empty());
+ assert(comfort_v0108_keys("bind \"p\" \"sc_hud\"\nbind \"g\" \"sc_ping\"\nbind \"l\" \"sc_scare\"\n","bind \"h\" \"sc_hud\"\n")==2&&(serverCommands==V{"unbind \"l\"\n","unbind \"h\"\n"}));
  // --- 11. The session file the launcher reads.
  session_join_started("1.2.3.4:27015");assert(read(dir/"storycoop_session.txt")=="joining 1.2.3.4:27015\n");
  localServerActive=false;session_joined_report();assert(read(dir/"storycoop_session.txt")=="joined 1.2.3.4:27015\n");

@@ -408,7 +408,8 @@ void model_box_show(Edict* e,const std::vector<std::string>& models){
 void model_box_choose(const std::string& name){
  modelBox.current=name;const auto dir=game_dir_path();bool saved=false;
  if(!dir.empty()){std::ofstream f(dir/L"storycoop_model.txt",std::ios::binary|std::ios::trunc);if(f){f<<name;saved=static_cast<bool>(f);}}
- if(engine[39])eng<void(__cdecl*)(const char*)>(39)(("setinfo sc_model \""+name+"\"\n").c_str());   // only a fallback since v0.8: sc_report is what counts
+ // v0.10.8: no "setinfo sc_model" any more (a full userinfo lost "model": session-runtime.hpp model_frame); sc_report counts.
+ if(engine[39])eng<void(__cdecl*)(const char*)>(39)("setinfo sc_model \"\"\n");
  // The client's loaded outfit textures (hands, story Simon) come again from the new one: what the game's own wardrobe clears (decomp ClothesMenu_guess.cpp).
  for(const std::uint32_t va:{0x104D26C5u,0x104D26D1u,0x104D26C6u,0x104D26D2u})if(clientImage&&va-0x10000000u<clientImageSize)clientImage[va-0x10000000u]=0;
  char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MODEL chosen: %s%s\n",name.c_str(),saved?"":" (could not be saved for the next start)");log(line);

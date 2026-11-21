@@ -16,11 +16,11 @@
 
 ## ⬇️ Download
 
-### **[Click here to download Cry of Fear Co-op v0.10.7](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.10.7/Cry.of.Fear.Co-op.v0.10.7.zip)**
+### **[Click here to download Cry of Fear Co-op v0.10.8](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.10.8/Cry.of.Fear.Co-op.v0.10.8.zip)**
 
-### **[Click here to download Cry of Fear Co-op v0.10.7 for Linux](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.10.7/Cry.of.Fear.Co-op.v0.10.7.Linux.tar.gz)**
+### **[Click here to download Cry of Fear Co-op v0.10.8 for Linux](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.10.8/Cry.of.Fear.Co-op.v0.10.8.Linux.tar.gz)**
 
-v0.10.7 is an update for v0.10.6. What changed is in the release notes; none of it has been played in the game yet.
+v0.10.8 is an update for v0.10.7. What changed is in the release notes; none of it has been played in the game yet.
 
 > [!NOTE]
 > **Linux is supported now.** Cry of Fear runs through Steam Proton, and Linux and Windows players can play together. See the Linux steps below the Windows ones.
@@ -37,7 +37,7 @@ v0.10.7 is an update for v0.10.6. What changed is in the release notes; none of 
 3. With Cry of Fear closed, open **`Cry of Fear Co-op.exe`** and click **Install** (every player). The program isn't signed, so Windows may warn about it: click **More info**, then **Run anyway**.
 4. To play, click **Run Co-op Mod**. See [Play](#2-play) below.
 
-**Linux (Steam Proton):** download the **[Linux package](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.10.7/Cry.of.Fear.Co-op.v0.10.7.Linux.tar.gz)** and extract it (`tar xzf` or your file manager). With the game closed, open a terminal in that folder, run `bash coop.sh` and pick **Install**. To play, run `bash coop.sh` again and pick **Run Co-op Mod** (if the game's own launcher window opens, click **LAUNCH**). It needs Python 3. The Linux version is new, so please report anything that breaks.
+**Linux (Steam Proton):** download the **[Linux package](https://github.com/UNIk0z/Cry-of-fear-Co-op-mod-SteamEdition/releases/download/v0.10.8/Cry.of.Fear.Co-op.v0.10.8.Linux.tar.gz)** and extract it (`tar xzf` or your file manager). With the game closed, open a terminal in that folder, run `bash coop.sh` and pick **Install**. To play, run `bash coop.sh` again and pick **Run Co-op Mod** (if the game's own launcher window opens, click **LAUNCH**). It needs Python 3. The Linux version is new, so please report anything that breaks.
 
 > [!WARNING]
 > **This mod is unfinished,**
@@ -62,13 +62,13 @@ play **Simon's single-player story** together instead.
 | 🧍 **Player models** | Pick Simon, one of his 11 outfits or your own model in the *Player Model* box, which shows a preview. The others see your outfit too. Your own model shows for them when the host has the same file. |
 | 🔓 **Unlock extras** | A host option that opens the Chapter 1 secret room with every unlockable. |
 | 🆘 **Unstuck (K)** | Stuck in a wall or a prop? **K** puts you free. Lost in another room? **K** brings you to your partner. Works alone too. |
-| ❤️ **Down and revive** | The others see "*name* is down". Revive time and the auto respawn time are host options. A revived player groans in his own voice as he gets up. |
+| ❤️ **Down and revive** | The others see "*name* is down". Revive time and the auto respawn time are host options. A revived player groans in his own voice as he gets up. Since v0.10.8 (not played yet): after 30 s you can press jump to respawn and keep your items. |
 | 👥 **Player list** | The game's own co-op list (health, ping, syringe icon) shows on every story map, hides in cutscenes and shows who is busy: (phone), (reading), (bag), (puzzle). |
 | 🗒️ **Objective reminder** | A player who joins late, respawns or uses unstuck sees the current objective. |
 | 🌍 **Your own subtitles** | Each player reads subtitles and objectives in the language set in his own game. |
-| 🎨 **Sprays and settings** | *Spray* in the launcher turns any picture into your spray (**T** in the game), with a shared spray sound. Each player keeps their newest spray; a new one replaces their previous logo. *Settings* sets field of view, head bob, the keys, your colour, black and white mode and the faint light around you with no torch. **H** hides the HUD for screenshots. |
+| 🎨 **Sprays and settings** | *Spray* in the launcher turns any picture into your spray (**T** in the game), with a shared spray sound. Each player keeps their newest spray; a new one replaces their previous logo. *Settings* sets field of view, head bob, the keys, your colour, black and white mode and the faint light around you with no torch. **]** hides the HUD for screenshots (picture mode). |
 | 🔁 **Rejoin** | If your game crashes while you are in someone's game, the launcher offers to rejoin. |
-| 📍 **Ping and scare** | **G** marks where you look for everyone, with your name and the distance. **J** plays a laugh at the teammate closest to you. |
+| 📍 **Ping** | **H** marks where you look for everyone, with your name and the distance. |
 | 📖 **Hunted** | A host option (experimental): Book Simon with the sledgehammer follows the team a few minutes into each story map. |
 | ⏱️ **Host options** | All off until the host turns them on: a run timer with chapter times, outlines on far teammates in their colour, more monster health for more players, and hardcore (no saves, no respawn while down: only a revive brings you back, unless nobody alive is left to revive you). |
 | 🤝 **Late join and vote kick** | A player who joins a game in progress gets the host's weapons and starts next to them. `votekick <name>` in the console starts a vote (F1 yes, F2 no). |
@@ -146,7 +146,7 @@ Every player clicks **Run Co-op Mod** in the launcher.
 > nearest free spot; anywhere else you are moved next to another player.
 > Typing `stuck` in the chat (**Y**) still works too.
 >
-> **Keys:** **K** unstuck, **H** HUD on/off, **T** spray, **G** ping, **J** scare. Change them with
+> **Keys:** **K** unstuck, **]** HUD on/off (picture mode), **T** spray, **H** ping, **Q** drop ammo. Change them with
 > *Settings* in the launcher. In a fresh Half-Life config **K** is voice chat;
 > in co-op it is unstuck, and the game keeps that key.
 >

@@ -296,7 +296,11 @@ std::unordered_map<Edict*,unsigned> rejoinDone;   // player edict -> allocation 
 int rejoinLines=0;
 void rejoin_reset(){fanouts.clear();departedPlayers.clear();rejoinDone.clear();rejoinLines=0;}
 // A pose belongs to the map it was taken on.
-void rejoin_map_changed(){fanouts.clear();rejoinDone.clear();for(auto& d:departedPlayers)d.second.hasPose=false;}
+// v0.10.8 (Katz: "when we died after 2 times there is a chance that the inventory doesnt get loaded"). At a game
+// over the clients drop and reconnect while the map restarts, and rejoin_departing kept each dead player's own state
+// (empty after a respawn that stripped him), which then won over the arrival record the restart gives back (carry)
+// and over a loaded save. A game over keeps no departure records: the save, or the arrival record, decides.
+void rejoin_map_changed(){fanouts.clear();rejoinDone.clear();if(!gameOverMap.empty()){departedPlayers.clear();return;}for(auto& d:departedPlayers)d.second.hasPose=false;}
 void rejoin_log(const char* line){if(rejoinLines<100){++rejoinLines;log(line);}}
 void fanout_lookup(Edict* start,const char* key,const char* value,Edict* found){
  if(start||!scoped()||!globals||!key||!value||std::strcmp(key,"targetname")||std::strncmp(value,"sc3_native_",11)||!live(found))return;
@@ -309,7 +313,7 @@ void fanout_lookup(Edict* start,const char* key,const char* value,Edict* found){
 }
 // Called from ClientDisconnect before the native callback.
 void rejoin_departing(Edict* e){
- if(!scoped()||checkpointRestoreFailed||!live(e))return;
+ if(!scoped()||checkpointRestoreFailed||!live(e)||!gameOverMap.empty())return;   // v0.10.8: not during a game-over restart (rejoin_map_changed)
  // A checkpoint restore still pending for this player keeps priority.
  if(loadingCheckpoint){auto restored=restoredPlayers.find(e);if(restored==restoredPlayers.end()||restored->second!=serial(e))return;}
  const auto identity=player_identity(e);if(identity.empty())return;

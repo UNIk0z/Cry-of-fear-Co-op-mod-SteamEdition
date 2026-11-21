@@ -97,3 +97,18 @@ Nothing in v0.10 has run in the game yet. Close Cry of Fear, open "Cry of Fear C
 67. Same with Join (delete the adapter, Join Simon's Story): the same steps, the game does not start.
 68. The update check (Check for updates) with the adapter deleted: it says "the co-op maps, but not the co-op adapter" and prints the steps.
 69. A save made with v0.10.6 on s4_stad (fuse placed and taken back once): load it with v0.10.7. The host log has no `MAPSTATE group ... kept as served (incomplete record)` line, and the fuse box stays as it was left. If such a line appears on any map, send the log.
+
+## v0.10.8 (docs/V0108_RELEASE.md)
+
+70. Keys: ] hides and shows the HUD (picture mode), H pings, J does nothing. SETTINGS in the launcher shows five keys (Unstuck K, Picture mode ], Spray T, Ping H, Drop ammo Q). If you had changed SETTINGS before, your file still works; with the old H/G defaults the log has `COMFORT v0.10.8 keys`.
+71. Host lighting: switch the Maglite on, die and get revived (or respawn): the beam is there at once (log `LIGHT player=1 HUD reset: light state sent again (maglite=1`). Same after a level change with the Maglite on.
+72. A map with lights you switch (a light switch or a breaker): switch them, leave the map and come back, or load a save made there: the lights are as you left them (`MAPSTATE N switched light(s) set to their saved style`).
+73. Collision on (the default): go through a door that changes the map together, or arrive together. If you land inside each other, one of you is moved aside within a second (`COLLISION player=2 was inside player=1`).
+74. Ladders, two players: the second player climbs while the first is on another ladder, and both on the same one. Hold W: you go up step by step; let go: you stop. Hold S: you go down. Nobody keeps climbing by himself, nobody is stuck after the get-on animation.
+75. Enemies: shoot crawlers and other small or low monsters at the parts that stick out (head, arms) from both PCs. Note if hits still do not count, and whether it is only the joiner (then it is lag, not the hitbox).
+76. Dying: go down, wait: "You can respawn in 30 s..." counts down, at 30 s "Press jump to respawn (you keep your items)". Press jump: you are back with your weapons and items; the text is gone. Go down again and get revived: the text is gone at once.
+77. Hardcore (sc_norespawn 1) with a teammate alive: "Wait for a teammate to revive you (hardcore: no respawn)", no respawn.
+78. Game over twice on the same map (both players die, the map restarts; then again): both times everyone has what they had when they entered the map (or the tape save, if one was made there). Host log: `AUTOSAVE map arrival on <map>: saved` a few seconds after each map change, and `GAME OVER restart of <map>: loading the last save (slot6)`.
+79. A tape save on a map, then game over there: the tape save is loaded, not the arrival.
+80. Skins: host and joiner pick different outfits. Each sees the other in the other's outfit, not his own; also after the joiner reconnects. If not: the host log lines `MODEL player=N ...`.
+81. Launch from the launcher on both PCs and check the console (~) for "Info string length exceeded": it should not appear for setinfo sc_model any more.

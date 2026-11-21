@@ -122,7 +122,20 @@ int main(){
  // A climber who leaves: seat free, camera gone, and a lookup in the same frame finds the ladder free.
  {auto cam=camera(15,300.f,"models/ladder_climb.mdl");climb(b,2,cam);store(ev(b),0x104,50.f);ladder_frame();ladder_left(&entities[2]);
   assert(slot(b)==0&&(load<unsigned>(ev(cam),0x1a8)&FlKillMe)&&ladders[1].seat.climber==0&&lookup("nerdclimb15")==&entities[0]);}
+ // v0.10.8: the climb camera's forward/back bits follow the keys the climber holds (a lost forwardpressed/released
+ // command left the climb still or moving by itself); each manager keeps its own queued 48-unit drop.
+ {auto cam=camera(16,100.f,"models/ladder_climb.mdl");climb(a,2,cam);
+  store(ev(&entities[2]),0x184,8);store(ev(cam),0x184,16|1);ladder_input_frame(&entities[2]);assert(load<int>(ev(cam),0x184)==(8|1));
+  store(ev(&entities[2]),0x184,0);ladder_input_frame(&entities[2]);assert(load<int>(ev(cam),0x184)==1);
+  store(pd(&entities[1]),0x5ac,0u);store(ev(&entities[1]),0x184,8);ladder_input_frame(&entities[1]);assert(load<int>(ev(cam),0x184)==1);   // not climbing: nothing
+  std::vector<unsigned char> image(LadderQueuedRva+16);HMODULE before=backend;backend=reinterpret_cast<HMODULE>(image.data());auto& flag=image[LadderQueuedRva];
+  {LadderQueueScope s(a);assert(flag==0);flag=1;}assert(flag==0);   // a's drop is kept for a, 0 between thinks
+  {LadderQueueScope s(b);assert(flag==0);}                            // b does not get it
+  {LadderQueueScope s(a);assert(flag==1);flag=0;}                     // a gets it back and uses it
+  {LadderQueueScope s(a);assert(flag==0);}
+  {LadderQueueScope s(&entities[1]);flag=1;}assert(flag==1);flag=0;   // any other entity: untouched
+  backend=before;store(pd(a),0x114,0u);store(pd(&entities[2]),0x5ac,0u);store(cam,0,1);}
  // Map change clears everything; unscoped maps never set up ladders.
  ladder_map_reset();assert(ladders.empty()&&ladderKeys.empty());store(globals,0x0c,2);player(1);ladder_activate();assert(ladders.empty());
- std::puts("PASS ladder fixtures: every player climbs at once (a copy of a busy manager with its recorded keys), the lookup after a copy never reaches the busy original, a climb is no cutscene wait, neighbours with stale slots stay free, ended climbs and departed climbers release their slot, a scene ending a climb gives the player back and removes the camera, each climb starts clean, no climber beyond the player slots, map reset and unscoped maps untouched");
+ std::puts("PASS ladder fixtures: every player climbs at once (a copy of a busy manager with its recorded keys), the lookup after a copy never reaches the busy original, a climb is no cutscene wait, neighbours with stale slots stay free, ended climbs and departed climbers release their slot, a scene ending a climb gives the player back and removes the camera, each climb starts clean, no climber beyond the player slots, the climb follows the keys held (v0.10.8), a queued drop per manager (v0.10.8), map reset and unscoped maps untouched");
 }

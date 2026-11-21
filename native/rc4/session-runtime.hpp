@@ -23,13 +23,28 @@ void light_notify(Edict* e,unsigned what,const char* text,const char* line){
  if(engine[80]&&live(e))eng<void(__cdecl*)(Edict*,int,const char*)>(80)(e,1,text);log(line);
 }
 // coop-fixes-011: the user saw these centre texts cut off; two short lines now.
-void light_reset(){lightNotified.clear();lightSeen.clear();lightLines=0;openingLightLogged=false;}
+// v0.10.8 (Katz: "the host's lighting sometimes breaks"). The client's ResetHUD and InitHUD (decomp hud_msg.cpp
+// 405, 453) set its Maglite state to 0, but the server sends "Maglite" only when m_iFlashlight (+0x1EA8) changes
+// (player.cpp 6784), and ForceClientDllUpdate (8442) forces FlashFlags but not Maglite. After a respawn, a revive,
+// a map start or a fullupdate a Maglite that was on stayed on in the game and dark on that player's screen until
+// it was switched off and on. After every ResetHUD/InitHUD to a player both are sent again (light_frame).
+std::unordered_map<Edict*,int> lightHudReset;int lightResends=0;
+void light_hud_reset(Edict* e){if(live(e))lightHudReset[e]=serial(e);}
+void light_reset(){lightNotified.clear();lightSeen.clear();lightLines=0;openingLightLogged=false;lightHudReset.clear();lightResends=0;}
+void light_resend(Edict* e,void* p){
+ auto it=lightHudReset.find(e);if(it==lightHudReset.end())return;const bool same=it->second==serial(e);lightHudReset.erase(it);if(!same)return;
+ store(p,0x5d4,-1);   // FlashFlags (and the frags copy) again at the next UpdateClientData
+ const int maglite=load<int>(p,0x1ea8);
+ if(maglite&&magliteMessage>0&&engine[46]){eng<void(__cdecl*)(int,int,const float*,Edict*)>(46)(1,magliteMessage,nullptr,e);eng<void(__cdecl*)(int)>(48)(1);eng<void(__cdecl*)()>(47)();}
+ if(lightResends<40){++lightResends;char line[140]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] LIGHT player=%d HUD reset: light state sent again (maglite=%d flags=%x)\n",eng<int(__cdecl*)(Edict*)>(71)(e),maglite?1:0,load<unsigned>(p,0x5d0)&0x7fu);log(line);}
+}
 bool light_command(Edict* e,const char* command){
  if(!scoped()||!command||std::strcmp(command,"flashlight"))return false;
  light_notify(e,4u,"No F flashlight in co-op.\nUse your in-game lights.\n","[STORYCOOP_RC4] LIGHT police flashlight refused (F key); other lights allowed\n");return true;
 }
 void light_frame(Edict* e){
  void* p=nullptr;std::size_t n=0;if(!scoped()||!player_memory(e,p,n))return;auto v=vars(e);if(!v)return;
+ light_resend(e,p);
  // coop-fixes-012 (user request): the Maglite and the Glock light work again;
  // only the multiplayer police flashlight (the F key's "flashlight" command and
  // its frags bit 0x20) stays off.
@@ -223,7 +238,16 @@ void model_frame(Edict* e){
  if(value&&want==value){model_line(s,4u,("[STORYCOOP_RC4] MODEL player=%d is "+want+"%s\n").c_str(),index,named==wantString?"":" (world field refilled)");return;}
  // InfoKeyValue returns the engine's shared buffer: keep a copy for the log.
  const std::string previous=value&&*value?std::string(value).substr(0,32):"-";
- if(s.attempts>=3){model_line(s,8u,"[STORYCOOP_RC4] MODEL player=%d still %s after 3 tries; left alone this map\n",index,previous.c_str());return;}
+ if(s.attempts>=3){model_line(s,8u,"[STORYCOOP_RC4] MODEL player=%d still %s after 3 tries; left alone this map\n",index,previous.c_str());
+  const std::string used=std::to_string(strnlen(buffer,512));model_line(s,64u,"[STORYCOOP_RC4] MODEL player=%d userinfo is %s of 255 characters\n",index,used.c_str());return;}
+ // v0.10.8 (Katz: "the players joining doesnt see the hosts actually own selected skin, they see duplicate of their
+ // own selected skin"). A full userinfo (the v0.8 "Info string length exceeded") loses "model" altogether: the engine
+ // removes the old key before it refuses the new one. The other games then draw that player with the server's
+ // models/player.mdl (decomp r_studio.c studioapi_SetupPlayerModel, the model of the entity), whose hoodie_grey /
+ // jeans / head_face textures the client paints with ITS OWN outfit (gl_studiomodel.cpp 1628): each player saw the
+ // other in his own skin. "sc_model" (only a fallback since v0.8, the sc_report answer counts) goes first.
+ {const char* old=eng<char*(__cdecl*)(char*,char*)>(107)(buffer,const_cast<char*>("sc_model"));
+  if(old&&*old){eng<void(__cdecl*)(int,char*,char*,char*)>(109)(index,buffer,const_cast<char*>("sc_model"),const_cast<char*>(""));model_line(s,32u,"[STORYCOOP_RC4] MODEL player=%d userinfo key sc_model removed (room for the model)%s\n",index,"");}}
  ++s.attempts;eng<void(__cdecl*)(int,char*,char*,char*)>(109)(index,buffer,const_cast<char*>("model"),const_cast<char*>(want.c_str()));
  char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MODEL player=%d now %.32s (was %s, try %d)\n",index,want.c_str(),previous.c_str(),s.attempts);log(line);
 }
@@ -621,7 +645,7 @@ void __cdecl stuff_command(Edict* e,const char* format,...){
 // (CmdStart) and then every 5 s without a fade-in, so it is always there.
 // v0.1 (user): the build is named v0.1 (v0.2 since 2026-10-16), and Special Thanks lists Mesilll,
 // Michal Eminov and caixa in that order (it misspelled "Michael" before). v0.6 (Katz 2026-10-25): joah added; v0.7 (Katz): written Joah230.
-constexpr const char* MenuCredit="Co-op mod v0.10.7 developed by Anas Sammak (koolkat)\nSpecial thanks: Mesilll, Michal Eminov, caixa, Joah230";
+constexpr const char* MenuCredit="Co-op mod v0.10.8 developed by Anas Sammak (koolkat)\nSpecial thanks: Mesilll, Michal Eminov, caixa, Joah230";
 struct MenuCreditState{int serial=-1;float next=0,active=-1;bool logged=false,shown=false;};
 MenuCreditState menuCredit;
 void menu_credit_reset(){const bool logged=menuCredit.logged;menuCredit={};menuCredit.logged=logged;}

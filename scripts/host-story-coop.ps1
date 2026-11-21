@@ -81,8 +81,7 @@ if ($MenuOnly) {
             }
         }
     }
-    $modelChoice=Join-Path $GameDirectory 'storycoop_model.txt'
-    if ([IO.File]::Exists($modelChoice)) { $chosen=([IO.File]::ReadAllText($modelChoice)).Trim().ToLowerInvariant(); if ($chosen -cmatch '^[a-z0-9_-]{1,32}$') { $launchArguments+=@('+setinfo','sc_model',$chosen) } }
+    # v0.10.8: no "+setinfo sc_model" (it filled the userinfo and the model was lost); the adapter asks each game (sc_report).
 }
 if ($NativeRC4) { $launchArguments+=@('-dll','cl_dlls/storycoop_rc4.dll') }
 # The game's own liblist.gam asks for these (commandargs). The full RC4

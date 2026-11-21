@@ -58,11 +58,51 @@ constexpr std::size_t PlayerDeadNotify=0x3d0,PlayerRespawnDelay=0x3d4;
 void norespawn_frame(Edict* e){
  if(!hostOptions.norespawn||!scoped()||!globals)return;auto v=vars(e);void* p=nullptr;std::size_t n=0;if(!v||!player_memory(e,p,n))return;
  if(load<int>(v,0x174)==0&&load<float>(v,0x164)>0)return;
- auto fb=fallBacks.find(e);if(fb!=fallBacks.end()&&fb->second.serial==serial(e))return;
+ auto fb=fallBacks.find(e);if(fb!=fallBacks.end()&&fb->second.serial==serial(e)&&!fb->second.down)return;
  bool reviver=false;for(auto o:connected_players())if(o!=e&&view_alive(o))reviver=true;if(!reviver)return;
  const float now=load<float>(globals,0);
  for(std::size_t at:{PlayerDeadNotify,PlayerRespawnDelay})if(load<float>(p,at)<now+30.f)store(p,at,now+60.f);
  const float revive=load<float>(p,PlayerAutoRevive);if(revive!=0.f&&revive<now+300.f)store(p,PlayerAutoRevive,now+600.f);
+}
+// v0.10.8 (Katz: "remove the (respawn and lose weapons) and instead add a 30 second timer after which respawning
+// would be unlocked if no one got revived and weapons would stay and make sure the respawn text disappears if
+// revived or respawned"). Native (decomp player.cpp MultiplayerKilled 2464, PreThink 3998-4035): jump respawns
+// after 60 s, the notice (client hud_msg.cpp 735: "Press <jump> to respawn (lose weapons) or wait to be revived")
+// every 12 s from then, and the respawn strips everything. Now: jump respawns 30 s after the death; the native
+// notice is held off and this one is sent (a countdown, then the key); the player comes back with his last good
+// record (FallBack, coop-runtime.hpp: only when the respawn emptied him, a revive keeps his items); once he is
+// up the notice is cleared. Hardcore (sc_norespawn) and the fall respawn keep their own rules.
+constexpr float RespawnUnlock=30.f;
+struct Down {int serial=-1;float since=-1,next=0;bool getup=false;};
+std::unordered_map<Edict*,Down> downs;int downLines=0;
+void down_text(Edict* e,const char* text){
+ if(proFontMessage<=0||!engine[46]||!client_ready(e))return;
+ eng<void(__cdecl*)(int,int,const float*,Edict*)>(46)(1,proFontMessage,nullptr,e);eng<void(__cdecl*)(int)>(48)(2);eng<void(__cdecl*)(const char*)>(54)(text);eng<void(__cdecl*)()>(47)();
+}
+void respawn_unlock_frame(Edict* e){
+ if(!scoped()||!globals)return;auto v=vars(e);void* p=nullptr;std::size_t n=0;if(!v||!player_memory(e,p,n)||n<=PlayerAutoRevive+4)return;
+ const float now=load<float>(globals,0);const bool dead=load<int>(v,0x174)!=0||load<float>(v,0x164)<=0;
+ auto& d=downs[e];if(d.serial!=serial(e))d=Down{serial(e)};
+ auto fb=fallBacks.find(e);const bool falling=fb!=fallBacks.end()&&fb->second.serial==serial(e)&&!fb->second.down;
+ if(!dead){
+  if(d.since>=0){down_text(e,"");if(downLines<60){++downLines;char line[120]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] DOWN player=%d up again (%s): notice cleared\n",eng<int(__cdecl*)(Edict*)>(71)(e),d.getup?"revived":"respawned");log(line);}}
+  d.since=-1;d.getup=false;return;}
+ if(load<float>(v,PlayerMode)==3.f)d.getup=true;
+ if(falling)return;   // the fall respawn brings him back in 2 s
+ if(d.since<0){
+  d.since=now;d.next=now;
+  if(load<float>(p,PlayerRespawnDelay)>now+RespawnUnlock)store(p,PlayerRespawnDelay,now+RespawnUnlock);
+  if(fb==fallBacks.end()||fb->second.serial!=serial(e)){FallBack b;b.serial=serial(e);b.down=true;if(auto r=carry_record(e)){b.record=*r;b.have=true;}fallBacks[e]=std::move(b);}
+  if(downLines<60){++downLines;char line[120]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] DOWN player=%d: respawn unlocks in %.0f s, items kept\n",eng<int(__cdecl*)(Edict*)>(71)(e),RespawnUnlock);log(line);}
+ }
+ if(load<float>(p,PlayerDeadNotify)<now+5.f)store(p,PlayerDeadNotify,now+60.f);   // the native "(lose weapons)" notice never shows
+ if(now<d.next&&d.next-now<=12.f)return;
+ bool reviver=false;for(auto o:connected_players())if(o!=e&&view_alive(o))reviver=true;
+ const float left=d.since+RespawnUnlock-now;char text[120]{};
+ if(hostOptions.norespawn&&reviver){std::snprintf(text,sizeof(text),"Wait for a teammate to revive you (hardcore: no respawn).");d.next=now+12.f;}
+ else if(left>0.5f){std::snprintf(text,sizeof(text),"You can respawn in %d s, or wait to be revived.",static_cast<int>(left+0.5f));d.next=now+(left>10.5f?10.f:left);}
+ else {std::snprintf(text,sizeof(text),"Press jump to respawn (you keep your items), or wait to be revived.");d.next=now+12.f;}
+ down_text(e,text);
 }
 
 // --- #9 Harder with more players -----------------------------------------------------------
@@ -128,7 +168,7 @@ void catch_up_frame(Edict* e){
 }
 
 // --- #8 Ping ------------------------------------------------------------------------------
-// "sc_ping" (G): a glow at the spot the player looks at (TE_GLOWSPRITE with the game's own
+// "sc_ping" (H since v0.10.8, G before): a glow at the spot the player looks at (TE_GLOWSPRITE with the game's own
 // sprites/glow01.spr, precached on story maps) for 3 s, and "<name>: here (12 m)" to everyone, in the
 // pinging player's colour. Once per 2 s; not while down or in a scene. TE_GLOWSPRITE bytes (engine CL_TENT.C
 // 2479): life in 0.1 s, scale in 0.1, brightness. Story maps only: the sprite is precached there.
@@ -156,26 +196,7 @@ bool ping_command(Edict* e){
  return true;
 }
 
-// --- #18 Scare ----------------------------------------------------------------------------
-// "sc_scare" (J): one of the game's laughs (ambience/laugh1-3.wav, precached in every game; the game's
-// own "laugh" command is for its developers only, client.cpp 1322) plays at the nearest teammate.
-// Once per 20 s; not while down, in a scene or during the load wait. Alone: nothing to scare.
-std::unordered_map<Edict*,float> scareUsed;
-bool scare_command(Edict* e){
- auto v=vars(e);if(!scoped()||!globals||!v||!engine[29]||!engine[80])return true;auto say=[&](const char* t){eng<void(__cdecl*)(Edict*,int,const char*)>(80)(e,1,t);};
- const float now=load<float>(globals,0);auto& used=scareUsed[e];if(used>now)used=0;if(used&&now-used<20.f){say("Not yet.");return true;}
- if(!view_alive(e)||in_scene(e)||loadWait.armed)return true;
- Edict* target=nullptr;float best=0;
- for(auto o:connected_players()){if(o==e||!view_alive(o)||in_scene(o)||!client_ready(o))continue;auto q=vars(o);float d=0;for(int k=0;k<3;++k){const float x=load<float>(q,8+k*4)-load<float>(v,8+k*4);d+=x*x;}if(!target||d<best){target=o;best=d;}}
- if(!target){say("Nobody to scare.");return true;}
- used=now;static const char* const laughs[]={"ambience/laugh1.wav","ambience/laugh2.wav","ambience/laugh3.wav"};
- const int pick=engine[90]?eng<std::int32_t(__cdecl*)(std::int32_t,std::int32_t)>(90)(0,2):0;
- eng<void(__cdecl*)(Edict*,int,const char*,float,float,int,int)>(29)(target,0,laughs[pick<0||pick>2?0:pick],1.f,0.8f,0,100);
- say(("You scared "+player_name(target)+".").c_str());
- char line[100]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] SCARE player=%d scared player=%d\n",eng<int(__cdecl*)(Edict*)>(71)(e),eng<int(__cdecl*)(Edict*)>(71)(target));log(line);
- return true;
-}
-
+// --- #18 Scare: removed in v0.10.8 (Katz: "remove the jumpscare mechanic cause its annoying"); an old bind does nothing.
 // --- #17 Run timer and chapter times -------------------------------------------------------
 // Server time on story maps, from a new game (or a chapter start), kept in a save (slotN.cofrun beside
 // it). sc_timer 1: each chapter title card (the game's Chapter message) gets "Chapter ...: run
@@ -532,20 +553,20 @@ bool drop_ammo_command(Edict* e){
 bool qol2_client_command(Edict* e,const char* command){
  if(!command)return false;
  if(!std::strcmp(command,"sc_ping"))return ping_command(e);
- if(!std::strcmp(command,"sc_scare"))return scare_command(e);
+ if(!std::strcmp(command,"sc_scare"))return true;   // v0.10.8: removed; a key the game still binds to it does nothing
  if(!std::strcmp(command,"sc_dropammo"))return drop_ammo_command(e);   // v0.10.4
  return false;
 }
 void qol2_after_command(Edict* e,const char* command){if(command&&!std::strcmp(command,"dodgetoggle"))dodge_noted(e);}
 void qol2_world_spawned(){if(!scoped())return;ping_precache();hunt_precache();}
 void qol2_frame(){host_options_frame();scale_frame();run_timer_frame();hunt_frame();phone_frame();}
-void qol2_player_frame(Edict* e){if(!live(e)||std::strcmp(classname(e),"player"))return;norespawn_frame(e);if(!scoped())return;dodge_frame(e);catch_up_frame(e);noir_frame(e);}
-void qol2_map_changed(){pingSprite=0;scaledMonsters.clear();scaleBarTargets.clear();scaleBarsRead=false;scaleNext=0;scaleLogged=-1;dodgeApplied.clear();noirSent.clear();pingUsed.clear();scareUsed.clear();hunt=Hunt{};hostOptions.next=-1;runTimer.last=-1;runTimer.splitDue=-1;runTimer.next=0;
+void qol2_player_frame(Edict* e){if(!live(e)||std::strcmp(classname(e),"player"))return;respawn_unlock_frame(e);norespawn_frame(e);if(!scoped())return;dodge_frame(e);catch_up_frame(e);noir_frame(e);}
+void qol2_map_changed(){downs.clear();downLines=0;pingSprite=0;scaledMonsters.clear();scaleBarTargets.clear();scaleBarsRead=false;scaleNext=0;scaleLogged=-1;dodgeApplied.clear();noirSent.clear();pingUsed.clear();hunt=Hunt{};hostOptions.next=-1;runTimer.last=-1;runTimer.splitDue=-1;runTimer.next=0;
  doorWaitLogged=false;dropUsed.clear();dropLines=0;doorsOut.clear();doorWaitShown.clear();doorWaitLines=0;phoneSeen.clear();phoneNext=0;cardLockNames.clear();rs_guard(true);}
 // v0.10.1 (review): what is kept per player slot goes with the player. netTuned (story-runtime.hpp) asks each
 // slot once per map for its tuning and sc_report: a player who rejoined the same slot on the same map (the
 // crash-rejoin offer) got neither, so his model, language, colour and black and white waited for the next map,
 // and the slot's last player's model and language stood in for his.
-void qol2_disconnect(Edict* e){dodgeApplied.erase(e);noirSent.erase(e);pingUsed.erase(e);scareUsed.erase(e);
+void qol2_disconnect(Edict* e){downs.erase(e);dodgeApplied.erase(e);noirSent.erase(e);pingUsed.erase(e);
  if(!live(e))return;const int index=eng<int(__cdecl*)(Edict*)>(71)(e);playerPrefs.erase(index);netTuned.erase(index);modelReports.erase(index);playerLanguage.erase(index);modelStates.erase(index);}
 void qol2_new_game(){caughtUp.clear();}

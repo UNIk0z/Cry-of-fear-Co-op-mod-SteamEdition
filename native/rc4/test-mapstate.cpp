@@ -28,6 +28,7 @@ Edict* find_(Edict* start,const char* key,const char* value){
  return &entities[0];
 }
 int relinks=0;void set_origin(Edict* e,const float* o){store(ev(e),8,o[0]);store(ev(e),12,o[1]);store(ev(e),16,o[2]);++relinks;}
+std::vector<std::pair<int,std::string>> styles;void light_style_(int s,const char* t){styles.emplace_back(s,t);}
 Edict* make(int i,const char* type,const char* name,float x=0,float y=0,float z=0,const char* model=""){
  auto e=&entities[i];*e={};store(e,0,0);store(e,4,700+i);store(ev(e),0,intern(type));store(ev(e),0x1d0,intern(name));store(ev(e),0xb8,intern(model));
  store(ev(e),8,x);store(ev(e),12,y);store(ev(e),16,z);store(ev(e),0x164,100.f);mem[e]=std::vector<unsigned char>(0x100);store(mem[e].data(),4,ev(e));return e;
@@ -86,7 +87,7 @@ void spawn_map(const char* name,bool extraStart){
 int main(int argc,char** argv){
  assert(argc==2);gameDir=argv[1];
  globals=globalData.data();verified=true;store(globals,0x90,2);store(globals,0x94,48);now()=1.f;
- engine[14]=reinterpret_cast<void*>(&find_);engine[23]=reinterpret_cast<void*>(&created);engine[28]=reinterpret_cast<void*>(&set_origin);
+ engine[14]=reinterpret_cast<void*>(&find_);engine[23]=reinterpret_cast<void*>(&created);engine[28]=reinterpret_cast<void*>(&set_origin);engine[43]=reinterpret_cast<void*>(&light_style_);
  engine[64]=reinterpret_cast<void*>(&pd);engine[66]=reinterpret_cast<void*>(&str);engine[67]=reinterpret_cast<void*>(&intern);engine[68]=reinterpret_cast<void*>(&ev);
  engine[71]=reinterpret_cast<void*>(&index);engine[72]=reinterpret_cast<void*>(&byindex);engine[81]=reinterpret_cast<void*>(&print);engine[99]=reinterpret_cast<void*>(&dir_);
  original[7]=reinterpret_cast<void*>(&dsave);original[8]=reinterpret_cast<void*>(&drestore);
@@ -258,6 +259,12 @@ int main(int argc,char** argv){
   // The trigger not used yet: the train stays at its first corner.
   old.removed.erase(std::remove(old.removed.begin(),old.removed.end(),rec(3)),old.removed.end());mapStates["s4_stad"]=old;stad("s4_stad_e1");lines.clear();state_activate();assert(target(5)=="1stop1"&&target(14)=="2stop2");
   mapStates=keep;}
+ // --- v0.10.8: a switched light gets its saved style after its restore (CLight::Restore leaves the engine style as Spawn set it).
+ {auto lamp=make(43,"light","lamp");store(pd(lamp),0x64,33);store(pd(lamp),0xfc,intern("mmamammmmammamamaaamammma"));styles.clear();
+  assert(state_light_style(lamp)&&styles.size()==1&&styles[0].first==33&&styles[0].second=="mmamammmmammamamaaamammma");
+  store(pd(lamp),0x64,5);assert(!state_light_style(lamp));store(pd(lamp),0x64,61);assert(!state_light_style(lamp));   // a global style (0-31), or one the game does not let a light change
+  store(pd(lamp),0x64,40);store(pd(lamp),0xfc,0);assert(!state_light_style(lamp));auto wall=make(44,"func_wall","w");store(pd(wall),0x64,33);store(pd(wall),0xfc,intern("a"));assert(!state_light_style(wall)&&styles.size()==1);
+  for(int i:{43,44}){entities[i]={};store(&entities[i],0,1);}}
  // --- New campaign.
  mapStates["x"]={};stateLoaded=true;state_reset();assert(mapStates.empty()&&!stateLoaded);
  std::puts("PASS map state: BSP identity with ordinals, first visit as served, kept on level change (taken pickup, killtarget, dead monster, fired once-trigger, removed load-time entity), transitions/exits kept as served, movewith groups saved and restored whole (kept as served whole when a member leads out, or when a member has no usable record: v0.10.7), v0.10.5 saves without a group record: a train whose trigger was used goes to its waiting corner (direct, through a manager; not a cycle), player-owned and frozen monsters not kept, restore onto the other entry alias with removals, recreated play-time monster with remapped reference and rebased time, relink per restored entity, game over not kept, kill switch, slot file round trip/corruption/CRC pairing/.bak fallback, older-save timeline reset and rope re-offer rule, new campaign reset; Drowned victim = her live player enemy only inside her own think. NOT Cry of Fear gameplay verification.");

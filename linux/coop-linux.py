@@ -766,11 +766,7 @@ def run(game, dry=False):
                     say('Hand skin added: %s (%s)' % (skin, part))
                 except OSError as e:
                     say('Hand skin %s (%s) could not be copied: %s' % (skin, part, e))
-    choice = find(game, 'storycoop_model.txt')
-    if os.path.isfile(choice):
-        chosen = open(choice, encoding='latin-1').read().strip().lower()
-        if re.fullmatch(r'[a-z0-9_-]{1,32}', chosen):
-            args += ['+setinfo', 'sc_model', chosen]
+    # v0.10.8: no +setinfo sc_model (it filled the userinfo and the model was lost); the adapter asks each game (sc_report).
     args += ['-dll', 'cl_dlls/storycoop_rc4.dll', '-num_edicts', '4096', '-heapsize', '1536000', '-hw']
     log = os.path.join(os.path.dirname(game), 'qconsole.log')
     if os.path.isfile(log) and not dry:

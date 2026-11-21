@@ -210,6 +210,18 @@ void state_deactivate(){
 // assist list (cbase.cpp, movewith.cpp), and a monster's think only runs from
 // that list: no AI, and a killed monster never reached its death schedule.
 int stateEdictTop=0;
+// v0.10.8 (Katz: "the host's lighting sometimes breaks"; decomp lights.cpp). A switchable light (class "light",
+// a style of 32-60) keeps its state and current style string in its own save fields, but CLight::Restore does
+// not call LIGHT_STYLE: single player gets the engine's style table back from the save file, and this map
+// state does not. A light switched on (or off) on an earlier visit came back with the right state and the
+// style its spawnflags give. After its restore it gets its saved style, as CLight::SetStyle does it (hl.dll
+// 100B7620: m_iStyle at +0x64, m_iszCurrentStyle at +0xFC, then pfnLightStyle, engine slot 43).
+bool state_light_style(Edict* e){
+ if(!engine[43]||!engine[64]||std::strcmp(classname(e),"light"))return false;void* p=eng<void*(__cdecl*)(Edict*)>(64)(e);if(!p)return false;
+ const int style=load<int>(p,0x64),current=load<int>(p,0xfc);const char* text=current?string_at(current):nullptr;
+ if(style<32||style>=61||!text||!*text)return false;
+ eng<void(__cdecl*)(int,const char*)>(43)(style,text);return true;
+}
 void state_activate();
 int state_activate_edicts(int count){stateEdictTop=0;state_activate();return count>stateEdictTop?count:stateEdictTop;}
 void state_activate(){
@@ -255,7 +267,7 @@ void state_activate(){
   for(const auto& [g,f]:groups){if(!f.first||!f.second)continue;
    for(std::size_t i=1;i<spawnRecords.size();++i){const auto& r=spawnRecords[i];if(r.e&&!r.key.empty()&&serial(r.e)==r.serial&&state_group(r.e)==g)keepKeys.insert(r.key);}
    char line[200]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MAPSTATE group %.60s kept as served (incomplete record)\n",g.c_str());log(line);}}
- int removed=0,restored=0,created=0,unmatched=0,kept=0,failed=0,deleted=0;std::set<std::string> spent;
+ int removed=0,restored=0,created=0,unmatched=0,kept=0,failed=0,deleted=0,lights=0;std::set<std::string> spent;
  for(const auto& key:s.removed){if(keepKeys.count(key)){++kept;continue;}auto it=fresh.find(key);if(it==fresh.end())continue;state_spent(it->second,spent);state_kill(it->second);fresh.erase(it);++removed;}
  std::vector<SaveTable> table(s.entities.size());
  for(std::size_t j=0;j<s.entities.size();++j){
@@ -276,8 +288,10 @@ void state_activate(){
   if(result<0||!live(e)){if(live(e))state_kill(e);++deleted;continue;}
   if(auto p=vars(e)){const std::array<float,3> at{load<float>(p,8),load<float>(p,12),load<float>(p,16)};eng<void(__cdecl*)(Edict*,const float*)>(28)(e,at.data());}
   scale_restored(e);++restored;
+  if(state_light_style(e))++lights;
  }
  const int repaired=state_repair_trains(s,spent);
+ if(lights){char lightLine[120]{};std::snprintf(lightLine,sizeof(lightLine),"[STORYCOOP_RC4] MAPSTATE %d switched light(s) set to their saved style\n",lights);log(lightLine);}
  char line[320]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] MAPSTATE restored %s on %s: restored=%d removed=%d recreated=%d kept-as-served=%d unmatched=%d create-failed=%d deleted-by-game=%d trains-repaired=%d\n",state_source(map_name()).c_str(),map_name(),restored,removed,created,kept,unmatched,failed,deleted,repaired);log(line);crumb("mapstate done");
 }
 // --- slotN.cofmap ------------------------------------------------------------

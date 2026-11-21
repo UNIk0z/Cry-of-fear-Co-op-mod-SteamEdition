@@ -342,14 +342,15 @@ void checkpoint_save(Edict* actor){
  run_timer_save(checkpointSlot);playerBank=std::move(next);sessionSave={checkpointSlot,value.map};char text[160]{};std::snprintf(text,sizeof(text),"[STORYCOOP] Checkpoint slot%d COMMITTED map=%s recorder=%d (%u player records); restart restore still requires gameplay verification.\n",checkpointSlot,value.map.c_str(),value.recorder,static_cast<unsigned>(playerBank.size()));log(text);checkpoint_saved_notice(checkpointSlot,actor);
 }
 // v0.8 (item 10): the start of a boss fight is kept in a sixth slot no menu lists; a game over loads it.
+// v0.10.8: so is every map arrival (arrival_save_frame, coop-runtime.hpp).
 constexpr int AutosaveSlot=6;
-bool checkpoint_autosave(){
+bool checkpoint_autosave(const char* why){
  Edict* host=globals&&engine[72]?eng<Edict*(__cdecl*)(int)>(72)(1):nullptr;if(!checkpoint_host(host)||!view_alive(host))return false;
  const int slot=checkpointSlot,recorder=requestedRecorder;checkpointSlot=AutosaveSlot;requestedRecorder=1;autosaveQuiet=true;
  checkpoint_save(host);
  autosaveQuiet=false;checkpointSlot=slot;requestedRecorder=recorder;
  const bool saved=sessionSave.slot==AutosaveSlot&&sessionSave.map==map_name();
- char line[120]{};std::snprintf(line,sizeof(line),"[STORYCOOP] AUTOSAVE boss fight on %s: %s\n",map_name(),saved?"saved":"not saved yet");log(line);return saved;
+ char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP] AUTOSAVE %s on %s: %s\n",why,map_name(),saved?"saved":"not saved yet");log(line);return saved;
 }
 int argument_number(int i){const char* s=eng<const char*(__cdecl*)(int)>(83)(i);if(!s||!*s)return -1;int n=0;for(;*s;++s){if(*s<'0'||*s>'9'||n>100000)return -1;n=n*10+(*s-'0');}return n;}
 bool checkpoint_command(Edict* actor,const char* command){

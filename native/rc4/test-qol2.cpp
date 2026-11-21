@@ -1,5 +1,5 @@
 // Owned SDK fixture for qol2-runtime.hpp (v0.10): host options, hardcore (no saves, no respawn),
-// monster scaling, dodge kept, ping, scare, run timer, black and white, teammate outline, hunted mode.
+// monster scaling, dodge kept, ping, scare removed (v0.10.8), run timer, black and white, teammate outline, hunted mode.
 // No game code is loaded and no game is launched.
 #define _CRT_SECURE_NO_WARNINGS
 #include "adapter.cpp"
@@ -156,10 +156,8 @@ int main(int argc,char** argv_){
  sent.clear();now(25.f);store(&entities[5],0,0);store(&entities[5],4,9);view_seen(&entities[5],p2);assert(qol2_client_command(p1,"sc_ping"));   // a teammate in a scene gets no text
  {int texts=0;for(const auto& s:sent)if(s.type==23&&!s.texts.empty())++texts;assert(texts==1);}clientViews.erase(p2);store(&entities[5],0,1);
 
- // --- #18 Scare: a laugh at the nearest teammate, 20 s cooldown, alone nobody.
- sounds.clear();lines.clear();now(30.f);assert(qol2_client_command(p1,"sc_scare")&&sounds.size()==1&&sounds[0]=="2:0:ambience/laugh1.wav"&&logged("CLIENT1:You scared Bob."));
- now(35.f);qol2_client_command(p1,"sc_scare");assert(sounds.size()==1&&logged("CLIENT1:Not yet."));
- now(60.f);store(p2,0,1);lines.clear();qol2_client_command(p1,"sc_scare");assert(sounds.size()==1&&logged("CLIENT1:Nobody to scare."));store(p2,0,0);
+ // --- #18 Scare: removed in v0.10.8; an old J bind is taken and does nothing (no sound, no text).
+ sounds.clear();lines.clear();now(30.f);assert(qol2_client_command(p1,"sc_scare")&&sounds.empty()&&lines.empty());
 
  // --- #17 Run timer: counts story map time, splits at chapter cards, kept in a save.
  run_timer_set(0);now(100.f);run_timer_frame();now(100.5f);run_timer_frame();now(101.f);run_timer_frame();assert(std::fabs(runTimer.seconds-1.0)<0.01);
@@ -429,11 +427,51 @@ int main(int argc,char** argv_){
   original[4]=touchBefore;pendingArrival={};loadWait={};arrivalGrace.clear();exitsArrivedIn.clear();coop_map_changed();store(globals,0x0c,mapBefore);
   for(int i:{36,37}){release(&entities[i]);store(&entities[i],0,1);}}
 
- std::puts("PASS v0.10 fixture: options, hardcore, scaling, dodge, ping, scare, run timer, black and white, outline, hunted, bosses");
+ // --- v0.10.8 (Katz): respawn 30 s after going down, the native "(lose weapons)" notice held off, our notice instead,
+ //     cleared once the player is up; the respawn gets his items back (FallBack down entry, coop-runtime.hpp).
+ {nextFree=40;qol2_map_changed();player(1,0,0);player(2,200,0);fallBacks.clear();now(100.f);sent.clear();lines.clear();
+  auto last=[&](Edict* to){for(auto it=sent.rbegin();it!=sent.rend();++it)if(it->type==77&&it->to==to)return it->texts.empty()?std::string("?"):it->texts[0];return std::string("none");};
+  auto p=pd(p2);store(ev(p2),0x174,2);store(ev(p2),0x164,0.f);store(p,PlayerRespawnDelay,160.f);store(p,PlayerDeadNotify,160.f);
+  qol2_player_frame(p2);
+  assert(load<float>(p,PlayerRespawnDelay)==130.f&&load<float>(p,PlayerDeadNotify)>=160.f&&logged("DOWN player=2: respawn unlocks in 30 s, items kept"));
+  assert(last(p2)=="You can respawn in 30 s, or wait to be revived."&&fallBacks.count(p2)&&fallBacks[p2].down);   // v0.10.7: 60 s, "(lose weapons)"
+  now(101.f);sent.clear();qol2_player_frame(p2);assert(last(p2)=="none");                                         // not every frame
+  now(125.f);qol2_player_frame(p2);assert(last(p2)=="You can respawn in 5 s, or wait to be revived.");
+  now(131.f);qol2_player_frame(p2);assert(last(p2)=="Press jump to respawn (you keep your items), or wait to be revived.");
+  store(p,PlayerDeadNotify,100.f);now(132.f);qol2_player_frame(p2);assert(load<float>(p,PlayerDeadNotify)>=180.f);   // the native notice stays off
+  // Hardcore with a teammate alive: no countdown, no respawn.
+  hostOptions.norespawn=true;now(150.f);qol2_player_frame(p2);assert(last(p2)=="Wait for a teammate to revive you (hardcore: no respawn)."&&load<float>(p,PlayerRespawnDelay)>=200.f);hostOptions.norespawn=false;
+  // Up again: the notice goes.
+  store(ev(p2),0x174,0);store(ev(p2),0x164,100.f);sent.clear();lines.clear();now(151.f);qol2_player_frame(p2);
+  assert(last(p2)==""&&logged("DOWN player=2 up again (respawned): notice cleared"));
+  now(152.f);sent.clear();qol2_player_frame(p2);assert(last(p2)=="none");                                         // once
+  fallBacks.clear();qol2_map_changed();}
+
+ // --- v0.10.8 (Katz): monster hitboxes. A living monster's abs box covers its sequence box (turned with its yaw), so
+ //     parts outside its move hull can be hit; each hitbox of its model grows 12% (at least 2 units), once.
+ {static std::vector<unsigned char> mdl;mdl.assign(0x400,0);std::memcpy(mdl.data(),"IDST",4);std::strcpy(reinterpret_cast<char*>(mdl.data()+8),"models/crawler.mdl");
+  store(mdl.data(),0x9c,1);store(mdl.data(),0xa0,0x100);store(mdl.data(),0xa4,1);store(mdl.data(),0xa8,0x200);
+  for(int k=0;k<3;++k){store(mdl.data(),0x108+k*4,k==2?0.f:-10.f);store(mdl.data(),0x114+k*4,k==2?20.f:10.f);}   // hitbox -10 -10 0 .. 10 10 20
+  const float smin[3]={-40,-12,0},smax[3]={40,12,24};for(int k=0;k<3;++k){store(mdl.data(),0x260+k*4,smin[k]);store(mdl.data(),0x26c+k*4,smax[k]);}
+  struct M{static void* get(Edict*){return mdl.data();}};void* before=engine[74];engine[74]=reinterpret_cast<void*>(&M::get);
+  auto m=monster(21,"monster_crawler",50.f);store(ev(m),8,100.f);store(ev(m),12,0.f);store(ev(m),16,36.f);store(ev(m),0x54,90.f);store(ev(m),0x10c,3);store(ev(m),0x12c,0);
+  auto hull=[&](){for(int k=0;k<3;++k){store(ev(m),0xc4+k*4,load<float>(ev(m),8+k*4)-17.f);store(ev(m),0xd0+k*4,load<float>(ev(m),8+k*4)+17.f);}};
+  hull();lines.clear();monster_abs_box(m);
+  assert(std::fabs(load<float>(mdl.data(),0x108)+12.4f)<0.01f&&std::fabs(load<float>(mdl.data(),0x11c)-22.4f)<0.01f&&logged("HITBOX 1 hitbox(es) of models/crawler.mdl grown"));
+  // Yaw 90: the sequence's 80 units along x lie along y. Hull 17 each way; covered: y -40..40 (+9.6 +1), x -12..12 kept at the hull's 17.
+  assert(std::fabs(load<float>(ev(m),0xc8)+50.6f)<0.01f&&std::fabs(load<float>(ev(m),0xd4)-50.6f)<0.01f);
+  assert(std::fabs(load<float>(ev(m),0xc4)-83.f)<0.01f&&std::fabs(load<float>(ev(m),0xd0)-117.f)<0.01f);   // never smaller than the game's box
+  hull();lines.clear();monster_abs_box(m);assert(std::fabs(load<float>(mdl.data(),0x108)+12.4f)<0.01f&&!logged("HITBOX"));   // once per model
+  hull();store(ev(m),0x174,2);monster_abs_box(m);assert(std::fabs(load<float>(ev(m),0xc8)+17.f)<0.01f);store(ev(m),0x174,0);   // a dead one: as the game makes it
+  hull();store(ev(m),0x1a8,0x28u);monster_abs_box(m);assert(std::fabs(load<float>(ev(m),0xc8)+17.f)<0.01f);                   // a player: never
+  engine[74]=before;store(m,0,1);}
+
+ std::puts("PASS v0.10 fixture: options, hardcore, scaling, dodge, ping, scare removed (v0.10.8), run timer, black and white, outline, hunted, bosses");
  std::puts("PASS v0.10.2 fixture: co-op doors without the wait (sc_doorwait 0), ownerless touches, unblocking pickup copies, key inside a door, fuse sockets, phone for everyone, story facing, no teleports, arrival loop");
  std::puts("PASS v0.10.3 fixture: doors that change the map wait for every living player (co-op zones and plain doors, the ending door), sc_doorwait 0 as v0.10.2");
  std::puts("PASS v0.10.4 fixture: Q drops one box of the held gun's ammo (from the reserve, in front, precached boxes only, once a second, not alone or dual wielding)");
  std::puts("PASS v0.10.6 fixture: the load wait holds on the new map only (not released by the old map's last frame); every player in a transit trigger_multiple goes through its cof_teleport with the first");
  std::puts("PASS v0.10.7 fixture: transit-carried players land beside the first one, outside exits (not on him); a second ChangeLevel in one frame keeps the first change and shuts player triggers for 1 s");
+ std::puts("PASS v0.10.8 fixture: respawn unlocks 30 s after going down (countdown, the native lose-weapons notice held off, hardcore unchanged, cleared once up); monster abs boxes cover their sequence box and hitboxes grow once per model");
  return 0;
 }

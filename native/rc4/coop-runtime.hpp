@@ -556,11 +556,18 @@ void stuck_command(Edict* e,const char* command){
 constexpr std::size_t PlayerAutoRevive=0x1f2c;
 bool bossOver=false;bool boss_alive();bool boss_fight();   // boss section below
 bool fall_reveal(Edict* e);   // Playtest 3 section below
-struct FallBack {int serial=-1;SavedPlayer record;bool have=false;Edict* partner=nullptr;int partnerSerial=-1;float due=-1;};
+// v0.10.8: also every other respawn (respawn_unlock_frame, qol2-runtime.hpp): no move, and only when the respawn stripped him (a revive keeps his items).
+struct FallBack {int serial=-1;SavedPlayer record;bool have=false;Edict* partner=nullptr;int partnerSerial=-1;float due=-1;bool down=false;};
 std::unordered_map<Edict*,FallBack> fallBacks;
 void fall_back_frame(Edict* e){
  auto it=fallBacks.find(e);if(it==fallBacks.end()||!globals)return;auto& b=it->second;if(b.serial!=serial(e)){fallBacks.erase(it);return;}
  if(!view_alive(e))return;const float now=load<float>(globals,0);if(b.due<0){b.due=now+0.5f;return;}if(now<b.due)return;
+ if(b.down){
+  SavedPlayer current;if(!capture_player(e,current,false)){if(now-b.due<5.f)return;fallBacks.erase(it);return;}   // not readable yet: wait a little
+  const bool lost=current.weapons.empty()&&std::all_of(current.inventory.begin(),current.inventory.end(),[](const std::string& s){return s.empty();});
+  const bool restored=lost&&b.have&&restore_player(e,b.record,false,false,false);if(restored)equip_want(e,b.record);
+  char line[180]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] RESPAWN player=%d back: %s\n",eng<int(__cdecl*)(Edict*)>(71)(e),!lost?"revived, items kept":restored?"inventory restored (the respawn took it)":b.have?"restore FAILED":"no record to restore");log(line);
+  fallBacks.erase(it);return;}
  const bool restored=b.have&&restore_player(e,b.record,false,false,false);if(b.have)equip_want(e,b.record);
  Edict* partner=live(b.partner)&&serial(b.partner)==b.partnerSerial&&player_ready_for_move(b.partner)?b.partner:nullptr;
  for(auto o:connected_players())if(!partner&&o!=e&&player_ready_for_move(o))partner=o;
@@ -1035,7 +1042,7 @@ bool boss_alive(){
 // nobody is held by its scene (boss_save_frame): hidden slot 6, checkpoint_autosave, so a
 // game over restarts at the start of the fight with what everyone had then.
 struct BossSave {bool due=false,done=false;float until=0,next=0;} bossSave;float bossOverAt=-1;
-bool checkpoint_autosave();   // checkpoint-runtime.hpp
+bool checkpoint_autosave(const char* why);   // checkpoint-runtime.hpp
 bool hardcore_nosave();   // qol2-runtime.hpp (v0.10): sv_coop_nosave
 // v0.10.1 boss review (docs/BOSS_REVIEW.md): every boss is placed in its map and alive from the load (the
 // Sawer, Carcass, sewer boss and Doctor wait for their script), so boss_alive() alone made a death or a fall
@@ -1075,7 +1082,28 @@ void boss_save_frame(){
  const auto players=connected_players();if(players.empty())return;
  for(auto e:players){auto v=vars(e);if(!v||!client_ready(e)||!view_alive(e)||camera_view(e)||lease_camera(e)||(load<unsigned>(v,0x1a8)&FlFrozen))return;}
  if(now<bossSave.next)return;bossSave.next=now+2.f;
- if(checkpoint_autosave()){bossSave.due=false;bossSave.done=true;}
+ if(checkpoint_autosave("boss fight")){bossSave.due=false;bossSave.done=true;}
+}
+// v0.10.8 (Katz: "add an autosave on each map change which is unaccesible but overall would save our inventories
+// atleast on mapchanges in case we die repeatedly"). Once everyone has arrived on a map (in, carried inventory
+// applied, alive, not in a scene, the load wait over, 3 s settled), it is saved into the hidden slot 6 as the
+// boss fight is; no menu lists it. A game over then loads the newest save of the map (this one, or a tape save
+// made later), so everyone gets back what they had when they came in. Not when this session already has a save
+// of the map (loaded or made: it is newer), not with saving off (sv_coop_nosave), not during a boss fight.
+bool team_settled(Edict* e);   // below
+struct ArrivalSave {bool done=false;float start=-1,settledAt=-1,next=0;} arrivalSave;
+void arrival_save_frame(){
+ if(arrivalSave.done||!scoped()||!globals||bossOver||!checkpoint_map(map_name()))return;
+ const float now=load<float>(globals,0);if(arrivalSave.start<0||now<arrivalSave.start)arrivalSave.start=now;
+ if(hardcore_nosave()||sessionSave.map==map_name()||legacy_checkpoint_map(map_name())){arrivalSave.done=true;return;}   // s4_start*: saved only at its two recorders
+ if(now-arrivalSave.start>180.f){arrivalSave.done=true;log("[STORYCOOP] AUTOSAVE map arrival: nobody was settled for 3 minutes, not saved\n");return;}
+ if(loadWait.armed||loadWait.pending||boss_fight()||(loadingCheckpoint&&!hostConfirmed))return;
+ const auto players=connected_players();
+ bool ready=!players.empty();for(auto e:players){auto v=vars(e);if(!v||!team_settled(e)||camera_view(e)||lease_camera(e)||(load<unsigned>(v,0x1a8)&FlFrozen))ready=false;}
+ if(!ready){arrivalSave.settledAt=-1;return;}
+ if(arrivalSave.settledAt<0){arrivalSave.settledAt=now;return;}
+ if(now-arrivalSave.settledAt<3.f||now<arrivalSave.next)return;arrivalSave.next=now+3.f;
+ if(checkpoint_autosave("map arrival"))arrivalSave.done=true;
 }
 void boss_frame(){
  if(!scoped()||!globals||!engine[6])return;const float now=load<float>(globals,0);
@@ -2100,6 +2128,19 @@ void story_teleport_lookup(Edict* start,const char* key,const char* value,Edict*
 struct ClimbFollow {int serial=-1;Edict* leader=nullptr;int leaderSerial=-1;float until=0,atLeast=0,yaw=NoYaw;};
 std::unordered_map<Edict*,ClimbFollow> climbFollows;
 bool climbing(Edict* e){void* p=nullptr;std::size_t n=0;if(!player_memory(e,p,n))return false;auto c=ladder_tracked(load<std::uint32_t>(p,PlayerScene));return c&&ladder_is_camera(c);}
+// v0.10.8 (Katz: "the ladders sometimes get stuck for the second player animation plays until the animation is on the
+// ladder and then the movement up or down is being either animatedly played to go up or down or fully stuck"). A climb
+// steps on IN_FORWARD / IN_BACK in its camera's pev->button (decomp CoF_Ladder.cpp 431-440), set only by the client's
+// edge commands forwardpressed/forwardreleased and backpressed/backreleased (client.cpp 1441-1468), which the client
+// sends only once it knows it views the camera (input.cpp 512: pAttachCamEnt). A press before the AttachCam arrived, or
+// a release after the view left it, never reached the camera: for the player whose AttachCam came late the climb
+// stood still, or went on by itself. The two bits now follow the keys the climber holds (his usercmd buttons, which
+// CL_ButtonBits always fills; pev->button +0x184), every frame while he climbs.
+void ladder_input_frame(Edict* e){
+ void* p=nullptr;std::size_t n=0;auto v=vars(e);if(!scoped()||!v||!player_memory(e,p,n))return;
+ auto cam=ladder_tracked(load<std::uint32_t>(p,PlayerScene));if(!cam||!ladder_is_camera(cam))return;auto cv=vars(cam);if(!cv)return;
+ const int held=load<int>(v,0x184)&(8|16),was=load<int>(cv,0x184);if((was&24)!=held)store(cv,0x184,(was&~24)|held);
+}
 void climb_follow_frame(){
  if(climbFollows.empty()||!globals)return;const float now=load<float>(globals,0);
  for(auto it=climbFollows.begin();it!=climbFollows.end();){
@@ -2285,4 +2326,65 @@ void wheelchair_frame(){
   for(int k=0;k<3;++k)store(v,0x20+k*4,load<float>(v,0x20+k*4)*cap/s);
   if(!wheelchairCutLogged){wheelchairCutLogged=true;char line[120]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] WHEELCHAIR speed %.0f held to its cap %.0f\n",s,cap);log(line);}}
 }
-void coop_map_changed(){levelChangeAsked={};load_wait_map_changed();collision_restore();wardrobeDone=false;teamCards.known.clear();teamCards.dropping.clear();teamCards.floor.clear();teamCards.next=0;staleCards.clear();storyTeleports.clear();climbFollows.clear();storyAnchor={};storyLateDone.clear();arrivalGrace.clear();exitTriggers.clear();exitsArrivedIn.clear();bossExitAt=-1;bossSave={};bossOverAt=-1;bossBarSeen=false;bossBarChecked=false;bossBar=nullptr;bossBarSerial=-1;bossDownBefore.clear();bossBarShown.clear();sceneWatch={};wheelchairCutLogged=false;subtitleMuteUntil=-1;pickupCopies.clear();pickupOwner.clear();pickupOwnerSerial.clear();deployLogged.clear();doorHides.clear();stripClears.clear();fadesDone=false;doorPressUsed.clear();itemCopiesDone=false;pickupOwnersNext=0;pickupExtrasDone=false;pickupExtras.clear();forcedVisible.clear();bossOver=false;fallBacks.clear();doorGlobals.clear();doorLocks.clear();trainEscape={};floorWallsDone=false;quickNotices.clear();fallWatch.clear();equipWants.clear();nightmareLogged=false;morphineWatch.clear();prologueSkip={};partyLimitLogged=-1;joinWait={};skipScene={};skipAfter={};skipJump.clear();skipLines=0;evidence_reset();drowned_reset();give_reset();stuckUsed.clear();nightmareRegroup={};nameStates.clear();lastPlaces.clear();sceneSeen.clear();sceneFollowers.clear();idleProbes.clear();doorMusicLines=0;sceneMoveLines=0;}
+// v0.10.8 (Katz: "if collisions get enabled then on change door the players get sometimes stuck in each other").
+// With collision on two solid players can never move into each other, so boxes that overlap are a placement: a door
+// that changes the map, an arrival or a teleport put them on one spot, and neither can walk out. When two living
+// players (not in a scene, on a ladder or frozen) overlap for 0.5 s, the one in the higher slot is moved to the
+// nearest clear spot (find_landing: a hull trace that sees the other player). absmin/absmax carry 1 unit of padding
+// each (SV_LinkEdict), so players standing side by side overlap by 2; deeper than 4 on every axis is "inside".
+std::map<std::pair<int,int>,float> overlapSince;int overlapLines=0;
+bool players_overlap(void* a,void* b){for(int k=0;k<3;++k){const float lo=(std::max)(load<float>(a,0xc4+k*4),load<float>(b,0xc4+k*4)),hi=(std::min)(load<float>(a,0xd0+k*4),load<float>(b,0xd0+k*4));if(hi-lo<=4.f)return false;}return true;}
+bool overlap_free(Edict* e){auto v=vars(e);return v&&view_alive(e)&&client_ready(e)&&load<int>(v,0x10c)!=0&&load<int>(v,0x108)!=8&&!(load<unsigned>(v,0x1a8)&FlFrozen)&&!climbing(e)&&!camera_view(e)&&!lease_camera(e);}
+void player_overlap_frame(){
+ if(!scoped()||!globals||collision_off())return;const float now=load<float>(globals,0);
+ const auto players=connected_players();std::set<std::pair<int,int>> seen;
+ for(std::size_t i=0;i<players.size();++i)for(std::size_t j=i+1;j<players.size();++j){
+  Edict* a=players[i];Edict* b=players[j];if(!overlap_free(a)||!overlap_free(b)||!players_overlap(vars(a),vars(b)))continue;
+  const int ia=eng<int(__cdecl*)(Edict*)>(71)(a),ib=eng<int(__cdecl*)(Edict*)>(71)(b);const std::pair<int,int> key{(std::min)(ia,ib),(std::max)(ia,ib)};seen.insert(key);
+  auto it=overlapSince.find(key);if(it==overlapSince.end()||now<it->second){overlapSince[key]=now;continue;}if(now-it->second<0.5f)continue;
+  Edict* move=ia>ib?a:b;Edict* stay=move==a?b:a;auto mv=vars(move);std::array<float,3> at{};
+  const bool moved=find_landing({load<float>(mv,8),load<float>(mv,12),load<float>(mv,16)},move,at)&&teleport_to(move,at,load<float>(mv,0x54));
+  overlapSince[key]=now+1.f;   // one try a second at most
+  if(overlapLines<40){++overlapLines;char line[160]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] COLLISION player=%d was inside player=%d: %s\n",eng<int(__cdecl*)(Edict*)>(71)(move),eng<int(__cdecl*)(Edict*)>(71)(stay),moved?"moved to a clear spot beside":"no clear spot found (K: unstuck)");log(line);}
+ }
+ for(auto it=overlapSince.begin();it!=overlapSince.end();)it=seen.count(it->first)?std::next(it):overlapSince.erase(it);
+}
+// v0.10.8 (Katz: "collisions on some enemies like the crawler one and others are a bit clucky ... improve enemy hitboxes
+// so they are not as clunky and hard to hit"). A bullet is a point trace: the engine clips it against a monster's model
+// hitboxes (decomp r_studio.c SV_HullForStudioModel: a zero-size trace takes R_StudioHull), but only after the trace
+// crossed the monster's abs box (world.c SV_ClipToLinks), which the game's SetAbsBox makes from the movement hull
+// (origin + mins/maxs). Every part of a body its animation puts outside that hull (a crawler's head and arms ahead of
+// its low hull, a lunge, a long reach) could not be hit at all. Now (1) a living monster's abs box also covers the box
+// of the sequence it plays (mstudioseqdesc_t bbmin/bbmax, turned with its yaw, times its scale): the hitboxes decide, as
+// the engine means them to; its move hull, collisions and pathing do not change. (2) each hitbox of a monster's model
+// grows by 12% of its size on every side (at least 2 units), once per loaded model, so a shot at an edge counts.
+// Studio header (pinned layout, the installer's model builder reads the same): numhitboxes +0x9C, hitboxindex +0xA0,
+// numseq +0xA4, seqindex +0xA8; mstudiobbox_t 32 bytes (bone, group, bbmin, bbmax); mstudioseqdesc_t 0xB0 bytes.
+constexpr float HitboxGrow=0.12f,HitboxGrowMin=2.f;
+std::unordered_map<const void*,float> grownModels;   // header -> the first hitbox's bbmin.x after the growth
+const unsigned char* monster_model(Edict* e){
+ if(!engine[74])return nullptr;auto h=static_cast<const unsigned char*>(eng<void*(__cdecl*)(Edict*)>(74)(e));
+ return h&&!std::memcmp(h,"IDST",4)?h:nullptr;
+}
+void monster_hitboxes_grow(const unsigned char* h){
+ const int n=load<int>(h,0x9c),at=load<int>(h,0xa0);if(n<=0||n>128||at<=0)return;auto box=const_cast<unsigned char*>(h)+at;
+ auto known=grownModels.find(h);if(known!=grownModels.end()&&load<float>(box,8)==known->second)return;   // grown already (a model reloaded at the same address is grown again)
+ for(int i=0;i<n;++i){unsigned char* b=box+i*32;for(int k=0;k<3;++k){const float lo=load<float>(b,8+k*4),hi=load<float>(b,20+k*4);if(hi<lo)continue;const float g=(std::max)(HitboxGrowMin,(hi-lo)*HitboxGrow);store(b,8+k*4,lo-g);store(b,20+k*4,hi+g);}}
+ grownModels[h]=load<float>(box,8);
+ char line[140]{};std::snprintf(line,sizeof(line),"[STORYCOOP_RC4] HITBOX %d hitbox(es) of %.60s grown for co-op\n",n,reinterpret_cast<const char*>(h+8));log(line);
+}
+void monster_abs_box(Edict* e){
+ auto v=vars(e);if(!v||!globals||!scoped())return;const unsigned flags=load<unsigned>(v,0x1a8);
+ if(!(flags&0x20u)||(flags&8u)||load<int>(v,0x174)!=0||load<int>(v,0x10c)==0)return;   // living, solid monsters only (FL_MONSTER, not FL_CLIENT)
+ const unsigned char* h=monster_model(e);if(!h)return;monster_hitboxes_grow(h);
+ const int numseq=load<int>(h,0xa4),seqindex=load<int>(h,0xa8),seq=load<int>(v,0x12c);if(seq<0||seq>=numseq||seqindex<=0)return;
+ const unsigned char* d=h+seqindex+seq*0xb0;float scale=load<float>(v,0x148);if(!(scale>0.01f&&scale<100.f))scale=1.f;
+ const float yaw=load<float>(v,0x54)*0.01745329f,c=std::cos(yaw),s=std::sin(yaw);
+ float lo[3]{},hi[3]{};bool first=true;
+ for(int corner=0;corner<4;++corner){const float x=load<float>(d,corner&1?0x6c:0x60)*scale,y=load<float>(d,corner&2?0x70:0x64)*scale;const float rx=x*c-y*s,ry=x*s+y*c;
+  if(first){lo[0]=hi[0]=rx;lo[1]=hi[1]=ry;first=false;}else{lo[0]=(std::min)(lo[0],rx);hi[0]=(std::max)(hi[0],rx);lo[1]=(std::min)(lo[1],ry);hi[1]=(std::max)(hi[1],ry);}}
+ lo[2]=load<float>(d,0x68)*scale;hi[2]=load<float>(d,0x74)*scale;
+ for(int k=0;k<3;++k){const float o=load<float>(v,8+k*4),g=(std::max)(HitboxGrowMin,(hi[k]-lo[k])*HitboxGrow);
+  store(v,0xc4+k*4,(std::min)(load<float>(v,0xc4+k*4),o+lo[k]-g-1.f));store(v,0xd0+k*4,(std::max)(load<float>(v,0xd0+k*4),o+hi[k]+g+1.f));}
+}
+void coop_map_changed(){levelChangeAsked={};arrivalSave={};overlapSince.clear();overlapLines=0;load_wait_map_changed();collision_restore();wardrobeDone=false;teamCards.known.clear();teamCards.dropping.clear();teamCards.floor.clear();teamCards.next=0;staleCards.clear();storyTeleports.clear();climbFollows.clear();storyAnchor={};storyLateDone.clear();arrivalGrace.clear();exitTriggers.clear();exitsArrivedIn.clear();bossExitAt=-1;bossSave={};bossOverAt=-1;bossBarSeen=false;bossBarChecked=false;bossBar=nullptr;bossBarSerial=-1;bossDownBefore.clear();bossBarShown.clear();sceneWatch={};wheelchairCutLogged=false;subtitleMuteUntil=-1;pickupCopies.clear();pickupOwner.clear();pickupOwnerSerial.clear();deployLogged.clear();doorHides.clear();stripClears.clear();fadesDone=false;doorPressUsed.clear();itemCopiesDone=false;pickupOwnersNext=0;pickupExtrasDone=false;pickupExtras.clear();forcedVisible.clear();bossOver=false;fallBacks.clear();doorGlobals.clear();doorLocks.clear();trainEscape={};floorWallsDone=false;quickNotices.clear();fallWatch.clear();equipWants.clear();nightmareLogged=false;morphineWatch.clear();prologueSkip={};partyLimitLogged=-1;joinWait={};skipScene={};skipAfter={};skipJump.clear();skipLines=0;evidence_reset();drowned_reset();give_reset();stuckUsed.clear();nightmareRegroup={};nameStates.clear();lastPlaces.clear();sceneSeen.clear();sceneFollowers.clear();idleProbes.clear();doorMusicLines=0;sceneMoveLines=0;}

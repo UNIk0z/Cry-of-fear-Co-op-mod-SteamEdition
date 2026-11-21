@@ -70,6 +70,11 @@ int main(int argc,char** argv_){
  reset_players();p=pd(e);store(p,0x5d0,2u);store(ev(e),0x168,2.f);store(p,0x5d4,2);light_frame(e);assert(load<unsigned>(p,0x5d0)==2u&&load<int>(p,0x5d4)==2);
  // Outside the co-op campaign the light policy is inert.
  store(globals,0x0c,3);store(p,0x1ea8,1);light_frame(e);assert(load<int>(p,0x1ea8)==1&&!light_command(e,"flashlight"));store(globals,0x0c,1);
+ // v0.10.8: after a ResetHUD/InitHUD the light state is sent again: the Maglite byte at once (the client set it to 0), FlashFlags at the next update.
+ reset_players();p=pd(e);store(p,0x1ea8,1);store(p,0x5d0,8u);store(p,0x5d4,8);magliteMessage=93;messageBegins=0;lines.clear();light_frame(e);assert(messageBegins==0&&load<int>(p,0x5d4)==8);
+ light_hud_reset(e);light_frame(e);assert(messageBegins==1&&message[0]==1&&message[1]==93&&message[2]==1&&load<int>(p,0x5d4)==-1&&logged("HUD reset: light state sent again (maglite=1"));
+ store(p,0x5d4,8);light_frame(e);assert(messageBegins==1&&load<int>(p,0x5d4)==8);   // once per reset
+ store(p,0x1ea8,0);light_hud_reset(e);light_frame(e);assert(messageBegins==1&&load<int>(p,0x5d4)==-1);magliteMessage=0;messageBegins=0;   // Maglite off: FlashFlags only
 
  // Cutscene hold also forces the frags/ScoreInfo resync.
  reset_players();p=pd(e);camera_reset();store(p,0x5d4,7);cinematic_hold(e,p);assert(load<int>(p,0x5d4)==-1);
@@ -104,6 +109,9 @@ int main(int argc,char** argv_){
  std::memset(world,0,0x200);store(globals,0x0c,4);store(world,0xe0,5);store(world,0xe4,6);store(world,0xe8,7);store(world,0xec,77);model_activate();
  assert(load<int>(world,0xe0)==555&&load<int>(world,0xe4)==555&&load<int>(world,0xe8)==7&&load<int>(world,0xec)==77&&logged("world player models -> simon (2 of 4)"));
  store(world,0xe0,5);info[1]["model"]="police1";store(globals,0,50.f);model_frame(e);assert(load<int>(world,0xe0)==555&&info[1]["model"]=="simon");
+ // v0.10.8: a launcher's old "sc_model" key goes before "model" is set (a full userinfo lost "model": the others drew their own skin on him).
+ store(globals,0,51.5f);info[1]["model"]="police1";info[1]["sc_model"]="nosuchmodel";lines.clear();model_frame(e);assert(info[1]["sc_model"].empty()&&info[1]["model"]=="simon"&&logged("MODEL player=1 userinfo key sc_model removed"));
+ store(globals,0,53.f);info[1]["model"]="police1";lines.clear();model_frame(e);assert(!logged("sc_model removed")&&info[1]["model"]=="simon");
  store(globals,0x0c,1);store(globals,0,5.f);
  // Single player: inert.
  std::memset(world,0,0x200);store(globals,0x90,1);model_activate();assert(load<int>(world,0xe0)==0);store(globals,0x90,2);backend=nullptr;
@@ -141,7 +149,7 @@ int main(int argc,char** argv_){
  store(globals,0x0c,3);store(globals,0,20.f);menu_credit_frame();assert(messageBegins==0);
  menu_credit_active(&entities[2]);menu_credit_frame();assert(messageBegins==0);   // only the menu's own client
  menu_credit_active(&entities[1]);store(globals,0,20.4f);menu_credit_frame();assert(messageBegins==0);
- store(globals,0,20.6f);menu_credit_frame();assert(messageBegins==1&&messageText=="Co-op mod v0.10.7 developed by Anas Sammak (koolkat)\nSpecial thanks: Mesilll, Michal Eminov, caixa, Joah230"&&logged("MENU credit shown bottom-left"));
+ store(globals,0,20.6f);menu_credit_frame();assert(messageBegins==1&&messageText=="Co-op mod v0.10.8 developed by Anas Sammak (koolkat)\nSpecial thanks: Mesilll, Michal Eminov, caixa, Joah230"&&logged("MENU credit shown bottom-left"));
  assert((message==std::vector<int>{1,23,29,4,163,7454,0,200,200,200,180,200,200,200,180,256,256,7680}));
  store(globals,0,24.f);menu_credit_frame();assert(messageBegins==1);store(globals,0,25.7f);menu_credit_frame();assert(messageBegins==2&&message[15]==0);
  // Back from a game: a new map, no credit until that client is running again.
@@ -238,7 +246,7 @@ int main(int argc,char** argv_){
   assert(picture()=="gfx/vgui/sc_mb0.tga"&&messageText=="\nSimon\n\nModel 1 of 5\n\nNext: next model\nDone: keep it, then the hands"&&logged("MODEL box open: 5 model(s), current simon"));
   assert(img[0x3EF6A]==0x90&&img[0x3EF6B]==0x90&&std::string(reinterpret_cast<const char*>(img.data()+0x14736C))=="%s\n");   // OK is Next, the text is ours
   assert(img[0x3F201]==0x8B&&img[0x3F202]==0xF1&&img[0x3F208]==0x6A&&img[0x3F209]==0xFF&&img[0x3F215]==0x90&&img[0x3F216]==0x2C&&img[0x3F21A]==0xE9);   // setBgColor(0,0,0,255): no grey box
-  assert(model_box_command(j,"computercheck")&&picture()=="gfx/vgui/sc_mb4.tga"&&messageText.rfind("\nAfraid of Monsters\n\nModel 2 of 5",0)==0&&saved()=="simon_aom"&&serverCommands.back()=="setinfo sc_model \"simon_aom\"\n"&&messageBegins==2);
+  assert(model_box_command(j,"computercheck")&&picture()=="gfx/vgui/sc_mb4.tga"&&messageText.rfind("\nAfraid of Monsters\n\nModel 2 of 5",0)==0&&saved()=="simon_aom"&&serverCommands.back()=="setinfo sc_model \"\"\n"&&messageBegins==2);   // v0.10.8: the key is cleared, never set
   assert(model_box_command(j,"computercheck")&&picture()=="gfx/vgui/sc_mb11.tga"&&saved()=="simon_twitcher");
   assert(model_box_command(j,"computercheck")&&picture()=="gfx/vgui/sc_mbx.tga"&&messageText.rfind("\ncaps\n\nModel 4 of 5",0)==0&&saved()=="caps");   // no preview for the player's own
   assert(model_box_command(j,"computercheck")&&model_box_command(j,"computercheck")&&picture()=="gfx/vgui/sc_mb0.tga"&&saved()=="simon");   // wraps

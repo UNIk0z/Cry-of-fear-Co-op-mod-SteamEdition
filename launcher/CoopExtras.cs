@@ -206,7 +206,8 @@ namespace CofCoop
     {
         public int Fov = 90;
         public int Bob = 2;   // 0 off, 1 low, 2 default
-        public string Unstuck = "k", Hud = "h", Spray = "t", Ping = "g", Scare = "j", Drop = "q";
+        // v0.10.8 (Katz): picture mode (HUD off) on ], ping on H, the scare key removed.
+        public string Unstuck = "k", Hud = "]", Spray = "t", Ping = "h", Drop = "q";
         public bool HasView;
         // v0.10: colour (sc_color 0 automatic .. 8), black and white (sc_noir), the faint light around you with no torch on
         // (cof_reducedlightcolour1-3, cof_reducedlightradius: client cvars, CoF defaults 0.23 0.23 0.26 and 60).
@@ -215,7 +216,7 @@ namespace CofCoop
         public static readonly string[] Lights = { "0.23 0.23 0.26", "0.30 0.24 0.17", "0.17 0.23 0.32", "0.32 0.32 0.36" };
         public static readonly string[] Colours = { "Automatic", "Red", "Orange", "Yellow", "Green", "Cyan", "Blue", "Purple", "White" };
 
-        public static readonly Regex KeyName = new Regex("^([a-z0-9]|f([1-9]|1[0-2])|mouse[3-5]|ins|del|home|end|pgup|pgdn|kp_[a-z0-9]+)$");
+        public static readonly Regex KeyName = new Regex("^([a-z0-9]|\\[|\\]|f([1-9]|1[0-2])|mouse[3-5]|ins|del|home|end|pgup|pgdn|kp_[a-z0-9]+)$");
 
         public static ComfortSettings Read(string path)
         {
@@ -229,7 +230,7 @@ namespace CofCoop
                 {
                     string key = m.Groups[1].Value.ToLowerInvariant(), what = m.Groups[2].Value;
                     if (what == "sc_unstuck") s.Unstuck = key; else if (what == "sc_hud") s.Hud = key; else if (what == "impulse 201") s.Spray = key;
-                    else if (what == "sc_ping") s.Ping = key; else if (what == "sc_scare") s.Scare = key; else if (what == "sc_dropammo") s.Drop = key;
+                    else if (what == "sc_ping") s.Ping = key; else if (what == "sc_dropammo") s.Drop = key;
                     continue;
                 }
                 m = Regex.Match(line, "^(cl_fovmultiplier|cl_bob|sc_color|sc_noir|cof_reducedlightcolour1|cof_reducedlightcolour3|cof_reducedlightradius)\\s+\"?([0-9.]+)\"?");
@@ -244,6 +245,8 @@ namespace CofCoop
                 else if (name == "cof_reducedlightradius") s.Wide = v > 75;
                 else if (name == "cof_reducedlightcolour1") s.Light = v >= 0.315 ? 3 : v >= 0.28 ? 1 : v <= 0.19 ? 2 : 0;
             }
+            // v0.10.8: a file with the old defaults (HUD on H, ping on G) gets the new ones (], H).
+            if (s.Hud == "h" && s.Ping == "g") { s.Hud = "]"; s.Ping = "h"; }
             return s;
         }
 
@@ -264,14 +267,12 @@ namespace CofCoop
             b.AppendLine();
             b.AppendLine("// Unstuck (moves you out of a wall, or next to your partner)");
             b.AppendLine("bind \"" + Unstuck + "\" \"sc_unstuck\"");
-            b.AppendLine("// HUD on/off for screenshots");
+            b.AppendLine("// Picture mode: HUD on/off for screenshots");
             b.AppendLine("bind \"" + Hud + "\" \"sc_hud\"");
             b.AppendLine("// Spray your logo");
             b.AppendLine("bind \"" + Spray + "\" \"impulse 201\"");
             b.AppendLine("// Ping: show the others where you look");
             b.AppendLine("bind \"" + Ping + "\" \"sc_ping\"");
-            b.AppendLine("// Scare the nearest teammate with a laugh");
-            b.AppendLine("bind \"" + Scare + "\" \"sc_scare\"");
             b.AppendLine("// Drop one box of your gun's ammo for a teammate");
             b.AppendLine("bind \"" + Drop + "\" \"sc_dropammo\"");
             b.AppendLine();
@@ -377,11 +378,11 @@ namespace CofCoop
         RadioButton[] bob = new RadioButton[3], light = new RadioButton[4];
         CheckBox wide, noir;
         ComboBox colour;
-        TextBox[] keys = new TextBox[6];
-        Label[] keyNotes = new Label[6];
-        static readonly string[] Ours = { "sc_unstuck", "sc_hud", "impulse 201", "sc_ping", "sc_scare", "sc_dropammo" };
+        TextBox[] keys = new TextBox[5];
+        Label[] keyNotes = new Label[5];
+        static readonly string[] Ours = { "sc_unstuck", "sc_hud", "impulse 201", "sc_ping", "sc_dropammo" };
 
-        public SettingsForm(string gameDirectory) : base("Settings", 560, 646)
+        public SettingsForm(string gameDirectory) : base("Settings", 560, 600)
         {
             game = gameDirectory;
             path = Path.Combine(game, "storycoop_comfort.cfg");
@@ -415,9 +416,9 @@ namespace CofCoop
             noir = Check("Black and white", 330, 200, settings.Noir);
             AddLabel("Your colour marks your ping and, if the host turns it on, your outline.", 20, 226, 520, 18, true);
 
-            string[] labels = { "Unstuck key", "HUD on/off key", "Spray key", "Ping key", "Scare key", "Drop ammo key" };
-            string[] values = { settings.Unstuck, settings.Hud, settings.Spray, settings.Ping, settings.Scare, settings.Drop };
-            for (int i = 0; i < 6; i++)
+            string[] labels = { "Unstuck key", "Picture mode key", "Spray key", "Ping key", "Drop ammo key" };
+            string[] values = { settings.Unstuck, settings.Hud, settings.Spray, settings.Ping, settings.Drop };
+            for (int i = 0; i < 5; i++)
             {
                 int y = 256 + i * 46;
                 AddLabel(labels[i], 20, y + 2, 160, 20, false);
@@ -430,10 +431,10 @@ namespace CofCoop
                 keyNotes[i] = AddLabel("", 280, y + 4, 270, 18, true);
                 ShowKeyNote(i);
             }
-            AddLabel("Keys: a letter, a digit, F1-F12, MOUSE3-5. K is voice chat in a new config.", 20, 534, 520, 18, true);
-            note = AddLabel("", 20, 558, 520, 36, false);
-            AddButton("SAVE", 20, 606, delegate { Save(); });
-            AddButton("CLOSE", 160, 606, delegate { Close(); });
+            AddLabel("Keys: a letter, a digit, [ or ], F1-F12, MOUSE3-5. K is voice chat in a new config.", 20, 488, 520, 18, true);
+            note = AddLabel("", 20, 512, 520, 36, false);
+            AddButton("SAVE", 20, 560, delegate { Save(); });
+            AddButton("CLOSE", 160, 560, delegate { Close(); });
         }
 
         RadioButton Radio(string text, int x, int y, bool on, Control parent)
@@ -465,8 +466,8 @@ namespace CofCoop
 
         void Save()
         {
-            string[] chosen = new string[6];
-            for (int i = 0; i < 6; i++)
+            string[] chosen = new string[5];
+            for (int i = 0; i < 5; i++)
             {
                 chosen[i] = keys[i].Text.Trim().ToLowerInvariant();
                 if (!ComfortSettings.KeyName.IsMatch(chosen[i])) { note.Text = "\"" + keys[i].Text + "\" is not a key name."; return; }
@@ -476,7 +477,7 @@ namespace CofCoop
             settings.Bob = bob[0].Checked ? 0 : bob[1].Checked ? 1 : 2;
             settings.Light = light[1].Checked ? 1 : light[2].Checked ? 2 : light[3].Checked ? 3 : 0;
             settings.Wide = wide.Checked; settings.Noir = noir.Checked; settings.Colour = Math.Max(0, colour.SelectedIndex);
-            settings.Unstuck = chosen[0]; settings.Hud = chosen[1]; settings.Spray = chosen[2]; settings.Ping = chosen[3]; settings.Scare = chosen[4]; settings.Drop = chosen[5];
+            settings.Unstuck = chosen[0]; settings.Hud = chosen[1]; settings.Spray = chosen[2]; settings.Ping = chosen[3]; settings.Drop = chosen[4];
             try
             {
                 string temp = path + ".new";

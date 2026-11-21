@@ -63,7 +63,22 @@ std::unordered_map<Edict*,unsigned> ladderRelease;   // player -> allocation sta
 bool move_beside(Edict* who,Edict* anchor);bool camera_view(Edict* host);Edict* lease_camera(Edict* e);   // coop-runtime.hpp
 struct LadderKeys {int serial=-1;std::vector<std::pair<std::string,std::string>> keys;};
 std::unordered_map<Edict*,LadderKeys> ladderKeys;
-void ladder_reset(){ladders.clear();ladderRelease.clear();}
+// v0.10.8 (Katz: "the ladders sometimes get stuck for the second player"). CCoFLadderManager::StartNextAnimation
+// keeps one queued 48-unit drop of the climb camera in a GLOBAL bool, wasqueuedtoreduceorigin (decomp CoF_Ladder.cpp
+// 32, 570-577; hl.dll 10222E4C, written by 1004F4BA), shared by every manager. Since v0.7 two players climb at once
+// on two managers (a copy for the second), so one climb used up the other's drop and its camera went out of step
+// with the animation. Each manager now has its own copy: put in place for its Think, kept after it, 0 between.
+constexpr std::uint32_t LadderQueuedRva=0x222E4C;
+std::unordered_map<Edict*,std::pair<int,unsigned char>> ladderQueued;
+unsigned char* ladder_queued_flag(){return verified&&backend?reinterpret_cast<unsigned char*>(backend)+LadderQueuedRva:nullptr;}
+struct LadderQueueScope {
+ Edict* e=nullptr;unsigned char* flag=nullptr;
+ explicit LadderQueueScope(Edict* manager){if(!live(manager)||std::strcmp(classname(manager),"cof_ladder_manager"))return;flag=ladder_queued_flag();if(!flag)return;e=manager;
+  auto it=ladderQueued.find(e);*flag=it!=ladderQueued.end()&&it->second.first==serial(e)?it->second.second:0;}
+ ~LadderQueueScope(){if(!flag)return;if(live(e))ladderQueued[e]={serial(e),*flag};*flag=0;}
+ LadderQueueScope(const LadderQueueScope&)=delete;LadderQueueScope& operator=(const LadderQueueScope&)=delete;
+};
+void ladder_reset(){ladders.clear();ladderRelease.clear();ladderQueued.clear();}
 // ServerDeactivate: the next map records its own managers.
 void ladder_map_reset(){ladder_reset();ladderKeys.clear();}
 // KeyValue wrapper: every key a cof_ladder_manager is spawned with.

@@ -90,6 +90,17 @@ int main(int argc,char** argv){
  args={"unfreezesave","1024","1"};assert(!save_window_command(&edicts[2],"unfreezesave")&&saveWindow.actor);assert(save_window_command(&edicts[1],"savehack"));
  args={"unfreezesave","1024","7"};assert(!save_window_command(&edicts[1],"unfreezesave")&&saveWindow.actor);
  args={"unfreezesave","1024","1"};savedTold.clear();assert(!save_window_command(&edicts[1],"unfreezesave")&&!saveWindow.actor&&std::filesystem::exists(noFile));checkpoint_start_frame();   // saved before the native PreSave sets FL_NOTARGET
+ // v0.10.8 (Katz): every map arrival goes into the hidden slot 6 once everyone is in and settled for 3 s; a game over loads it.
+ {const auto keepSave=sessionSave;sessionSave={};arrivalSave={};for(int i:{1,2})carryDone[&edicts[i]]=serial(&edicts[i]);const float t0=load<float>(g.data(),0);logged.clear();
+  arrival_save_frame();assert(arrivalSave.done&&!logged_line({"AUTOSAVE"}));arrivalSave={};   // s4_start*: saved only at its two recorders, no autosave
+  const int mapBefore=load<int>(g.data(),0x0c);store(g.data(),0x0c,intern("s4_hamn_e0"));
+  arrival_save_frame();store(g.data(),0,t0+1.f);arrival_save_frame();assert(!std::filesystem::exists(checkpoint_directory()/"slot6.cofsave"));   // settled, not yet 3 s
+  store(g.data(),0,t0+4.5f);arrival_save_frame();
+  assert(std::filesystem::exists(checkpoint_directory()/"slot6.cofsave")&&sessionSave.slot==6&&sessionSave.map=="s4_hamn_e0"&&arrivalSave.done&&logged_line({"AUTOSAVE map arrival on s4_hamn_e0","saved"}));
+  store(g.data(),0x0c,mapBefore);
+  logged.clear();arrivalSave={};arrival_save_frame();assert(arrivalSave.done&&!logged_line({"AUTOSAVE"}));   // this map has a save now: nothing more
+  std::filesystem::remove(checkpoint_directory()/"slot6.cofsave");std::filesystem::remove(checkpoint_directory()/"slot6.cofmap");std::filesystem::remove(checkpoint_directory()/"slot6.cofrun");
+  sessionSave=keepSave;carryDone.clear();arrivalSave={};store(g.data(),0,t0);}
  std::filesystem::remove(noFile);std::filesystem::remove(checkpoint_directory()/"slot1.cofmap");std::filesystem::remove(checkpoint_directory()/"slot1.cofsave.bak");played.clear();soundCount=0;printedTo=nullptr;saveWindowEnabled=false;
  // Without the window (v0.1 key list): the host's recorder Use shows the slots on the host's PC; nothing is saved or heard yet.
  message_begin(1,8,nullptr,&edicts[1]);write_byte(0);write_string("Storage Tunnel");message_end();checkpoint_start_frame();
